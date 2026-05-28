@@ -206,3 +206,57 @@ research_output/
 
 - All v0.4 tests pass.
 - New module is additive; no breaking changes.
+
+## v0.6 — Citation Verification + Citation Formatting
+
+### Citation Extraction
+
+- **`extract_citation_candidates()`**: regex-based extraction of Turkish legal
+  citation patterns from text.  Detects Yargıtay, Danıştay, AYM, Sayıştay,
+  Rekabet Kurulu, Ticaret Mahkemesi, and more.  Extracts court, chamber,
+  date (DD.MM.YYYY / YYYY-MM-DD / Turkish month names), esas_no, karar_no,
+  and document_id-like references.
+- **Confidence scoring**: high (5+ fields), medium (3-4 fields), low (<3 fields).
+  Missing fields produce warnings, never fabricated values.
+
+### Citation Formatting
+
+- **`format_legal_citation()`**: format a citation from Document model or dict.
+  Three styles:
+  - `petition`: "Yargıtay, 3. Hukuk Dairesi, E.2023/12345, K.2024/5678, Tarihi: 2024-06-15"
+  - `parenthetical`: "(Yargıtay, 3. Hukuk Dairesi, 2024-06-15, E.2023/12345, K.2024/5678)"
+  - `short`: "Ygt. 2023/12345"
+- **Output contract**: formatted_citation, style, court, chamber, date, esas_no,
+  karar_no, document_id, source, source_url, content_status, quote_usable,
+  draft_usable, confidence, warnings.
+- **No fabrication**: missing metadata fields produce warnings, never invented
+  values.
+
+### Verification Pipeline
+
+- **`verify_legal_citation()`**: full pipeline — load text/file, extract
+  candidates, search local cache (unless `live_only`), live search (unless
+  `no_live`), rank by metadata match score, optionally fetch docs, return
+  structured result.
+- **Output contract**: ok, candidates, search_attempts, matched_documents,
+  formatted_citations, verification_findings, warnings, recommended_next_steps,
+  timing.
+- **Testability**: `no_live` and `live_only` flags; `cache` and `sources_override`
+  parameters for injecting fakes.  No live network in tests.
+
+### CLI Commands
+
+```
+emsal-mcp cite format <document_id> [--source bedesten] [--style petition] [--json]
+emsal-mcp cite verify [--text "..."] [--file-path path.txt] [--no-live] [--json]
+```
+
+### MCP Tools
+
+- `format_legal_citation`: format citation from document metadata
+- `verify_legal_citation`: verify citations in text/file
+
+### Backward Compatibility
+
+- All v0.5 tests pass.
+- New module is additive; no breaking changes.

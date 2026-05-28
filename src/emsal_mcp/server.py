@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .cache import Cache
+from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
 from .document import controlled_draft, export_bundle as export_bundle_impl
 from .models import Document
 from .research import refresh_research_bundle, research_quality_dashboard, research_topic
@@ -201,6 +202,71 @@ def main() -> None:
         draft_readiness_score, and recommendations.
         """
         return research_quality_dashboard(bundle_path)
+
+    # ── Citation v0.6 MCP tools ──────────────────────────────────────────
+
+    @mcp.tool()
+    def format_legal_citation(
+        source: dict | None = None,
+        document_id: str | None = None,
+        style: str = "petition",
+    ) -> dict:
+        """Format a legal citation from document metadata.
+
+        Args:
+            source: Document dict with metadata fields.
+            document_id: Document ID to look up from cache.
+            style: 'petition', 'parenthetical', or 'short'.
+
+        Returns:
+            Dict with formatted_citation, warnings, confidence, usability flags.
+        """
+        return format_legal_citation_impl(
+            source=source,
+            document_id=document_id,
+            style=style,  # type: ignore[arg-type]
+        )
+
+    @mcp.tool()
+    def verify_legal_citation(
+        text: str | None = None,
+        file_path: str | None = None,
+        source: str | None = None,
+        limit: int = 5,
+        fetch: int = 3,
+        no_live: bool = True,
+        live_only: bool = False,
+        min_score: float = 1.0,
+    ) -> dict:
+        """Verify legal citations in text or file.
+
+        Pipeline: extract candidates → search local cache → live search →
+        rank by metadata match score → return structured result.
+
+        Args:
+            text: Text content to verify.
+            file_path: Path to file to read.
+            source: Filter to specific source.
+            limit: Max candidates to extract.
+            fetch: Max docs to fetch.
+            no_live: Skip live search.
+            live_only: Skip local cache search.
+            min_score: Minimum match score threshold.
+
+        Returns:
+            Dict with candidates, matched_documents, formatted_citations,
+            verification_findings, warnings, recommended_next_steps.
+        """
+        return verify_legal_citation_impl(
+            text=text,
+            file_path=file_path,
+            source=source,
+            limit=limit,
+            fetch=fetch,
+            no_live=no_live,
+            live_only=live_only,
+            min_score=min_score,
+        )
 
     mcp.run()
 

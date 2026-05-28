@@ -9,6 +9,7 @@ import typer
 
 from . import __version__
 from .cache import Cache
+from .citation import format_legal_citation, verify_legal_citation
 from .document import controlled_draft, export_bundle, markdown_to_docx
 from .models import Document
 from .release import archive_release, compare_history, readiness_dashboard, release_notes, release_smoke, write_history
@@ -22,10 +23,12 @@ udf_app = typer.Typer(help="UDF okuma/yazma araçları")
 release_app = typer.Typer(help="Release smoke/dashboard/history/regression/notes/archive")
 cache_app = typer.Typer(help="Cache v2: istatistik, listeleme, arama, yedekleme, import/export")
 research_app = typer.Typer(help="Research workflow: topic search, refresh, quality dashboard")
+cite_app = typer.Typer(help="Citation verification and formatting")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
 app.add_typer(research_app, name="research")
+app.add_typer(cite_app, name="cite")
 
 
 def _print(obj, json_out: bool):
@@ -344,6 +347,58 @@ def research_dashboard_cmd(
 ):
     """Compute quality metrics for a research bundle."""
     result = research_quality_dashboard(bundle_path)
+    _print(result, json_out)
+
+
+# ── Citation subcommands ──────────────────────────────────────────────────
+
+
+@cite_app.command("format")
+def cite_format(
+    document_id: str = typer.Argument(..., help="Document ID to format"),
+    source: str = typer.Option("bedesten", help="Source to look up document"),
+    style: str = typer.Option("petition", help="Format style: petition, parenthetical, short"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Format a legal citation from cached document metadata."""
+    cache = Cache()
+    try:
+        # Look up from cache v2
+        row = cache.db.execute(
+            "SELECT * FROM documents_v2 WHERE document_id=? AND source=?",
+            (document_id, source),
+        ).fetchone()
+        doc_dict = dict(row) if row else {"document_id": document_id, "source": source}
+    finally:
+        cache.close()
+
+    result = format_legal_citation(doc_dict, style=style)  # type: ignore[arg-type]
+    _print(result, json_out)
+
+
+@cite_app.command("verify")
+def cite_verify(
+    text: str = typer.Option(None, help="Text to verify"),
+    file_path: Path = typer.Option(None, help="File to verify"),
+    source: str = typer.Option(None, help="Filter to specific source"),
+    limit: int = typer.Option(5, help="Max candidates to extract"),
+    fetch: int = typer.Option(3, help="Max docs to fetch"),
+    no_live: bool = typer.Option(True, help="Skip live search"),
+    min_score: float = typer.Option(1.0, help="Minimum match score"),
+    strategy_debug: bool = typer.Option(False, help="Include strategy debug info"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Verify legal citations in text or file."""
+    result = verify_legal_citation(
+        text=text,
+        file_path=file_path,
+        source=source,
+        limit=limit,
+        fetch=fetch,
+        no_live=no_live,
+        min_score=min_score,
+        strategy_debug=strategy_debug,
+    )
     _print(result, json_out)
 
 

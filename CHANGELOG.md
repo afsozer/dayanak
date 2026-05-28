@@ -3,6 +3,48 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] — 2026-05-29
+
+### Added
+
+- **Citation extraction** (`citation.py`): regex-based extraction of Turkish
+  legal citation patterns from text. Detects Yargıtay, Danıştay, AYM,
+  Sayıştay, Rekabet Kurulu, Ticaret Mahkemesi, and more. Extracts court,
+  chamber, date (DD.MM.YYYY / YYYY-MM-DD / Turkish month names), esas_no,
+  karar_no, and document_id-like references.
+- **Confidence scoring**: high (5+ fields), medium (3-4 fields), low (<3 fields).
+  Missing fields produce warnings, never fabricated values.
+- **`format_legal_citation()`**: format a citation from Document model or dict.
+  Three styles: petition, parenthetical, short. Uses only existing metadata;
+  warnings for missing date/chamber/esas/karar/source_url. Includes
+  quote_usable/draft_usable/content_status/source_url/confidence.
+- **`verify_legal_citation()`**: full verification pipeline — load text/file,
+  extract candidates, search local cache (unless live_only), live search
+  (unless no_live), rank by metadata match score, optionally fetch docs,
+  return structured result with candidates, search_attempts,
+  matched_documents, formatted_citations, verification_findings, warnings,
+  recommended_next_steps, timing.
+- **CLI commands**: `emsal-mcp cite format`, `emsal-mcp cite verify` with
+  `--json` output.
+- **MCP tools**: `format_legal_citation`, `verify_legal_citation` exposed
+  via FastMCP server.
+- **Tests**: `tests/test_citation.py` with 45 test cases covering extraction
+  (all court types, Turkish chars, dates, confidence, limits, warnings),
+  formatting (all styles, missing metadata no fabrication, output contract),
+  verification (cache-only, live fake, no_live/live_only, file input,
+  strategy debug, timing, output contract).
+
+### Changed
+
+- **Version bumped to 0.6.0** in `__init__.py` and `pyproject.toml`.
+- **`ROADMAP.md`** updated with v0.6 citation verification details.
+
+### Backward Compatibility
+
+- All v0.5 tests continue to pass (199+ existing tests unaffected).
+- Citation module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+
 ## [0.5.0] — 2026-05-29
 
 ### Added
