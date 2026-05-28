@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any, Literal
@@ -33,6 +34,97 @@ class SourceStatus(StrEnum):
     PARTIAL = "partial"
     EXPERIMENTAL = "experimental"
     UNAVAILABLE = "unavailable"
+
+
+class CachedDocument(BaseModel):
+    """Extended document model for cache v2 with rich metadata and access tracking.
+
+    Preserves full backward compatibility with Document via source+document_id identity.
+    """
+
+    # Identity
+    document_id: str
+    source: str
+
+    # Content
+    title: str | None = None
+    court: str | None = None
+    chamber: str | None = None
+    decision_date: str | None = None
+    esas_no: str | None = None
+    karar_no: str | None = None
+    source_url: str | None = None
+    content_status: ContentStatus = ContentStatus.METADATA_ONLY
+    markdown: str | None = None
+    full_text: str | None = None
+    content_hash: str | None = None
+    metadata_json: str | None = None
+    raw_json: str | None = None
+
+    # Access tracking
+    retrieved_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_accessed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    access_count: int = 0
+
+    # Usability flags
+    quote_usable: bool = False
+    draft_usable: bool = False
+    metadata_confidence: Literal["high", "medium", "low"] | None = None
+    warnings_json: str | None = None
+
+    @property
+    def text(self) -> str:
+        return self.full_text or self.markdown or ""
+
+    @classmethod
+    def from_document(cls, doc: Document) -> "CachedDocument":
+        """Create a CachedDocument from a Document model."""
+        return cls(
+            document_id=doc.document_id,
+            source=doc.source,
+            title=doc.title,
+            court=doc.court,
+            chamber=doc.chamber,
+            decision_date=doc.decision_date,
+            esas_no=doc.esas_no,
+            karar_no=doc.karar_no,
+            source_url=doc.source_url,
+            content_status=doc.content_status,
+            markdown=doc.markdown,
+            full_text=doc.full_text,
+            content_hash=doc.content_hash,
+            metadata_json=json.dumps(doc.metadata, ensure_ascii=False, default=str) if doc.metadata else None,
+            raw_json=json.dumps(doc.raw, ensure_ascii=False, default=str) if doc.raw is not None else None,
+            retrieved_at=doc.retrieved_at,
+            quote_usable=doc.quote_usable,
+            draft_usable=doc.draft_usable,
+            metadata_confidence=doc.metadata_confidence,
+        )
+
+    def to_document(self) -> Document:
+        """Convert back to Document model."""
+        return Document(
+            source=self.source,
+            document_id=self.document_id,
+            title=self.title or "",
+            court=self.court,
+            chamber=self.chamber,
+            decision_date=self.decision_date,
+            esas_no=self.esas_no,
+            karar_no=self.karar_no,
+            source_url=self.source_url,
+            content_status=self.content_status,
+            markdown=self.markdown,
+            full_text=self.full_text,
+            content_hash=self.content_hash,
+            retrieved_at=self.retrieved_at,
+            metadata=json.loads(self.metadata_json) if self.metadata_json else {},
+            raw=json.loads(self.raw_json) if self.raw_json else None,
+        )
+
+    def citation_label(self) -> str:
+        parts = [self.court, self.chamber, self.decision_date, self.esas_no, self.karar_no]
+        return " | ".join([p for p in parts if p]) or f"{self.source}:{self.document_id}"
 
 
 class SourceCapability(BaseModel):

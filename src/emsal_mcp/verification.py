@@ -120,7 +120,7 @@ def check_cache_integrity(cache_path: str | Path | None = None) -> dict[str, Any
         tables = [row[0] for row in cache.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()]
-        required = ["cache", "history", "documents", "packs", "drafts"]
+        required = ["cache", "history", "documents", "packs", "drafts", "documents_v2"]
         missing = [t for t in required if t not in tables]
         results["tests"].append({
             "name": "tables_exist",

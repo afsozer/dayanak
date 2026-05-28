@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .cache import Cache
 from .document import controlled_draft, export_bundle as export_bundle_impl
 from .models import Document
 from .safety import build_input_pack as build_input_pack_impl, citation_check
@@ -18,11 +19,22 @@ def main() -> None:
 
     @mcp.tool()
     async def search_decisions(source: str, query: str, limit: int = 10, page: int = 1) -> list[dict]:
-        return [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page)]
+        results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page)]
+        # Store search results in cache for later local search
+        cache = Cache()
+        cache.set(f"search:{source}:{query}:{limit}:{page}", results)
+        cache.close()
+        return results
 
     @mcp.tool()
     async def get_document(source: str, document_id: str) -> dict:
-        return (await get_source(source).get_document(document_id)).model_dump(mode="json")
+        doc = await get_source(source).get_document(document_id)
+        cache = Cache()
+        cache.set(f"doc:{source}:{document_id}", doc.model_dump(mode="json"))
+        cache.store_document(doc)
+        cache.log("get", {"source": source, "document_id": document_id})
+        cache.close()
+        return doc.model_dump(mode="json")
 
     @mcp.tool()
     def source_capabilities() -> list[dict]:
@@ -69,6 +81,66 @@ def main() -> None:
     @mcp.tool()
     def release_archive(out_dir: str) -> dict:
         return archive_release(out_dir)
+
+    # ── Cache v2 MCP tools ────────────────────────────────────────────
+
+    @mcp.tool()
+    def search_local_cache(
+        query: str = "",
+        source: str | None = None,
+        court: str | None = None,
+        chamber: str | None = None,
+        date: str | None = None,
+        esas_no: str | None = None,
+        karar_no: str | None = None,
+        document_id: str | None = None,
+        content_status: str | None = None,
+        draft_usable: bool | None = None,
+        quote_usable: bool | None = None,
+        sort: str = "relevance",
+        limit: int = 20,
+    ) -> list[dict]:
+        """Search cached documents locally without network access.
+
+        Supports filters: source, court, chamber, date, esas_no, karar_no,
+        document_id, content_status, draft_usable, quote_usable.
+        Sort options: relevance, decision_date_desc, decision_date_asc,
+        fetched_at_desc, fetched_at_asc.
+        Returns snippets around matching text.
+        """
+        cache = Cache()
+        try:
+            return cache.search_local(
+                query=query, source=source, court=court, chamber=chamber,
+                date=date, esas_no=esas_no, karar_no=karar_no,
+                document_id=document_id, content_status=content_status,
+                draft_usable=draft_usable, quote_usable=quote_usable,
+                sort=sort, limit=limit,
+            )
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def get_cache_stats() -> dict:
+        """Return cache statistics: document counts, sources, DB size."""
+        cache = Cache()
+        try:
+            return cache.cache_stats()
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def list_cached_documents(
+        source: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List cached documents with optional source filter."""
+        cache = Cache()
+        try:
+            return cache.list_cached_documents(source=source, limit=limit, offset=offset)
+        finally:
+            cache.close()
 
     mcp.run()
 

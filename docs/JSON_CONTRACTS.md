@@ -141,3 +141,87 @@ Extends SearchResult:
 - `draft_usable` equals `quote_usable`.
 - Documents with `content_status: "metadata_only"` or `"pdf_link_only"` are NOT usable for quotation.
 - These rules are invariant — no source can bypass them.
+
+## CachedDocument (v0.3)
+
+Extended document model for cache v2 with rich metadata and access tracking.
+
+```json
+{
+  "document_id": "abc-123",
+  "source": "yargitay",
+  "title": "Yargıtay Kararı",
+  "court": "Yargıtay",
+  "chamber": "1. Daire",
+  "decision_date": "2024-01-01",
+  "esas_no": "2024/1",
+  "karar_no": "100",
+  "source_url": "https://...",
+  "content_status": "full_text",
+  "markdown": "...",
+  "full_text": "...",
+  "content_hash": "sha256...",
+  "metadata_json": "{...}",
+  "raw_json": "{...}",
+  "retrieved_at": "2026-05-29T00:30:00+00:00",
+  "last_accessed_at": "2026-05-29T01:00:00+00:00",
+  "access_count": 3,
+  "quote_usable": true,
+  "draft_usable": true,
+  "metadata_confidence": "high",
+  "warnings_json": null
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `document_id` | `string` | Document identity (primary key part) |
+| `source` | `string` | Source identifier (primary key part) |
+| `title` | `string?` | Document title |
+| `court` | `string?` | Court name |
+| `chamber` | `string?` | Chamber/daire |
+| `decision_date` | `string?` | Decision date |
+| `esas_no` | `string?` | Case number |
+| `karar_no` | `string?` | Decision number |
+| `source_url` | `string?` | Source URL |
+| `content_status` | `string` | Content availability status |
+| `markdown` | `string?` | Markdown content |
+| `full_text` | `string?` | Full text content |
+| `content_hash` | `string?` | SHA-256 content hash |
+| `metadata_json` | `string?` | JSON metadata blob |
+| `raw_json` | `string?` | Raw response JSON |
+| `retrieved_at` | `datetime` | When document was fetched |
+| `last_accessed_at` | `datetime` | Last access time |
+| `access_count` | `int` | Number of times accessed |
+| `quote_usable` | `bool` | Safe for quotation |
+| `draft_usable` | `bool` | Safe for drafting |
+| `metadata_confidence` | `string?` | high/medium/low |
+| `warnings_json` | `string?` | JSON warnings list |
+
+## Local Search Results
+
+Returned by `search_local_cache` MCP tool and CLI `cache search-local`:
+
+```json
+{
+  "document_id": "abc-123",
+  "source": "yargitay",
+  "title": "Yargıtay Kararı",
+  "court": "Yargıtay",
+  "chamber": "1. Daire",
+  "decision_date": "2024-01-01",
+  "esas_no": "2024/1",
+  "karar_no": "100",
+  "source_url": "https://...",
+  "content_status": "full_text",
+  "quote_usable": true,
+  "draft_usable": true,
+  "metadata_confidence": "high",
+  "retrieved_at": "2026-05-29T00:30:00+00:00",
+  "last_accessed_at": "2026-05-29T01:00:00+00:00",
+  "access_count": 3,
+  "snippet": "...text around matching query..."
+}
+```

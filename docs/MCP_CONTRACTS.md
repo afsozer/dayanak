@@ -84,6 +84,60 @@ UDF file operations (read/write round-trip).
 
 Release management tools.
 
+## Cache v2 Tools (v0.3)
+
+### `search_local_cache`
+
+**Input**:
+- `query: str = ""` — Free-text search (matches title, full_text, markdown)
+- `source: str | None = None` — Filter by source
+- `court: str | None = None` — Filter by court (partial match)
+- `chamber: str | None = None` — Filter by chamber (partial match)
+- `date: str | None = None` — Filter by decision_date (partial match)
+- `esas_no: str | None = None` — Filter by esas_no (partial match)
+- `karar_no: str | None = None` — Filter by karar_no (partial match)
+- `document_id: str | None = None` — Filter by document_id (exact match)
+- `content_status: str | None = None` — Filter by content_status
+- `draft_usable: bool | None = None` — Filter by draft_usable flag
+- `quote_usable: bool | None = None` — Filter by quote_usable flag
+- `sort: str = "relevance"` — Sort order (see below)
+- `limit: int = 20` — Maximum results
+
+**Sort options**:
+- `relevance` — Most recently fetched first
+- `decision_date_desc` — Decision date newest first
+- `decision_date_asc` — Decision date oldest first
+- `fetched_at_desc` — Fetched at newest first
+- `fetched_at_asc` — Fetched at oldest first
+
+**Output**: `list[dict]` — each dict includes document metadata + `snippet` (text excerpt around match).
+
+**No network**: searches only cached documents. Requires documents to be stored via `get_document` or CLI `get`.
+
+### `get_cache_stats`
+
+**Input**: none
+
+**Output**: `dict` with keys:
+- `documents_v2`: count of cached documents
+- `documents_legacy`: count of legacy documents
+- `cache_entries`: count of key-value cache entries
+- `history_entries`: count of history entries
+- `packs`: count of stored packs
+- `drafts`: count of stored drafts
+- `sources`: list of `{source, count}` per source
+- `db_path`: path to cache database
+- `db_size_bytes`: database file size
+
+### `list_cached_documents`
+
+**Input**:
+- `source: str | None = None` — Filter by source
+- `limit: int = 50` — Maximum results
+- `offset: int = 0` — Offset for pagination
+
+**Output**: `list[dict]` — list of cached document records.
+
 ## Capability-based routing
 
 LLM agents can use `source_capabilities` to discover:
@@ -98,6 +152,8 @@ Example agent flow:
 2. Filter for status=stable AND supports_search=true
 3. For each matching source, call search_decisions
 4. Use citation_safety to verify before quoting
+5. Store documents via get_document for local cache
+6. Use search_local_cache for offline search over cached documents
 ```
 
 ## Backward compatibility
@@ -109,6 +165,7 @@ Example agent flow:
 - New fields are additive and optional for clients. Existing tool names must not
   be removed within the 0.x/1.x compatibility window; any rename must be added as
   an alias first.
+- Cache v2 tools are additive; existing cache operations continue to work.
 
 ## Structured error shape
 
