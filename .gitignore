@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+.opencode/ralph-loop.local.md
+exports/
+*.sqlite3
+*.sqlite
