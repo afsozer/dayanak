@@ -167,6 +167,34 @@ Example agent flow:
   an alias first.
 - Cache v2 tools are additive; existing cache operations continue to work.
 
+## Research v0.5 Tools
+
+### `research_topic_tool`
+
+**Input**:
+- `query: str` — Research query string
+- `sources: list[str] | None = None` — Source IDs to query (default: all searchable)
+- `fetch_count: int = 5` — Max documents to fetch
+- `filters: dict | None = None` — Search filters
+- `output_dir: str | None = None` — Output directory
+
+**Output**: `dict` — Bundle metadata with query, sources, result_count, fetched_count, content_status_summary, citation_safe_count, metadata_only_count, generated_files, warnings, recommended_next_steps.
+
+### `refresh_research_bundle_tool`
+
+**Input**:
+- `bundle_path: str` — Path to bundle.json
+- `dry_run: bool = False` — Compute diff without writing
+
+**Output**: `dict` — Report with new_documents, changed_documents, hash_changed, new_count, changed_count.
+
+### `research_quality_dashboard_tool`
+
+**Input**:
+- `bundle_path: str` — Path to bundle.json
+
+**Output**: `dict` — Quality metrics: full_text_ratio, citation_safe_ratio, metadata_only_count, pdf_only_count, unavailable_count, source_distribution, missing_metadata_count, duplicate_citation_count, draft_readiness_score, recommendations.
+
 ## Structured error shape
 
 Fatal/domain errors should use this JSON-compatible shape where possible:

@@ -275,3 +275,74 @@ emsal-mcp sources-smoke --json         # JSON output
 source_smoke(online=false)             # offline only (default)
 source_smoke(online=true)              # include online checks
 ```
+
+## Research Bundle (v0.5)
+
+### `bundle.json`
+
+```json
+{
+  "version": "0.5.0",
+  "query": "konut kirası tavan fiyat",
+  "sources": ["bedesten", "yargitay"],
+  "filters": {},
+  "fetch_count": 5,
+  "result_count": 10,
+  "fetched_count": 5,
+  "content_status_summary": {"full_text": 2, "metadata_only": 3},
+  "citation_safe_count": 2,
+  "metadata_only_count": 3,
+  "generated_files": ["bundle.json", "results.json", "index.md", "warnings.json", "manifests/hash-manifest.json", "documents/..."],
+  "warnings": [],
+  "hash": "sha256...",
+  "created_at": "2026-05-29T00:30:00+00:00",
+  "recommended_next_steps": ["Bundle is complete with citation-safe documents."]
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | `string` | Bundle schema version |
+| `query` | `string` | Research query |
+| `sources` | `string[]` | Sources queried |
+| `filters` | `object` | Search filters applied |
+| `fetch_count` | `int` | Max docs fetched per source |
+| `result_count` | `int` | Total search results |
+| `fetched_count` | `int` | Documents successfully fetched |
+| `content_status_summary` | `object` | Count per content_status |
+| `citation_safe_count` | `int` | Documents safe for quotation |
+| `metadata_only_count` | `int` | Metadata-only documents |
+| `generated_files` | `string[]` | Files written to output dir |
+| `warnings` | `string[]` | Search/fetch warnings |
+| `hash` | `string` | SHA-256 of bundle content |
+| `created_at` | `datetime` | Bundle creation time |
+| `recommended_next_steps` | `string[]` | Actionable next steps |
+
+### `manifests/hash-manifest.json`
+
+```json
+{
+  "source:doc-id": "sha256-content-hash",
+  "yargitay:abc-123": "a1b2c3..."
+}
+```
+
+### Quality Dashboard Output
+
+```json
+{
+  "total_results": 10,
+  "full_text_ratio": 0.4,
+  "citation_safe_ratio": 0.3,
+  "metadata_only_count": 5,
+  "pdf_only_count": 1,
+  "unavailable_count": 1,
+  "source_distribution": {"bedesten": 6, "yargitay": 4},
+  "missing_metadata_count": 2,
+  "duplicate_citation_count": 1,
+  "draft_readiness_score": 0.52,
+  "recommendations": ["Low full-text ratio; fetch more documents with content."]
+}
+```

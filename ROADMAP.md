@@ -150,3 +150,59 @@ emsal-mcp cache import <path>   # Import from JSON
 - Source health monitoring and circuit-breaker patterns
 - Cache sync between multiple instances
 - Full-text search index optimization
+
+## v0.5 — Research Workflow Bundles (current)
+
+### Research Pipeline
+
+- **`research_topic()`**: search sources, fetch documents, build output directory
+  with `bundle.json`, `results.json`, `documents/*.md`, `manifests/hash-manifest.json`,
+  `warnings.json`, and `index.md`. Structured output with query, sources, filters,
+  result_count, fetched_count, content_status_summary, citation_safe_count,
+  metadata_only_count, generated_files, warnings, recommended_next_steps.
+- **`refresh_research_bundle()`**: re-run research from existing bundle, detect
+  new/changed documents via hash comparison, support `dry_run`, preserve manual
+  notes in `index.md` between markers.
+- **`research_quality_dashboard()`**: compute full_text_ratio, citation_safe_ratio,
+  metadata_only_count, pdf_only_count, unavailable_count, source_distribution,
+  missing_metadata_count, duplicate_citation_count, draft_readiness_score,
+  recommendations.
+
+### Testability
+
+- All research functions accept `sources_override` dict for injecting fake source
+  clients. Tests use deterministic fake clients with zero network calls.
+
+### CLI Commands
+
+```
+emsal-mcp research topic <query> [--sources s1,s2] [--fetch-count 5] [--json]
+emsal-mcp research refresh <bundle.json> [--dry-run] [--json]
+emsal-mcp research dashboard <bundle.json> [--json]
+```
+
+### MCP Tools
+
+- `research_topic_tool`: search + fetch + bundle creation
+- `refresh_research_bundle_tool`: re-run + diff detection
+- `research_quality_dashboard_tool`: quality metrics
+
+### Bundle Structure
+
+```
+research_output/
+├── index.md
+├── bundle.json
+├── results.json
+├── warnings.json
+├── documents/
+│   ├── source_docid.md
+│   └── ...
+└── manifests/
+    └── hash-manifest.json
+```
+
+### Backward Compatibility
+
+- All v0.4 tests pass.
+- New module is additive; no breaking changes.

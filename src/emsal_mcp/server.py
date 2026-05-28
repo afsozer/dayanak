@@ -3,6 +3,7 @@ from __future__ import annotations
 from .cache import Cache
 from .document import controlled_draft, export_bundle as export_bundle_impl
 from .models import Document
+from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack as build_input_pack_impl, citation_check
 from .sources.registry import capabilities, get_source, smoke_all_sync
 from .udf import probe_udf, read_udf as read_udf_impl, write_udf as write_udf_impl
@@ -152,6 +153,54 @@ def main() -> None:
             return cache.list_cached_documents(source=source, limit=limit, offset=offset)
         finally:
             cache.close()
+
+    # ── Research v0.5 MCP tools ────────────────────────────────────────
+
+    @mcp.tool()
+    def research_topic_tool(
+        query: str,
+        sources: list[str] | None = None,
+        fetch_count: int = 5,
+        filters: dict | None = None,
+        output_dir: str | None = None,
+    ) -> dict:
+        """Search sources, fetch documents, and build a research bundle.
+
+        Returns bundle metadata with query, sources, result_count, fetched_count,
+        content_status_summary, citation_safe_count, generated_files, warnings,
+        and recommended_next_steps.
+        """
+        return research_topic(
+            query=query,
+            sources=sources,
+            fetch_count=fetch_count,
+            filters=filters or {},
+            output_dir=output_dir,
+        )
+
+    @mcp.tool()
+    def refresh_research_bundle_tool(
+        bundle_path: str,
+        dry_run: bool = False,
+    ) -> dict:
+        """Re-run research from an existing bundle.json, detecting new/changed docs.
+
+        Returns report with new_documents, changed_documents, hash_changed.
+        Preserves manual notes in index.md.
+        """
+        return refresh_research_bundle(bundle_path, dry_run=dry_run)
+
+    @mcp.tool()
+    def research_quality_dashboard_tool(
+        bundle_path: str,
+    ) -> dict:
+        """Compute quality metrics for a research bundle.
+
+        Returns full_text_ratio, citation_safe_ratio, metadata_only_count,
+        source_distribution, missing_metadata_count, duplicate_citation_count,
+        draft_readiness_score, and recommendations.
+        """
+        return research_quality_dashboard(bundle_path)
 
     mcp.run()
 

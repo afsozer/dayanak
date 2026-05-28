@@ -12,6 +12,7 @@ from .cache import Cache
 from .document import controlled_draft, export_bundle, markdown_to_docx
 from .models import Document
 from .release import archive_release, compare_history, readiness_dashboard, release_notes, release_smoke, write_history
+from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack, citation_check
 from .sources.registry import capabilities, get_source, registry, smoke_all_sync
 from .udf import probe_udf, read_udf, udf_to_markdown, write_udf
@@ -20,9 +21,11 @@ app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
 udf_app = typer.Typer(help="UDF okuma/yazma araçları")
 release_app = typer.Typer(help="Release smoke/dashboard/history/regression/notes/archive")
 cache_app = typer.Typer(help="Cache v2: istatistik, listeleme, arama, yedekleme, import/export")
+research_app = typer.Typer(help="Research workflow: topic search, refresh, quality dashboard")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
+app.add_typer(research_app, name="research")
 
 
 def _print(obj, json_out: bool):
@@ -304,6 +307,44 @@ def udf_md(path: Path, out: Optional[Path] = None):
 @udf_app.command("write")
 def udf_write(text_file: Path, out: Path, title_centered: bool = False):
     typer.echo(str(write_udf(text_file.read_text(encoding="utf-8"), out, title_centered=title_centered)))
+
+
+# ── Research subcommands ─────────────────────────────────────────────────
+
+
+@research_app.command("topic")
+def research_topic_cmd(
+    query: str = typer.Argument(..., help="Research query"),
+    sources: Optional[str] = typer.Option(None, help="Comma-separated source_ids"),
+    fetch_count: int = typer.Option(5, help="Max docs to fetch"),
+    output_dir: Optional[Path] = typer.Option(None, help="Output directory"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Search sources, fetch documents, build research bundle."""
+    src_list = [s.strip() for s in sources.split(",")] if sources else None
+    result = research_topic(query, src_list, fetch_count=fetch_count, output_dir=output_dir)
+    _print(result, json_out)
+
+
+@research_app.command("refresh")
+def research_refresh_cmd(
+    bundle_path: Path = typer.Argument(..., help="Path to bundle.json"),
+    dry_run: bool = typer.Option(False, help="Compute diff without writing"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Re-run research from an existing bundle, detect new/changed documents."""
+    result = refresh_research_bundle(bundle_path, dry_run=dry_run)
+    _print(result, json_out)
+
+
+@research_app.command("dashboard")
+def research_dashboard_cmd(
+    bundle_path: Path = typer.Argument(..., help="Path to bundle.json"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Compute quality metrics for a research bundle."""
+    result = research_quality_dashboard(bundle_path)
+    _print(result, json_out)
 
 
 if __name__ == "__main__":

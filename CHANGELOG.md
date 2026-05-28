@@ -3,6 +3,52 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] — 2026-05-29
+
+### Added
+
+- **Research workflow** (`research.py`): core v0.5 research pipeline with
+  `research_topic()`, `refresh_research_bundle()`, and `research_quality_dashboard()`.
+- **`research_topic()`**: searches configured sources, fetches documents up to
+  fetch_count, stores in cache, builds output directory with `index.md`,
+  `bundle.json`, `results.json`, `documents/*.md`, `manifests/hash-manifest.json`,
+  and `warnings.json`. Never fabricates metadata. Returns structured dict with
+  query, sources, filters, result_count, fetched_count, content_status_summary,
+  citation_safe_count, metadata_only_count, generated_files, warnings,
+  recommended_next_steps.
+- **`refresh_research_bundle()`**: reads `bundle.json`, re-runs with same
+  query/sources, supports `dry_run`, reports new_documents/changed_documents/
+  hash_changed, preserves manual notes between `<!-- MANUAL_NOTES_START/END -->`
+  markers in `index.md`.
+- **`research_quality_dashboard()`**: reads bundle results and computes
+  full_text_ratio, citation_safe_ratio, metadata_only_count, pdf_only_count,
+  unavailable_count, source_distribution, missing_metadata_count,
+  duplicate_citation_count, draft_readiness_score, recommendations.
+- **`sources_override` parameter**: all three functions accept optional
+  `sources_override` dict for injecting fake source clients in tests (no
+  live network required).
+- **CLI commands**: `emsal-mcp research topic`, `emsal-mcp research refresh`,
+  `emsal-mcp research dashboard` with `--json` output.
+- **MCP tools**: `research_topic_tool`, `refresh_research_bundle_tool`,
+  `research_quality_dashboard_tool` exposed via FastMCP server.
+- **Tests**: `test_research.py` with 30+ test cases covering bundle file
+  creation, manifest hash correctness, dashboard metrics, refresh dry_run,
+  manual notes preservation, empty source handling, cache storage, CLI/MCP
+  imports, and no-network fake source client path.
+
+### Changed
+
+- **Version bumped to 0.5.0** in `__init__.py` and `pyproject.toml`.
+- **`ROADMAP.md`** updated with v0.5 research workflow details.
+- **`docs/JSON_CONTRACTS.md`** updated with research bundle contracts.
+- **`docs/MCP_CONTRACTS.md`** updated with research MCP tool contracts.
+
+### Backward Compatibility
+
+- All v0.4 tests continue to pass (199+ existing tests unaffected).
+- Research module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+
 ## [0.4.0] — 2026-05-29
 
 ### Added
