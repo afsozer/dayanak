@@ -1,4 +1,4 @@
 from .base import SourceClient
-from .registry import get_source, registry
+from .registry import capabilities, get_source, registry
 
-__all__ = ["SourceClient", "get_source", "registry"]
+__all__ = ["SourceClient", "capabilities", "get_source", "registry"]

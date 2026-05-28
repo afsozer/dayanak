@@ -11,7 +11,9 @@ Fatih Sözer'in yerel makinesinde çalışan, resmi/public hukuk kaynak odaklı,
 
 ## Kaynaklar
 
-MVP registry: Bedesten/Yargıtay, AYM, Danıştay, Uyuşmazlık, Rekabet, Sayıştay, GİB, Mevzuat.
+MVP registry: Bedesten/Yargıtay, AYM, Danıştay, Uyuşmazlık, Rekabet, Sayıştay, GİB, Mevzuat, KİK placeholder.
+
+KİK/EKAP v2 canlı arama şu anda `unavailable` capability ile kayıtlıdır; önceki QC'de HTTP 401/token gereksinimi görüldüğü için search/get tam metin üretmez, yalnızca yapılandırılmış placeholder döndürür.
 
 ## Kurulum
 

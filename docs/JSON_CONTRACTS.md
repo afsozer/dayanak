@@ -1,0 +1,143 @@
+# docs/JSON_CONTRACTS.md — Canonical JSON Contracts
+
+## Source Capability
+
+Returned by `capabilities()`, CLI `emsal-mcp sources --json`, and MCP
+`source_capabilities`. Every entry has this shape:
+
+```json
+{
+  "source_id": "bedesten",
+  "display_name": "Bedesten/Yargıtay",
+  "status": "stable",
+  "supports_search": true,
+  "supports_get_document": true,
+  "supports_full_text": true,
+  "supports_pdf_link": false,
+  "supports_metadata_only": true,
+  "supports_article_search": false,
+  "supports_type_filter": false,
+  "supports_workflow": true,
+  "live_smoke_recommended": true,
+  "known_limitations": [
+    "Content returned as base64-encoded HTML; PDF documents yield only a link."
+  ],
+  "notes": "Bedesten API is internal to Adalet Bakanlığı; availability depends on upstream.",
+  "source": "bedesten",
+  "name": "Bedesten/Yargıtay",
+  "public": true,
+  "tools": ["search", "get_document"],
+  "citationSafeRule": "Only documents with content_status full_text/html_markdown and non-empty text are quote/draft usable.",
+  "noFabrication": true
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `source_id` | `string` | Machine identifier (snake_case) |
+| `display_name` | `string` | Human-readable name |
+| `status` | `string` | `"stable"` / `"partial"` / `"experimental"` / `"unavailable"` |
+| `supports_search` | `bool` | Whether `search()` works |
+| `supports_get_document` | `bool` | Whether `get_document()` works |
+| `supports_full_text` | `bool` | Whether full text/Markdown is expected |
+| `supports_pdf_link` | `bool` | Whether PDF links are preserved |
+| `supports_metadata_only` | `bool` | Whether metadata-only fallback is supported |
+| `supports_article_search` | `bool` | Whether article-level search is supported |
+| `supports_type_filter` | `bool` | Whether type filtering is supported |
+| `supports_workflow` | `bool` | Whether source is workflow-eligible |
+| `live_smoke_recommended` | `bool` | Include in live smoke tests |
+| `known_limitations` | `string[]` | Explicit, non-fabricated limitations |
+| `notes` | `string` | Operational notes |
+| `source`, `name`, `public`, `tools` | legacy | v0.1 compatibility keys |
+| `citationSafeRule` | `string` | **Legacy alias** — backward compat only |
+| `noFabrication` | `bool` | **Legacy alias** — backward compat only |
+
+### Backward compatibility
+
+The `citationSafeRule` and `noFabrication` keys are kept for consumers that
+relied on the v0.1 capability shape. New code should use the snake_case keys.
+
+### KIK entry
+
+```json
+{
+  "source_id": "kik",
+  "display_name": "Kamu İhale Kurumu / EKAP v2",
+  "status": "unavailable",
+  "supports_search": false,
+  "supports_get_document": true,
+  "supports_full_text": false,
+  "supports_pdf_link": false,
+  "supports_metadata_only": true,
+  "supports_workflow": false,
+  "live_smoke_recommended": false,
+  "known_limitations": ["Canlı EKAP v2 search önceki QC'de HTTP 401 döndürdü."],
+  "notes": "KİK intentionally registered as unavailable placeholder for contract stability.",
+  "citationSafeRule": "Only documents with content_status full_text/html_markdown and non-empty text are quote/draft usable.",
+  "noFabrication": true
+}
+```
+
+## SearchResult
+
+```json
+{
+  "source": "bedesten",
+  "document_id": "abc-123",
+  "title": "Yargıtay 1. Daire | 2024-01-01 | 2024/1 | 100",
+  "summary": null,
+  "court": "Yargıtay",
+  "chamber": "1. Daire",
+  "decision_date": "2024-01-01",
+  "esas_no": "2024/1",
+  "karar_no": "100",
+  "source_url": null,
+  "pdf_url": null,
+  "content_status": "metadata_only",
+  "content_status_label": "Metadata",
+  "content_available": false,
+  "full_text_available": false,
+  "metadata_confidence": "high",
+  "metadata_confidence_reason": "Başlık, kaynak ve güçlü karar metadata alanları var.",
+  "recommended_next_step": "Bu kayıtta tam metin yok; dilekçede kullanmadan önce resmi kaynaktan doğrulayın.",
+  "metadata": {}
+}
+```
+
+## Document
+
+Extends SearchResult:
+
+```json
+{
+  "source": "bedesten",
+  "document_id": "abc-123",
+  "title": "Yargıtay Kararı",
+  "full_text": "...",
+  "markdown": "...",
+  "mime_type": "text/html",
+  "content_hash": "sha256...",
+  "raw": null,
+  "retrieved_at": "2026-05-29T00:30:00+00:00",
+  "safety_state": "unknown",
+  "content_status": "html_markdown",
+  "source_url": "https://...",
+  "pdf_url": null,
+  "content_status_label": "HTML'den Markdown",
+  "content_available": true,
+  "full_text_available": true,
+  "metadata_confidence": "medium",
+  "metadata_confidence_reason": "Başlık ve kaynak var; bazı tarih/numara/daire alanları eksik.",
+  "recommended_next_step": null,
+  "metadata": {}
+}
+```
+
+### Usability rules
+
+- `quote_usable` is `true` when `content_status in (full_text, html_markdown)` AND `text` is non-empty.
+- `draft_usable` equals `quote_usable`.
+- Documents with `content_status: "metadata_only"` or `"pdf_link_only"` are NOT usable for quotation.
+- These rules are invariant — no source can bypass them.

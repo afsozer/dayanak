@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .sources.registry import registry
+from .sources.registry import capabilities, registry
 from .verification import check_cache_integrity, smoke_test_offline
 
 
@@ -35,8 +35,9 @@ def release_smoke() -> dict[str, Any]:
 def readiness_dashboard() -> dict[str, Any]:
     smoke = release_smoke()
     risks = []
-    if "kik" not in registry():
-        risks.append("KİK disabled/unavailable; HTTP 401 requires auth/token flow.")
+    for cap in capabilities():
+        if cap.get("source_id") == "kik" and cap.get("status") == "unavailable":
+            risks.append("KİK disabled/unavailable; HTTP 401 requires auth/token flow.")
     score = 100 - len(risks) * 10
     return {"ok": True, "version": __version__, "generated_at": _now(), "readiness_score": score, "release_decision": "ship" if score >= 80 else "review", "smoke": smoke, "risks": risks}
 
