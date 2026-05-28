@@ -196,8 +196,9 @@ def cache_backup(
 ):
     """Backup the cache database."""
     cache = Cache(cache_path)
-    dest = cache.backup_cache(backup_path)
-    typer.echo(f"Backup created: {dest}")
+    result = cache.backup_cache_with_metadata(backup_path)
+    typer.echo(f"Backup created: {result['backup_path']}")
+    typer.echo(f"SHA256: {result['sha256']}")
     cache.close()
 
 
@@ -208,8 +209,9 @@ def cache_export(
 ):
     """Export cached documents to JSON."""
     cache = Cache(cache_path)
-    dest = cache.export_json(export_path)
-    typer.echo(f"Exported to: {dest}")
+    result = cache.export_json(export_path)
+    typer.echo(f"Exported {result['document_count']} documents to: {result['path']}")
+    typer.echo(f"SHA256: {result['sha256']}")
     cache.close()
 
 
@@ -220,8 +222,8 @@ def cache_import(
 ):
     """Import cached documents from JSON."""
     cache = Cache(cache_path)
-    count = cache.import_json(import_path)
-    typer.echo(f"Imported {count} documents")
+    result = cache.import_json(import_path)
+    typer.echo(f"Imported: {result['imported']}, Skipped: {result['skipped']}, Errors: {result['errors']}")
     cache.close()
 
 

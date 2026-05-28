@@ -19,6 +19,8 @@ DEFAULT_CACHE = Path.home() / ".emsal-mcp" / "cache.sqlite3"
 
 
 class Cache:
+    SCHEMA_VERSION = 2
+
     def __init__(self, path: Path | None = None):
         self.path = path or DEFAULT_CACHE
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +78,8 @@ class Cache:
         """)
         # v2 documents table with rich metadata
         self._ensure_documents_v2()
+        # Explicit schema version tracking (idempotent)
+        self._set_schema_version()
         self.db.commit()
 
     def _ensure_documents_v2(self) -> None:
@@ -142,6 +146,15 @@ class Cache:
             "CREATE INDEX IF NOT EXISTS idx_dv2_draft_usable ON documents_v2(draft_usable)"
         )
         self.db.commit()
+
+    def _set_schema_version(self) -> None:
+        """Set PRAGMA user_version to SCHEMA_VERSION idempotently."""
+        self.db.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
+
+    @property
+    def schema_version(self) -> int:
+        """Return current schema version from PRAGMA user_version."""
+        return self.db.execute("PRAGMA user_version").fetchone()[0]
 
     # ------------------------------------------------------------------
     # Legacy key-value cache
@@ -453,6 +466,7 @@ class Cache:
         ).fetchall()
 
         return {
+            "schema_version": self.schema_version,
             "documents_v2": doc_count,
             "documents_legacy": legacy_count,
             "cache_entries": cache_entries,
@@ -495,6 +509,11 @@ class Cache:
             (document_id, source),
         )
         self.db.commit()
+        self.log("delete_cached_document", {
+            "document_id": document_id,
+            "source": source,
+            "deleted": v2 > 0,
+        })
         return v2 > 0
 
     def prune_search_cache(self, max_age_days: int = 30) -> int:
@@ -505,40 +524,149 @@ class Cache:
         )
         count = self.db.execute("SELECT changes()").fetchone()[0]
         self.db.commit()
+        self.log("prune_search_cache", {
+            "max_age_days": max_age_days,
+            "pruned_count": count,
+        })
         return count
 
     def backup_cache(self, backup_path: str | Path) -> Path:
-        """Create a backup of the cache database."""
+        """Create a backup of the cache database. Returns backup path."""
         dest = Path(backup_path)
         dest.parent.mkdir(parents=True, exist_ok=True)
         self.db.execute("VACUUM INTO ?", (str(dest),))
         return dest
 
-    def export_json(self, export_path: str | Path) -> Path:
-        """Export all cached documents to a JSON file."""
+    def backup_cache_with_metadata(self, backup_path: str | Path) -> dict[str, Any]:
+        """Create a backup and return path + sha256 hash + stats."""
+        dest = self.backup_cache(backup_path)
+        sha256 = hashlib.sha256(dest.read_bytes()).hexdigest()
+        stats = self.cache_stats()
+        self.log("backup_cache", {
+            "backup_path": str(dest),
+            "sha256": sha256,
+            "schema_version": stats["schema_version"],
+            "documents_v2": stats["documents_v2"],
+        })
+        return {
+            "backup_path": str(dest),
+            "sha256": sha256,
+            "schema_version": stats["schema_version"],
+            "documents_v2": stats["documents_v2"],
+            "db_size_bytes": dest.stat().st_size,
+        }
+
+    def export_json(self, export_path: str | Path, include_markdown: bool = True) -> dict[str, Any]:
+        """Export all cached documents to a JSON file.
+
+        Returns metadata dict with document_count, sha256, path.
+        Writes a structured object with schemaVersion, exportedAt, documents[], documentCount.
+        Backward-compatible: old list-only imports are still accepted by import_json.
+        """
         rows = self.db.execute("SELECT * FROM documents_v2 ORDER BY source, document_id").fetchall()
         documents = [dict(row) for row in rows]
         out = Path(export_path)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(
-            json.dumps(documents, ensure_ascii=False, indent=2, default=str),
-            encoding="utf-8",
-        )
-        return out
+        export_payload = {
+            "schemaVersion": self.SCHEMA_VERSION,
+            "exportedAt": datetime.now(timezone.utc).isoformat(),
+            "includeMarkdown": include_markdown,
+            "documents": documents,
+            "documentCount": len(documents),
+        }
+        payload_bytes = json.dumps(
+            export_payload, ensure_ascii=False, indent=2, default=str
+        ).encode("utf-8")
+        export_payload["sha256"] = hashlib.sha256(payload_bytes).hexdigest()
+        # Rewrite with sha256 included
+        final_bytes = json.dumps(
+            export_payload, ensure_ascii=False, indent=2, default=str
+        ).encode("utf-8")
+        out.write_bytes(final_bytes)
+        self.log("export_json", {
+            "export_path": str(out),
+            "document_count": len(documents),
+            "schema_version": self.SCHEMA_VERSION,
+            "sha256": export_payload["sha256"],
+        })
+        return {
+            "path": str(out),
+            "document_count": len(documents),
+            "sha256": export_payload["sha256"],
+            "schema_version": self.SCHEMA_VERSION,
+        }
 
-    def import_json(self, import_path: str | Path) -> int:
-        """Import cached documents from a JSON file. Returns count imported."""
-        data = json.loads(Path(import_path).read_text(encoding="utf-8"))
-        count = 0
-        for item in data:
-            cached = CachedDocument(**{
-                k: v for k, v in item.items()
-                if k in CachedDocument.model_fields
-            })
-            self._upsert_cached_document(cached)
-            count += 1
+    def import_json(self, import_path: str | Path) -> dict[str, Any]:
+        """Import cached documents from a JSON file.
+
+        Accepts both:
+        - New structured format: {schemaVersion, documents: [...]}
+        - Legacy list-only format: [{document_id, ...}, ...]
+
+        Validates/recomputes content_hash for entries with markdown/full_text.
+        Returns structured dict with imported/skipped/errors counts.
+        """
+        raw = json.loads(Path(import_path).read_text(encoding="utf-8"))
+
+        # Backward compatibility: detect old list-only format
+        if isinstance(raw, list):
+            documents = raw
+            source_format = "legacy_list"
+        elif isinstance(raw, dict) and "documents" in raw:
+            documents = raw["documents"]
+            source_format = raw.get("schemaVersion", "unknown")
+        else:
+            return {"imported": 0, "skipped": 0, "errors": 1, "error": "Unrecognized import format"}
+
+        imported = 0
+        skipped = 0
+        errors = 0
+        error_details: list[str] = []
+
+        for item in documents:
+            try:
+                # Validate/recompute content_hash for entries with text content
+                text = item.get("full_text") or item.get("markdown") or ""
+                if text:
+                    computed_hash = hashlib.sha256(
+                        text.encode("utf-8", errors="ignore")
+                    ).hexdigest()
+                    stored_hash = item.get("content_hash")
+                    if stored_hash and stored_hash != computed_hash:
+                        # Hash mismatch: skip this document
+                        skipped += 1
+                        error_details.append(
+                            f"Hash mismatch for {item.get('document_id', '?')}:{item.get('source', '?')}"
+                        )
+                        continue
+                    # Auto-set hash if missing
+                    if not stored_hash:
+                        item["content_hash"] = computed_hash
+
+                cached = CachedDocument(**{
+                    k: v for k, v in item.items()
+                    if k in CachedDocument.model_fields
+                })
+                self._upsert_cached_document(cached)
+                imported += 1
+            except Exception as e:
+                errors += 1
+                error_details.append(f"{item.get('document_id', '?')}: {e}")
+
         self.db.commit()
-        return count
+        self.log("import_json", {
+            "import_path": str(import_path),
+            "source_format": str(source_format),
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors,
+        })
+        return {
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors,
+            "error_details": error_details,
+        }
 
     # ------------------------------------------------------------------
     # Packs & Drafts (unchanged)

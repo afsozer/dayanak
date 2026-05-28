@@ -31,6 +31,7 @@ class TestCliCacheSubcommands:
         self._populate(cache_path)
         result = runner.invoke(app, ["cache", "stats", "--cache-path", str(cache_path)])
         assert result.exit_code == 0
+        assert "schema_version" in result.output
         assert "documents_v2" in result.output
         assert "3" in result.output
 
@@ -96,6 +97,7 @@ class TestCliCacheSubcommands:
         )
         assert result.exit_code == 0
         assert backup.exists()
+        assert "SHA256" in result.output
 
     def test_cache_export(self, tmp_path):
         cache_path = tmp_path / "test.sqlite3"
@@ -107,7 +109,10 @@ class TestCliCacheSubcommands:
         assert result.exit_code == 0
         assert export.exists()
         data = json.loads(export.read_text(encoding="utf-8"))
-        assert len(data) == 3
+        assert data["schemaVersion"] == 2
+        assert data["documentCount"] == 3
+        assert len(data["documents"]) == 3
+        assert "Exported 3 documents" in result.output
 
     def test_cache_import(self, tmp_path):
         # Create export
@@ -124,7 +129,7 @@ class TestCliCacheSubcommands:
             app, ["cache", "import", str(export), "--cache-path", str(cache2_path)]
         )
         assert result.exit_code == 0
-        assert "Imported" in result.output
+        assert "Imported: 3" in result.output
 
 
 class TestMcpImports:

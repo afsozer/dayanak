@@ -357,6 +357,7 @@ class TestCacheMaintenance:
                        full_text="text", content_status=ContentStatus.FULL_TEXT)
         cache.store_document(doc)
         stats = cache.cache_stats()
+        assert stats["schema_version"] == 2
         assert stats["documents_v2"] == 1
         assert stats["documents_legacy"] == 1
         assert stats["db_path"] == str(tmp_path / "test.sqlite3")
@@ -419,11 +420,20 @@ class TestCacheMaintenance:
         doc = Document(source="test", document_id="1", title="T",
                        full_text="text", content_status=ContentStatus.FULL_TEXT)
         cache.store_document(doc)
-        dest = cache.export_json(tmp_path / "export.json")
-        assert dest.exists()
-        data = json.loads(dest.read_text(encoding="utf-8"))
-        assert len(data) == 1
-        assert data[0]["document_id"] == "1"
+        result = cache.export_json(tmp_path / "export.json")
+        export_file = tmp_path / "export.json"
+        assert export_file.exists()
+        assert result["document_count"] == 1
+        assert result["sha256"]
+        assert result["schema_version"] == 2
+        data = json.loads(export_file.read_text(encoding="utf-8"))
+        assert data["schemaVersion"] == 2
+        assert "exportedAt" in data
+        assert data["documentCount"] == 1
+        assert data["includeMarkdown"] is True
+        assert len(data["documents"]) == 1
+        assert data["documents"][0]["document_id"] == "1"
+        assert "sha256" in data
         cache.close()
 
     def test_import_json(self, tmp_path):
@@ -437,9 +447,139 @@ class TestCacheMaintenance:
 
         # Second cache: import
         cache2 = Cache(tmp_path / "test2.sqlite3")
-        count = cache2.import_json(tmp_path / "export.json")
-        assert count == 1
+        result = cache2.import_json(tmp_path / "export.json")
+        assert result["imported"] == 1
+        assert result["skipped"] == 0
+        assert result["errors"] == 0
         cached = cache2.get_cached_document("1", "test")
         assert cached is not None
         assert cached.title == "Imported"
+        cache2.close()
+
+    def test_import_json_legacy_list_format(self, tmp_path):
+        """Test backward-compatible import from old list-only format."""
+        legacy_data = [
+            {
+                "document_id": "legacy1",
+                "source": "test",
+                "title": "Legacy Doc",
+                "full_text": "legacy content",
+                "content_status": "full_text",
+            }
+        ]
+        export_file = tmp_path / "legacy_export.json"
+        export_file.write_text(json.dumps(legacy_data), encoding="utf-8")
+
+        cache = Cache(tmp_path / "test.sqlite3")
+        result = cache.import_json(export_file)
+        assert result["imported"] == 1
+        assert result["skipped"] == 0
+        cached = cache.get_cached_document("legacy1", "test")
+        assert cached is not None
+        assert cached.title == "Legacy Doc"
+        cache.close()
+
+    def test_import_json_hash_mismatch_skips(self, tmp_path):
+        """Test that import skips documents with mismatched content_hash."""
+        data = [
+            {
+                "document_id": "bad_hash",
+                "source": "test",
+                "title": "Bad Hash Doc",
+                "full_text": "actual content",
+                "content_hash": "definitely_wrong_hash",
+                "content_status": "full_text",
+            },
+            {
+                "document_id": "good_doc",
+                "source": "test",
+                "title": "Good Doc",
+                "full_text": "good content",
+                "content_status": "full_text",
+            },
+        ]
+        export_file = tmp_path / "hash_export.json"
+        export_file.write_text(json.dumps(data), encoding="utf-8")
+
+        cache = Cache(tmp_path / "test.sqlite3")
+        result = cache.import_json(export_file)
+        assert result["imported"] == 1
+        assert result["skipped"] == 1
+        assert result["errors"] == 0
+        assert cache.get_cached_document("bad_hash", "test") is None
+        assert cache.get_cached_document("good_doc", "test") is not None
+        cache.close()
+
+    def test_delete_cached_document_logs_history(self, tmp_path):
+        """Test that delete_cached_document logs to history audit."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        doc = Document(source="test", document_id="1", title="T",
+                       full_text="text", content_status=ContentStatus.FULL_TEXT)
+        cache.store_document(doc)
+        cache.delete_cached_document("1", "test")
+        history = cache.history(limit=10)
+        delete_entries = [h for h in history if h["action"] == "delete_cached_document"]
+        assert len(delete_entries) == 1
+        assert delete_entries[0]["payload"]["document_id"] == "1"
+        cache.close()
+
+    def test_prune_search_cache_logs_history(self, tmp_path):
+        """Test that prune_search_cache logs to history audit."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        cache.set("search:old:q:10:1", [{"result": "old"}])
+        cache.db.execute(
+            "INSERT OR REPLACE INTO cache(key, value, created_at) VALUES(?, ?, datetime('now', '-60 days'))",
+            ("search:old2:q:10:1", json.dumps([{"result": "old2"}])),
+        )
+        cache.db.commit()
+        cache.prune_search_cache(max_age_days=30)
+        history = cache.history(limit=10)
+        prune_entries = [h for h in history if h["action"] == "prune_search_cache"]
+        assert len(prune_entries) == 1
+        assert prune_entries[0]["payload"]["pruned_count"] >= 1
+        cache.close()
+
+    def test_prune_search_cache_only_affects_search_cache(self, tmp_path):
+        """Test that prune only removes search:* keys, not other cache entries."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        # Insert a non-search key with old timestamp
+        cache.db.execute(
+            "INSERT OR REPLACE INTO cache(key, value, created_at) VALUES(?, ?, datetime('now', '-60 days'))",
+            ("doc:old:thing", json.dumps({"data": "old"})),
+        )
+        cache.db.commit()
+        cache.prune_search_cache(max_age_days=30)
+        # Non-search key should survive
+        assert cache.get("doc:old:thing") == {"data": "old"}
+        cache.close()
+
+    def test_backup_cache_with_metadata(self, tmp_path):
+        """Test backup_cache_with_metadata returns sha256 and stats."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        doc = Document(source="test", document_id="1", title="T",
+                       full_text="text", content_status=ContentStatus.FULL_TEXT)
+        cache.store_document(doc)
+        result = cache.backup_cache_with_metadata(tmp_path / "backup.sqlite3")
+        assert "backup_path" in result
+        assert "sha256" in result
+        assert len(result["sha256"]) == 64  # sha256 hex length
+        assert result["schema_version"] == 2
+        assert result["documents_v2"] == 1
+        assert result["db_size_bytes"] > 0
+        # Verify the backup file exists and hash matches
+        import hashlib as hl
+        backup_file = tmp_path / "backup.sqlite3"
+        assert backup_file.exists()
+        actual_hash = hl.sha256(backup_file.read_bytes()).hexdigest()
+        assert actual_hash == result["sha256"]
+        cache.close()
+
+    def test_schema_version_idempotent(self, tmp_path):
+        """Test that schema_version is set idempotently across reopens."""
+        cache1 = Cache(tmp_path / "test.sqlite3")
+        assert cache1.schema_version == 2
+        cache1.close()
+        # Reopen same DB
+        cache2 = Cache(tmp_path / "test.sqlite3")
+        assert cache2.schema_version == 2
         cache2.close()
