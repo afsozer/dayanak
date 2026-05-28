@@ -17,7 +17,16 @@ from .exporter import (
 from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack as build_input_pack_impl, citation_check
 from .sources.registry import capabilities, get_source, smoke_all_sync
-from .udf import probe_udf, read_udf as read_udf_impl, write_udf as write_udf_impl
+from .udf import (
+    convert_docx_to_udf_experimental,
+    convert_udf_to_docx,
+    convert_udf_to_pdf,
+    get_udf_authoring_instructions,
+    get_udf_toolkit_status,
+    probe_udf,
+    read_udf as read_udf_impl,
+    write_udf as write_udf_impl,
+)
 from .release import archive_release, readiness_dashboard, release_notes, release_smoke as release_smoke_result
 
 
@@ -88,6 +97,46 @@ def main() -> None:
     @mcp.tool()
     def write_udf(text: str, out_path: str, title_centered: bool = False) -> dict:
         return {"out_path": str(write_udf_impl(text, out_path, title_centered=title_centered)), "warning": "UYAP Doküman Editörü ile manuel doğrulama gerekir."}
+
+    @mcp.tool()
+    def udf_toolkit_status() -> dict:
+        """Check UDF toolkit (LibreOffice/unoconv) availability."""
+        return get_udf_toolkit_status()
+
+    @mcp.tool()
+    def udf_authoring_instructions(format: str = "json") -> dict:
+        """Return UDF authoring instructions and warnings.
+
+        Args:
+            format: 'json' for structured dict, 'markdown' for human-readable text.
+        """
+        return get_udf_authoring_instructions(format=format)
+
+    @mcp.tool()
+    def convert_udf_to_docx_tool(file_path: str, out_path: str | None = None) -> dict:
+        """Convert UDF to DOCX using LibreOffice (requires toolkit).
+
+        Returns structured error dict if toolkit is unavailable.
+        """
+        return convert_udf_to_docx(file_path, out_path)
+
+    @mcp.tool()
+    def convert_udf_to_pdf_tool(file_path: str, out_path: str | None = None) -> dict:
+        """Convert UDF to PDF using LibreOffice (requires toolkit).
+
+        Returns structured error dict if toolkit is unavailable.
+        """
+        return convert_udf_to_pdf(file_path, out_path)
+
+    @mcp.tool()
+    def convert_docx_to_udf_experimental_tool(
+        file_path: str, out_path: str | None = None, experimental: bool = False,
+    ) -> dict:
+        """Convert DOCX to UDF (experimental, requires toolkit).
+
+        Must set experimental=True. Always returns UYAP manual round-trip warning.
+        """
+        return convert_docx_to_udf_experimental(file_path, out_path, experimental=experimental)
 
     @mcp.tool()
     def release_smoke() -> dict:

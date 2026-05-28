@@ -417,3 +417,75 @@ emsal-mcp petition export-bundle <pack_dir> [--draft-dir] [--docx-path] [--out-d
 - All v0.7 tests pass.
 - New module is additive; no breaking changes.
 - Existing pack files remain readable by new functions.
+
+## v0.9 — UDF Toolkit Integration
+
+### UDF Toolkit Status
+
+- **`get_udf_toolkit_status()`**: checks external UDF toolkit (LibreOffice/
+  unoconv) availability. Reads from `EMSAL_UDF_TOOLKIT_DIR` or `UDF_TOOLKIT_DIR`
+  environment variables. Returns `ok`, `enabled`, `toolkit_dir`, `libreoffice_path`,
+  `unoconv_path`, `version`, `warnings`. Never raises.
+
+- **`get_udf_authoring_instructions(format='json|markdown')`**: returns structured
+  authoring steps and warnings in JSON or markdown format. Includes toolkit status
+  in JSON mode.
+
+### Safe Wrappers
+
+| Function | Description | Toolkit Required |
+|---|---|---|
+| `convert_udf_to_docx(file_path, out_path)` | UDF → DOCX via LibreOffice | Yes |
+| `convert_udf_to_pdf(file_path, out_path)` | UDF → PDF via LibreOffice | Yes |
+| `convert_docx_to_udf_experimental(file_path, out_path, experimental)` | DOCX → UDF (experimental) | Yes |
+
+All wrappers return structured error dicts when toolkit is unavailable or files
+are missing. No exceptions are raised for expected error conditions.
+
+### DOCX → UDF Experimental
+
+- Requires `experimental=True` flag — refuses to run without it.
+- Always includes UYAP manual round-trip warning.
+- Text extraction from DOCX via `word/document.xml` parse.
+- Returns `ok`, `out_path`, `file_size`, `warning`, `experimental`, `text_length`.
+
+### Improved `probe_udf()`
+
+Extended output fields:
+- `format_id`: UDF template format (e.g. "1.8")
+- `content_xml_preview`: truncated content.xml preview (max 500 chars)
+- `text_length`: extracted text length
+- `warnings`: list of any warnings encountered
+
+### CLI Commands
+
+```
+emsal-mcp udf status [--json]
+emsal-mcp udf authoring-instructions [--format json|markdown] [--json]
+emsal-mcp udf to-docx <path> [--out-path] [--json]
+emsal-mcp udf to-pdf <path> [--out-path] [--json]
+emsal-mcp udf docx-to-udf-experimental <path> [--out-path] [--experimental] [--json]
+```
+
+### MCP Tools
+
+- `udf_toolkit_status`: check toolkit availability
+- `udf_authoring_instructions`: authoring steps and warnings
+- `convert_udf_to_docx_tool`: UDF → DOCX conversion
+- `convert_udf_to_pdf_tool`: UDF → PDF conversion
+- `convert_docx_to_udf_experimental_tool`: DOCX → UDF (experimental)
+
+### Tests
+
+35 test cases covering:
+- Toolkit status disabled by default, env config, env priority
+- Authoring instructions JSON/markdown format
+- Safe wrappers: missing toolkit, file not found, structured dict
+- Experimental flag enforcement
+- Native UDF round-trip unchanged
+
+### Backward Compatibility
+
+- All v0.8 tests pass.
+- New functions are additive; no breaking changes.
+- Existing UDF read/write/probe/to-md behavior preserved.

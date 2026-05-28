@@ -1,13 +1,120 @@
 from __future__ import annotations
 
 import html
+import os
 import re
+import shutil
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 
 class UdfError(ValueError):
     pass
+
+
+UDF_TOOLKIT_VERSION = "0.9.0"
+
+UDF_AUTHORING_WARNING = (
+    "UDF yazımı deneysel kabul edilmeli; resmi kullanım öncesi UYAP Doküman "
+    "Editörü'nde manuel round-trip doğrulama yapılmalıdır."
+)
+
+DOCX_TO_UDF_EXPERIMENTAL_WARNING = (
+    "DOCX -> UDF dönüşümü deneysel ve geri döndürülemez bir işlemdir. "
+    "Oluşturulan UDF dosyası UYAP Doküman Editörü'nde manuel olarak "
+    "doğrulanmalıdır. Bu dönüşüm UYAP formatına tam uyumluluk garantisi vermez. "
+    "Lütfen https://uyap.gov.tr adresinden güncel UYAP Doküman Editörü'nü kullanın."
+)
+
+
+def _resolve_toolkit_dir() -> Optional[Path]:
+    """Resolve UDF toolkit directory from environment variables."""
+    for env_var in ("EMSAL_UDF_TOOLKIT_DIR", "UDF_TOOLKIT_DIR"):
+        val = os.environ.get(env_var, "").strip()
+        if val:
+            p = Path(val)
+            if p.exists():
+                return p
+    return None
+
+
+def get_udf_toolkit_status() -> dict:
+    """Check whether the external UDF toolkit (libreoffice/unoconv etc.) is available.
+
+    Returns a structured status dict regardless of toolkit presence.
+    """
+    toolkit_dir = _resolve_toolkit_dir()
+    enabled = toolkit_dir is not None
+    libreoffice_path = shutil.which("soffice") or shutil.which("libreoffice") or shutil.which("soffice.exe")
+    unoconv_path = shutil.which("unoconv")
+
+    warnings: list[str] = []
+    if not enabled:
+        warnings.append(
+            "UDF toolkit dizini ayarlanmamis. "
+            "EMSAL_UDF_TOOLKIT_DIR veya UDF_TOOLKIT_DIR ortam degiskeni ile ayarlayin."
+        )
+    if not libreoffice_path:
+        warnings.append("LibreOffice (soffice) PATH'te bulunamadi.")
+    if not unoconv_path:
+        warnings.append("unoconv PATH'te bulunamadi.")
+
+    return {
+        "ok": enabled and (libreoffice_path is not None or unoconv_path is not None),
+        "enabled": enabled,
+        "toolkit_dir": str(toolkit_dir) if toolkit_dir else None,
+        "libreoffice_path": libreoffice_path,
+        "unoconv_path": unoconv_path,
+        "version": UDF_TOOLKIT_VERSION,
+        "warnings": warnings,
+    }
+
+
+def get_udf_authoring_instructions(format: str = "json") -> dict:
+    """Return UDF authoring instructions in the requested format.
+
+    Args:
+        format: 'json' for structured dict, 'markdown' for human-readable text.
+
+    Returns:
+        dict with format, instructions, and key warnings.
+    """
+    base_steps = [
+        "UDF dosyasini dogrudan Python ile olusturabilirsiniz (write_udf).",
+        "Olusturulan dosyayi UYAP Doküman Editörü'nde acarak duzeltme yapin.",
+        "UYAP Doküman Editörü ile dogrulama zorunludur.",
+        "Disclaimer header otomatik olarak eklenir.",
+        "Placeholder'lar {{...}} formatinda korunur.",
+    ]
+    warnings = [
+        UDF_AUTHORING_WARNING,
+        "Dogrudan UDF olusturmak UYAP formatina tam uyumluluk garantisi vermez.",
+    ]
+
+    if format == "markdown":
+        md_lines = ["# UDF Authoring Instructions", ""]
+        md_lines.append("## Steps")
+        for i, step in enumerate(base_steps, 1):
+            md_lines.append(f"{i}. {step}")
+        md_lines.append("")
+        md_lines.append("## Warnings")
+        for w in warnings:
+            md_lines.append(f"- {w}")
+        return {
+            "format": "markdown",
+            "instructions": "\n".join(md_lines),
+            "warnings": warnings,
+            "version": UDF_TOOLKIT_VERSION,
+        }
+
+    return {
+        "format": "json",
+        "steps": base_steps,
+        "warnings": warnings,
+        "version": UDF_TOOLKIT_VERSION,
+        "toolkit_status": get_udf_toolkit_status(),
+    }
 
 
 def read_udf(path: str | Path) -> str:
@@ -73,22 +180,215 @@ def write_udf(text: str, out_path: str | Path, *, title_centered: bool = False) 
 
 
 def probe_udf(path: str | Path) -> dict:
-    p=Path(path)
-    info={"path": str(p), "exists": p.exists(), "zip": False, "has_content_xml": False, "format_id": None, "text_length": 0, "warnings": []}
+    """Probe a UDF file for structure, format, and content metadata."""
+    p = Path(path)
+    info: dict = {
+        "path": str(p),
+        "exists": p.exists(),
+        "zip": False,
+        "has_content_xml": False,
+        "format_id": None,
+        "content_xml_preview": None,
+        "text_length": 0,
+        "warnings": [],
+    }
     if not p.exists():
+        info["warnings"].append(f"File not found: {p}")
         return info
     try:
         with zipfile.ZipFile(p) as zf:
             info["zip"] = True
             info["has_content_xml"] = "content.xml" in zf.namelist()
             if info["has_content_xml"]:
-                xml=zf.read("content.xml").decode("utf-8", errors="ignore")
-                m=re.search(r'<template[^>]+format_id=["\']([^"\']+)', xml)
-                info["format_id"]=m.group(1) if m else None
+                xml = zf.read("content.xml").decode("utf-8", errors="ignore")
+                m = re.search(r'<template[^>]+format_id=["\']([^"\']+)', xml)
+                info["format_id"] = m.group(1) if m else None
+                # Provide a truncated preview of content.xml
+                info["content_xml_preview"] = xml[:500] if len(xml) > 500 else xml
                 info["text_length"] = len(read_udf(p))
+            else:
+                info["warnings"].append("content.xml not found inside UDF archive")
     except Exception as e:
         info["warnings"].append(str(e))
     return info
 
 
-UDF_AUTHORING_WARNING = "UDF yazımı deneysel kabul edilmeli; resmi kullanım öncesi UYAP Doküman Editörü'nde manuel round-trip doğrulama yapılmalıdır."
+# ── Safe wrappers ───────────────────────────────────────────────────────────
+
+
+def _toolkit_unavailable(action: str) -> dict:
+    """Return a structured error dict when toolkit is disabled/missing."""
+    status = get_udf_toolkit_status()
+    return {
+        "ok": False,
+        "action": action,
+        "error": "toolkit_unavailable",
+        "message": (
+            "UDF toolkit is not available. Set EMSAL_UDF_TOOLKIT_DIR or "
+            "UDF_TOOLKIT_DIR environment variable, or install LibreOffice."
+        ),
+        "toolkit_status": status,
+    }
+
+
+def convert_udf_to_docx(file_path: str | Path, out_path: str | Path | None = None) -> dict:
+    """Convert a UDF file to DOCX using external toolkit (LibreOffice).
+
+    If toolkit is disabled or missing, returns a structured error dict
+    instead of raising.
+    """
+    action = "convert_udf_to_docx"
+    status = get_udf_toolkit_status()
+    if not status["ok"]:
+        return _toolkit_unavailable(action)
+
+    src = Path(file_path)
+    if not src.exists():
+        return {"ok": False, "action": action, "error": "file_not_found", "message": f"UDF file not found: {src}"}
+
+    out = Path(out_path) if out_path else src.with_suffix(".docx")
+    try:
+        soffice = status["libreoffice_path"]
+        if soffice:
+            import subprocess
+
+            result = subprocess.run(
+                [soffice, "--headless", "--convert-to", "docx", "--outdir", str(out.parent), str(src)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                return {
+                    "ok": False,
+                    "action": action,
+                    "error": "conversion_failed",
+                    "message": result.stderr.strip() or "LibreOffice conversion failed",
+                    "stdout": result.stdout.strip(),
+                }
+            # LibreOffice may name the output differently; find the generated docx
+            generated = out.parent / (src.stem + ".docx")
+            return {
+                "ok": True,
+                "action": action,
+                "out_path": str(generated),
+                "file_size": generated.stat().st_size if generated.exists() else 0,
+                "warning": UDF_AUTHORING_WARNING,
+            }
+        return _toolkit_unavailable(action)
+    except Exception as e:
+        return {"ok": False, "action": action, "error": "exception", "message": str(e)}
+
+
+def convert_udf_to_pdf(file_path: str | Path, out_path: str | Path | None = None) -> dict:
+    """Convert a UDF file to PDF using external toolkit (LibreOffice).
+
+    If toolkit is disabled or missing, returns a structured error dict.
+    """
+    action = "convert_udf_to_pdf"
+    status = get_udf_toolkit_status()
+    if not status["ok"]:
+        return _toolkit_unavailable(action)
+
+    src = Path(file_path)
+    if not src.exists():
+        return {"ok": False, "action": action, "error": "file_not_found", "message": f"UDF file not found: {src}"}
+
+    out = Path(out_path) if out_path else src.with_suffix(".pdf")
+    try:
+        soffice = status["libreoffice_path"]
+        if soffice:
+            import subprocess
+
+            result = subprocess.run(
+                [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(out.parent), str(src)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                return {
+                    "ok": False,
+                    "action": action,
+                    "error": "conversion_failed",
+                    "message": result.stderr.strip() or "LibreOffice conversion failed",
+                    "stdout": result.stdout.strip(),
+                }
+            generated = out.parent / (src.stem + ".pdf")
+            return {
+                "ok": True,
+                "action": action,
+                "out_path": str(generated),
+                "file_size": generated.stat().st_size if generated.exists() else 0,
+            }
+        return _toolkit_unavailable(action)
+    except Exception as e:
+        return {"ok": False, "action": action, "error": "exception", "message": str(e)}
+
+
+def convert_docx_to_udf_experimental(
+    file_path: str | Path,
+    out_path: str | Path | None = None,
+    experimental: bool = False,
+) -> dict:
+    """Convert a DOCX file to UDF format (experimental).
+
+    Requires experimental=True. Always includes UYAP manual round-trip warning.
+    If toolkit is disabled or missing, returns a structured error dict.
+    """
+    action = "convert_docx_to_udf_experimental"
+    if not experimental:
+        return {
+            "ok": False,
+            "action": action,
+            "error": "experimental_required",
+            "message": (
+                "DOCX -> UDF conversion requires experimental=True. "
+                "This operation is irreversible and may not produce fully UYAP-compatible files."
+            ),
+            "warning": DOCX_TO_UDF_EXPERIMENTAL_WARNING,
+        }
+
+    status = get_udf_toolkit_status()
+    if not status["ok"]:
+        return _toolkit_unavailable(action)
+
+    src = Path(file_path)
+    if not src.exists():
+        return {"ok": False, "action": action, "error": "file_not_found", "message": f"DOCX file not found: {src}"}
+
+    out = Path(out_path) if out_path else src.with_suffix(".udf")
+    try:
+        # Attempt text extraction from DOCX (which is a ZIP with word/document.xml)
+        try:
+            with zipfile.ZipFile(src) as zf:
+                if "word/document.xml" in zf.namelist():
+                    doc_xml = zf.read("word/document.xml").decode("utf-8", errors="ignore")
+                    # Extract text between <w:t> tags
+                    text_chunks = re.findall(r"<w:t[^>]*>([^<]*)</w:t>", doc_xml)
+                    text = "\n".join(text_chunks) if text_chunks else ""
+                else:
+                    text = ""
+        except Exception:
+            text = ""
+
+        if not text.strip():
+            return {
+                "ok": False,
+                "action": action,
+                "error": "empty_document",
+                "message": "Could not extract text from DOCX file or document is empty.",
+            }
+
+        write_udf(text, out)
+        return {
+            "ok": True,
+            "action": action,
+            "out_path": str(out),
+            "file_size": out.stat().st_size if out.exists() else 0,
+            "warning": DOCX_TO_UDF_EXPERIMENTAL_WARNING,
+            "experimental": True,
+            "text_length": len(text),
+        }
+    except Exception as e:
+        return {"ok": False, "action": action, "error": "exception", "message": str(e)}

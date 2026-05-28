@@ -624,4 +624,4 @@ class TestMCPServerIntegration:
 
     def test_version_bumped(self):
         from emsal_mcp import __version__
-        assert __version__ == "0.8.0"
+        assert __version__ == "0.9.0"

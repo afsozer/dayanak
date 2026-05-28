@@ -23,7 +23,17 @@ from .petition import (
     prepare_petition_outline,
 )
 from .exporter import prepare_docx_export, prepare_export_package_bundle
-from .udf import probe_udf, read_udf, udf_to_markdown, write_udf
+from .udf import (
+    convert_docx_to_udf_experimental,
+    convert_udf_to_docx,
+    convert_udf_to_pdf,
+    get_udf_authoring_instructions,
+    get_udf_toolkit_status,
+    probe_udf,
+    read_udf,
+    udf_to_markdown,
+    write_udf,
+)
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
 udf_app = typer.Typer(help="UDF okuma/yazma araçları")
@@ -319,6 +329,52 @@ def udf_md(path: Path, out: Optional[Path] = None):
 @udf_app.command("write")
 def udf_write(text_file: Path, out: Path, title_centered: bool = False):
     typer.echo(str(write_udf(text_file.read_text(encoding="utf-8"), out, title_centered=title_centered)))
+
+
+@udf_app.command("status")
+def udf_status(json_out: bool = typer.Option(False, "--json")):
+    """Show UDF toolkit availability status."""
+    _print(get_udf_toolkit_status(), json_out)
+
+
+@udf_app.command("authoring-instructions")
+def udf_authoring_instructions(
+    format: str = typer.Option("json", help="Output format: json or markdown"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Show UDF authoring instructions and warnings."""
+    _print(get_udf_authoring_instructions(format=format), json_out)
+
+
+@udf_app.command("to-docx")
+def udf_to_docx_cmd(
+    path: Path = typer.Argument(..., help="UDF file to convert"),
+    out_path: Optional[Path] = typer.Option(None, help="Output DOCX path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Convert UDF to DOCX (requires toolkit)."""
+    _print(convert_udf_to_docx(path, out_path), json_out)
+
+
+@udf_app.command("to-pdf")
+def udf_to_pdf_cmd(
+    path: Path = typer.Argument(..., help="UDF file to convert"),
+    out_path: Optional[Path] = typer.Option(None, help="Output PDF path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Convert UDF to PDF (requires toolkit)."""
+    _print(convert_udf_to_pdf(path, out_path), json_out)
+
+
+@udf_app.command("docx-to-udf-experimental")
+def udf_docx_to_udf_cmd(
+    path: Path = typer.Argument(..., help="DOCX file to convert"),
+    out_path: Optional[Path] = typer.Option(None, help="Output UDF path"),
+    experimental: bool = typer.Option(False, "--experimental", help="Must be True to proceed"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Convert DOCX to UDF (experimental, requires toolkit)."""
+    _print(convert_docx_to_udf_experimental(path, out_path, experimental=experimental), json_out)
 
 
 # ── Research subcommands ─────────────────────────────────────────────────

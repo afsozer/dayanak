@@ -540,3 +540,132 @@ Returned by `prepare_export_package_bundle`.
   }
 }
 ```
+
+## UDF Toolkit Status (v0.9)
+
+Returned by `get_udf_toolkit_status()`, CLI `emsal-mcp udf status`, and MCP
+`udf_toolkit_status`.
+
+```json
+{
+  "ok": false,
+  "enabled": false,
+  "toolkit_dir": null,
+  "libreoffice_path": null,
+  "unoconv_path": null,
+  "version": "0.9.0",
+  "warnings": [
+    "UDF toolkit dizini ayarlanmamis. EMSAL_UDF_TOOLKIT_DIR veya UDF_TOOLKIT_DIR ortam degiskeni ile ayarlayin.",
+    "LibreOffice (soffice) PATH'te bulunamadi.",
+    "unoconv PATH'te bulunamadi."
+  ]
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `ok` | `bool` | Toolkit is available and functional |
+| `enabled` | `bool` | Toolkit dir configured via env var |
+| `toolkit_dir` | `string?` | Configured toolkit directory path |
+| `libreoffice_path` | `string?` | Detected LibreOffice path |
+| `unoconv_path` | `string?` | Detected unoconv path |
+| `version` | `string` | UDF toolkit integration version |
+| `warnings` | `string[]` | Non-fatal warnings (missing tools, etc.) |
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `EMSAL_UDF_TOOLKIT_DIR` | Primary toolkit directory (takes priority) |
+| `UDF_TOOLKIT_DIR` | Fallback toolkit directory |
+
+## UDF Authoring Instructions (v0.9)
+
+Returned by `get_udf_authoring_instructions()`, CLI `emsal-mcp udf authoring-instructions`, and MCP
+`udf_authoring_instructions`.
+
+### JSON format
+
+```json
+{
+  "format": "json",
+  "steps": [
+    "UDF dosyasini dogrudan Python ile olusturabilirsiniz (write_udf).",
+    "Olusturulan dosyayi UYAP Doküman Editörü'nde acarak duzeltme yapin.",
+    "UYAP Doküman Editörü ile dogrulama zorunludur.",
+    "Disclaimer header otomatik olarak eklenir.",
+    "Placeholder'lar {{...}} formatinda korunur."
+  ],
+  "warnings": [
+    "UDF yazımı deneysel kabul edilmeli; resmi kullanım öncesi UYAP Doküman Editörü'nde manuel round-trip doğrulama yapılmalıdır.",
+    "Dogrudan UDF olusturmak UYAP formatina tam uyumluluk garantisi vermez."
+  ],
+  "version": "0.9.0",
+  "toolkit_status": { "..." }
+}
+```
+
+### Markdown format
+
+```json
+{
+  "format": "markdown",
+  "instructions": "# UDF Authoring Instructions\n\n## Steps\n1. UDF dosyasini...\n\n## Warnings\n- ...",
+  "warnings": ["..."],
+  "version": "0.9.0"
+}
+```
+
+## UDF Safe Wrappers (v0.9)
+
+### `convert_udf_to_docx` / `convert_udf_to_pdf`
+
+Success output:
+```json
+{
+  "ok": true,
+  "action": "convert_udf_to_docx",
+  "out_path": "output.docx",
+  "file_size": 12345,
+  "warning": "UDF yazımı deneysel kabul edilmeli; ..."
+}
+```
+
+Error output (toolkit unavailable):
+```json
+{
+  "ok": false,
+  "action": "convert_udf_to_docx",
+  "error": "toolkit_unavailable",
+  "message": "UDF toolkit is not available. ...",
+  "toolkit_status": { "..." }
+}
+```
+
+### `convert_docx_to_udf_experimental`
+
+Error output (experimental flag required):
+```json
+{
+  "ok": false,
+  "action": "convert_docx_to_udf_experimental",
+  "error": "experimental_required",
+  "message": "DOCX -> UDF conversion requires experimental=True. ...",
+  "warning": "DOCX -> UDF dönüşümü deneysel ve geri döndürülemez bir işlemdir. ..."
+}
+```
+
+Success output:
+```json
+{
+  "ok": true,
+  "action": "convert_docx_to_udf_experimental",
+  "out_path": "output.udf",
+  "file_size": 1234,
+  "warning": "DOCX -> UDF dönüşümü deneysel ve geri döndürülemez bir işlemdir. ...",
+  "experimental": true,
+  "text_length": 5678
+}
+```

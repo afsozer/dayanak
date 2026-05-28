@@ -3,6 +3,67 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.9.0] — 2026-05-29
+
+### Added
+
+- **UDF Toolkit Integration** (`udf.py`):
+  - **`get_udf_toolkit_status()`**: checks external UDF toolkit (LibreOffice/
+    unoconv) availability. Returns structured status dict with `ok`, `enabled`,
+    `toolkit_dir`, `libreoffice_path`, `unoconv_path`, `version`, `warnings`.
+    Reads from `EMSAL_UDF_TOOLKIT_DIR` or `UDF_TOOLKIT_DIR` env vars.
+  - **`get_udf_authoring_instructions(format='json|markdown')`**: returns UDF
+    authoring steps and warnings. JSON format includes toolkit status;
+    markdown format returns human-readable instructions.
+  - **`convert_udf_to_docx(file_path, out_path=None)`**: convert UDF to DOCX
+    via LibreOffice. Returns structured error dict if toolkit unavailable or
+    file not found; never raises.
+  - **`convert_udf_to_pdf(file_path, out_path=None)`**: convert UDF to PDF
+    via LibreOffice. Same graceful error handling.
+  - **`convert_docx_to_udf_experimental(file_path, out_path=None,
+    experimental=False)`**: convert DOCX to UDF. Requires `experimental=True`.
+    Always includes UYAP manual round-trip warning. Text extraction via
+    `word/document.xml` parse.
+
+- **Improved `probe_udf()`**: now returns `format_id`, `content_xml_preview`
+  (truncated to 500 chars), `text_length`, and `warnings` list. Missing files
+  include a warning message.
+
+- **CLI Commands**:
+  - `emsal-mcp udf status [--json]` — toolkit availability status
+  - `emsal-mcp udf authoring-instructions [--format json|markdown] [--json]`
+  - `emsal-mcp udf to-docx <path> [--out-path] [--json]`
+  - `emsal-mcp udf to-pdf <path> [--out-path] [--json]`
+  - `emsal-mcp udf docx-to-udf-experimental <path> [--out-path] [--experimental] [--json]`
+
+- **MCP Tools**:
+  - `udf_toolkit_status`: check toolkit availability
+  - `udf_authoring_instructions`: authoring steps and warnings
+  - `convert_udf_to_docx_tool`: UDF → DOCX conversion
+  - `convert_udf_to_pdf_tool`: UDF → PDF conversion
+  - `convert_docx_to_udf_experimental_tool`: DOCX → UDF (experimental)
+
+- **Tests**: `tests/test_udf.py` expanded from 7 to 35 test cases covering:
+  - Toolkit status disabled by default, dict shape, env config, env priority
+  - Authoring instructions JSON/markdown format, warnings, version
+  - Safe wrappers: missing toolkit returns error, file not found, structured dict
+  - Experimental flag enforcement for DOCX→UDF
+  - Native UDF round-trip unchanged (write/read/markdown/unicode/title_centered)
+  - CLI and MCP imports
+
+### Changed
+
+- **Version bumped to 0.9.0** in `__init__.py` and `pyproject.toml`.
+- **`ROADMAP.md`** updated with v0.9 UDF toolkit integration details.
+- **Existing tests** updated for version assertion flexibility.
+
+### Backward Compatibility
+
+- All v0.8 tests continue to pass (389 total tests, all passing).
+- UDF toolkit functions are additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+- `UDF_AUTHORING_WARNING` moved to top-level constant (value unchanged).
+
 ## [0.8.0] — 2026-05-29
 
 ### Added

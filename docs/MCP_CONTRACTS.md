@@ -307,3 +307,43 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
 - draft.md, draft.json, footnotes.json, warnings.json (if draft_dir exists)
 - draft.docx (if docx_path provided)
 - manifest.json, hash-manifest.json, verification.txt
+
+## UDF Toolkit v0.9 Tools
+
+### `udf_toolkit_status`
+
+**Input**: none
+
+**Output**: `dict` — toolkit availability status with `ok`, `enabled`, `toolkit_dir`, `libreoffice_path`, `unoconv_path`, `version`, `warnings`.
+
+### `udf_authoring_instructions`
+
+**Input**:
+- `format: str = "json"` — `"json"` or `"markdown"`
+
+**Output**: `dict` — authoring steps, warnings, version. JSON format includes `toolkit_status`.
+
+### `convert_udf_to_docx_tool`
+
+**Input**:
+- `file_path: str` — UDF file to convert
+- `out_path: str | None = None` — Output DOCX path
+
+**Output**: `dict` — `ok`, `out_path`, `file_size`, `warning` on success; `error`, `message`, `toolkit_status` on failure.
+
+### `convert_udf_to_pdf_tool`
+
+**Input**:
+- `file_path: str` — UDF file to convert
+- `out_path: str | None = None` — Output PDF path
+
+**Output**: `dict` — same contract as `convert_udf_to_docx_tool`.
+
+### `convert_docx_to_udf_experimental_tool`
+
+**Input**:
+- `file_path: str` — DOCX file to convert
+- `out_path: str | None = None` — Output UDF path
+- `experimental: bool = False` — Must be `True` to proceed
+
+**Output**: `dict` — `ok`, `out_path`, `file_size`, `warning`, `experimental`, `text_length` on success; `error`, `message` on failure.
