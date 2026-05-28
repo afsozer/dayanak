@@ -1,10 +1,16 @@
-"""v0.7 Petition Pack v2: prepare_drafting_input_pack + inspect_petition_pack.
+"""v0.7 Petition Pack v2 + v0.8 Controlled Draft + DOCX/Export Validation.
 
 Classifies authorities as petition_ready, citation_only, research_lead_only, or
 excluded based on citation safety, content_status, metadata/provenance, and
 content_hash.  Generates a structured pack directory with brief, citation bank,
 argument map, instructions (no-invention rules), draft skeleton with placeholders,
 and source documents.  Never fabricates metadata.
+
+v0.8 adds:
+- prepare_petition_outline(): structured outline from pack
+- prepare_controlled_petition_draft(): controlled draft with disclaimer,
+  footnotes, and readiness scoring.  Only petition_ready authorities appear
+  in direct quotes; citation_only appear only in bibliography warnings.
 """
 from __future__ import annotations
 
@@ -23,7 +29,25 @@ from .safety import citation_check, verify_document_hash
 # Constants
 # ---------------------------------------------------------------------------
 
-PACK_VERSION = "0.7.0"
+PACK_VERSION = "0.8.0"
+
+CONTROLLED_DRAFT_VERSION = "0.8.0"
+
+DISCLAIMER_HEADER = (
+    "---\n"
+    "DİKKAT: Bu belge emsal-mcp tarafından otomatik olarak oluşturulmuştur. "
+    "Avukat denetimi ve resmi doğrulama gerektirir. "
+    "Bu belgedeki {PLACEHOLDER} formatındaki alanlar yalnızca doğrulanmış "
+    "bilgilerle doldurulmalıdır; eksik bırakılabilir ama uydurma bilgiyle "
+    "değiştirilmez.\n"
+    "---\n"
+)
+
+BIBLIOGRAPHY_WARNING = (
+    "Bu bölümdeki atıflar yalnızca bibliyografik referans olarak yer almaktadır. "
+    "citation_only olarak sınıflanmış belgeler dilekçe metninde doğrudan alıntı "
+    "olarak kullanılamaz; yalnızca kaynakça bölümünde referans verilebilir."
+)
 
 REQUIRED_FILES = [
     "petition-brief.json",
@@ -806,4 +830,560 @@ def inspect_petition_pack(pack_dir: str | Path) -> dict[str, Any]:
         "warnings": warnings,
         "counts": counts,
         "checks": checks,
+    }
+
+
+# ===========================================================================
+# v0.8: Controlled Draft + Outline
+# ===========================================================================
+
+
+def prepare_petition_outline(
+    pack_dir: str | Path,
+    out_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Generate a structured petition outline from a petition pack.
+
+    Reads petition-pack.json and petition-brief.json from *pack_dir* and
+    produces an ``outline.json`` that describes every section, its
+    placeholders, and which authorities contribute to it.
+
+    Only ``petition_ready`` authorities may supply direct content;
+    ``citation_only`` authorities appear only in the bibliography section
+    with a warning flag.
+
+    Args:
+        pack_dir: Path to a petition pack directory (from v0.7).
+        out_dir: Where to write ``outline.json``.  Defaults to *pack_dir*.
+
+    Returns:
+        Dict with ok, outline_path, sections, placeholder_total,
+        citation_only_bibliography_count, petition_ready_count.
+    """
+    pack_path = Path(pack_dir)
+    out_path = Path(out_dir) if out_dir else pack_path
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    warnings: list[str] = []
+
+    # ── Load pack metadata ──────────────────────────────────────────────
+    pack_meta_path = pack_path / "petition-pack.json"
+    if not pack_meta_path.exists():
+        return {"ok": False, "error": "petition-pack.json not found in pack_dir"}
+
+    pack_meta = json.loads(pack_meta_path.read_text(encoding="utf-8"))
+    counts = pack_meta.get("classification_counts", {})
+    petition_ready_count = counts.get("petition_ready", 0)
+    citation_only_count = counts.get("citation_only", 0)
+
+    # ── Load brief for authority details ────────────────────────────────
+    brief_path = pack_path / "petition-brief.json"
+    brief: dict[str, Any] = {}
+    if brief_path.exists():
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+
+    authorities = brief.get("authorities", [])
+    petition_ready_auths = [a for a in authorities if a.get("classification") == "petition_ready"]
+    citation_only_auths = [a for a in authorities if a.get("classification") == "citation_only"]
+
+    # ── Read draft skeleton for placeholders ────────────────────────────
+    skeleton_path = pack_path / "draft-skeleton.md"
+    skeleton_text = skeleton_path.read_text(encoding="utf-8") if skeleton_path.exists() else ""
+    placeholders = PLACEHOLDER_PATTERN.findall(skeleton_text)
+
+    # ── Build sections ──────────────────────────────────────────────────
+    sections: list[dict[str, Any]] = []
+
+    # Section: Header / Disclaimer
+    sections.append({
+        "id": "header",
+        "title": "Sorumluluk Reddi",
+        "type": "disclaimer",
+        "content_source": "generated",
+        "placeholders": [],
+        "authorities": [],
+    })
+
+    # Section: Başlık
+    sections.append({
+        "id": "title",
+        "title": "Başlık",
+        "type": "user_content",
+        "content_source": "placeholder",
+        "placeholders": [p for p in placeholders if "BASLIK" in p.upper()],
+        "authorities": [],
+    })
+
+    # Section: Mahkeme
+    sections.append({
+        "id": "court",
+        "title": "Mahkeme",
+        "type": "user_content",
+        "content_source": "placeholder",
+        "placeholders": [p for p in placeholders if "MAHKEME" in p.upper()],
+        "authorities": [],
+    })
+
+    # Section: Taraflar
+    sections.append({
+        "id": "parties",
+        "title": "Taraflar",
+        "type": "user_content",
+        "content_source": "placeholder",
+        "placeholders": [p for p in placeholders if any(
+            kw in p.upper() for kw in ("DAVACI", "DALI", "DAVALI")
+        )],
+        "authorities": [],
+    })
+
+    # Section: Dilekçe Konusu
+    sections.append({
+        "id": "subject",
+        "title": "Dilekçe Konusu",
+        "type": "user_content",
+        "content_source": "pack_metadata",
+        "placeholders": [],
+        "authorities": [],
+        "content_ref": "issue",
+    })
+
+    # Section: Açıklamalar (from petition_ready authorities)
+    sections.append({
+        "id": "explanations",
+        "title": "Açıklamalar",
+        "type": "authority_content",
+        "content_source": "petition_ready",
+        "placeholders": [p for p in placeholders if "ACIKLAMA" in p.upper()],
+        "authorities": [a["document_id"] for a in petition_ready_auths],
+    })
+
+    # Section: İlgili Kararlar (petition_ready direct quotes)
+    sections.append({
+        "id": "decisions",
+        "title": "İlgili Kararlar",
+        "type": "authority_content",
+        "content_source": "petition_ready",
+        "placeholders": [p for p in placeholders if "KARAR" in p.upper()],
+        "authorities": [a["document_id"] for a in petition_ready_auths],
+        "note": "Yalnızca petition_ready belgelerden doğrudan alıntı yapılabilir.",
+    })
+
+    # Section: Kaynakça (bibliography — includes citation_only with warning)
+    bib_authorities: list[dict[str, Any]] = []
+    for auth in petition_ready_auths:
+        bib_authorities.append({
+            "document_id": auth["document_id"],
+            "source": auth.get("source", ""),
+            "label": auth.get("citation_label", ""),
+            "classification": "petition_ready",
+            "warning": None,
+        })
+    for auth in citation_only_auths:
+        bib_authorities.append({
+            "document_id": auth["document_id"],
+            "source": auth.get("source", ""),
+            "label": auth.get("citation_label", ""),
+            "classification": "citation_only",
+            "warning": "Bibliyografik referans; doğrudan alıntı yapılamaz.",
+        })
+
+    sections.append({
+        "id": "bibliography",
+        "title": "Kaynakça",
+        "type": "bibliography",
+        "content_source": "mixed",
+        "placeholders": [],
+        "authorities": bib_authorities,
+        "has_citation_only_refs": citation_only_count > 0,
+        "warning": BIBLIOGRAPHY_WARNING if citation_only_count > 0 else None,
+    })
+
+    # Section: Sonuç ve Talep
+    sections.append({
+        "id": "conclusion",
+        "title": "Sonuç ve Talep",
+        "type": "user_content",
+        "content_source": "placeholder",
+        "placeholders": [p for p in placeholders if any(
+            kw in p.upper() for kw in ("SONUC", "TALEP")
+        )],
+        "authorities": [],
+    })
+
+    # Section: Ekler
+    sections.append({
+        "id": "attachments",
+        "title": "Ekler",
+        "type": "user_content",
+        "content_source": "placeholder",
+        "placeholders": [p for p in placeholders if "EKLER" in p.upper()],
+        "authorities": [],
+    })
+
+    # ── Assemble outline ────────────────────────────────────────────────
+    placeholder_total = sum(len(s.get("placeholders", [])) for s in sections)
+
+    outline = {
+        "version": CONTROLLED_DRAFT_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "pack_version": pack_meta.get("version", "unknown"),
+        "matter": pack_meta.get("matter", ""),
+        "issue": pack_meta.get("issue", ""),
+        "petition_ready_count": petition_ready_count,
+        "citation_only_count": citation_only_count,
+        "citation_only_bibliography_count": citation_only_count,
+        "placeholder_total": placeholder_total,
+        "sections": sections,
+        "warnings": warnings,
+    }
+
+    outline_path = out_path / "outline.json"
+    outline_path.write_text(
+        json.dumps(outline, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+
+    return {
+        "ok": True,
+        "outline_path": str(outline_path),
+        "sections": sections,
+        "placeholder_total": placeholder_total,
+        "citation_only_bibliography_count": citation_only_count,
+        "petition_ready_count": petition_ready_count,
+        "warnings": warnings,
+    }
+
+
+def prepare_controlled_petition_draft(
+    pack_dir: str | Path,
+    outline_path: str | Path | None = None,
+    out_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    """Generate a controlled petition draft from a petition pack.
+
+    Produces four output files:
+
+    * ``draft.md`` — Markdown draft with disclaimer header, placeholder
+      sections, and footnotes.  Only ``petition_ready`` authorities may
+      supply direct quotes; ``citation_only`` authorities appear only as
+      bibliographic references with a warning.
+    * ``draft.json`` — Structured metadata with paragraph/section/footnote
+      counts, placeholder counts, blocking warning count, readiness
+      score/level, and finalization risk score.
+    * ``footnotes.json`` — Footnote references extracted from
+      ``petition_ready`` authorities.
+    * ``warnings.json`` — List of warnings (blocking and non-blocking).
+
+    Placeholders (``{{…}}``) are always preserved verbatim.
+
+    Args:
+        pack_dir: Path to a petition pack directory.
+        outline_path: Optional pre-computed outline.json.  If ``None``
+            the outline is generated on the fly.
+        out_dir: Output directory.  Defaults to ``<pack_dir>/draft_output``.
+
+    Returns:
+        Dict with ok, out_dir, draft_md_path, draft_json_path,
+        footnotes_path, warnings_path, draft_metadata.
+    """
+    pack_path = Path(pack_dir)
+    out_path = Path(out_dir) if out_dir else pack_path / "draft_output"
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    warnings: list[str] = []
+    blocking_warnings: list[str] = []
+
+    # ── Load pack metadata ──────────────────────────────────────────────
+    pack_meta_path = pack_path / "petition-pack.json"
+    if not pack_meta_path.exists():
+        return {"ok": False, "error": "petition-pack.json not found in pack_dir"}
+
+    pack_meta = json.loads(pack_meta_path.read_text(encoding="utf-8"))
+    counts = pack_meta.get("classification_counts", {})
+    petition_ready_count = counts.get("petition_ready", 0)
+    citation_only_count = counts.get("citation_only", 0)
+    research_lead_count = counts.get("research_lead_only", 0)
+    excluded_count = counts.get("excluded", 0)
+
+    # ── Load or generate outline ────────────────────────────────────────
+    if outline_path and Path(outline_path).exists():
+        outline = json.loads(Path(outline_path).read_text(encoding="utf-8"))
+    else:
+        outline_result = prepare_petition_outline(pack_dir, out_dir=out_path)
+        if not outline_result.get("ok"):
+            return outline_result
+        outline = json.loads(
+            Path(outline_result["outline_path"]).read_text(encoding="utf-8")
+        )
+
+    # ── Load brief for authority details ────────────────────────────────
+    brief_path = pack_path / "petition-brief.json"
+    brief: dict[str, Any] = {}
+    if brief_path.exists():
+        brief = json.loads(brief_path.read_text(encoding="utf-8"))
+    authorities = brief.get("authorities", [])
+    petition_ready_auths = [a for a in authorities if a.get("classification") == "petition_ready"]
+    citation_only_auths = [a for a in authorities if a.get("classification") == "citation_only"]
+
+    # ── Read draft skeleton ─────────────────────────────────────────────
+    skeleton_path = pack_path / "draft-skeleton.md"
+    skeleton_text = skeleton_path.read_text(encoding="utf-8") if skeleton_path.exists() else ""
+    placeholders = PLACEHOLDER_PATTERN.findall(skeleton_text)
+
+    # ── Build footnotes from petition_ready authorities only ─────────────
+    footnotes: list[dict[str, Any]] = []
+    for idx, auth in enumerate(petition_ready_auths, 1):
+        footnotes.append({
+            "footnote_id": idx,
+            "document_id": auth.get("document_id", ""),
+            "source": auth.get("source", ""),
+            "citation_label": auth.get("citation_label", ""),
+            "classification": auth.get("classification", ""),
+            "content_status": auth.get("content_status", ""),
+            "type": "petition_ready",
+            "warning": None,
+        })
+
+    # citation_only references go into bibliography warnings, NOT footnotes
+    bib_warnings: list[str] = []
+    for auth in citation_only_auths:
+        bib_warnings.append(
+            f"{auth.get('citation_label', auth.get('document_id', ''))} "
+            f"— citation_only; yalnızca bibliyografik referans olarak eklenebilir."
+        )
+
+    # ── Blocking warnings ───────────────────────────────────────────────
+    if petition_ready_count == 0:
+        blocking_warnings.append(
+            "Hiçbir petition_ready belge yok; kullanılamaz draft oluşturulamaz."
+        )
+    if excluded_count > 0 and excluded_count == len(authorities):
+        blocking_warnings.append(
+            "Tüm belgeler excluded; geçerli kaynak bulunmamaktadır."
+        )
+
+    # Non-blocking warnings
+    if citation_only_count > 0:
+        warnings.append(
+            f"{citation_only_count} citation_only belge yalnızca bibliyografik "
+            "referans olarak kullanılabilir; doğrudan alıntı yapılamaz."
+        )
+    if research_lead_count > 0:
+        warnings.append(
+            f"{research_lead_count} research_lead_only belge doğrulanmamıştır; "
+            "kullanılmadan önce resmi kaynaktan doğrulanmalıdır."
+        )
+
+    # ── Build draft.md ──────────────────────────────────────────────────
+    md_lines: list[str] = []
+
+    # Disclaimer header
+    md_lines.append(DISCLAIMER_HEADER)
+    md_lines.append("")
+
+    # Title from skeleton (first heading)
+    for line in skeleton_text.splitlines():
+        if line.startswith("# "):
+            md_lines.append(line)
+            md_lines.append("")
+            break
+
+    # Sections from outline
+    for section in outline.get("sections", []):
+        section_id = section.get("id", "")
+        section_title = section.get("title", "")
+
+        if section_id == "header":
+            continue  # already added disclaimer
+
+        if section_id == "bibliography":
+            # Bibliography section
+            md_lines.append(f"## {section_title}")
+            md_lines.append("")
+            if section.get("warning"):
+                md_lines.append(f"> **Uyarı**: {section['warning']}")
+                md_lines.append("")
+            for bib_auth in section.get("authorities", []):
+                label = bib_auth.get("label", bib_auth.get("document_id", ""))
+                classification = bib_auth.get("classification", "")
+                warning = bib_auth.get("warning")
+                md_lines.append(f"- {label} ({classification})")
+                if warning:
+                    md_lines.append(f"  - ⚠️ {warning}")
+            md_lines.append("")
+            continue
+
+        if section.get("type") == "authority_content":
+            md_lines.append(f"## {section_title}")
+            md_lines.append("")
+            # Include petition_ready authorities with placeholders
+            for p in section.get("placeholders", []):
+                md_lines.append(p)
+                md_lines.append("")
+            # Add source references
+            for doc_id in section.get("authorities", []):
+                md_lines.append(f"<!-- Kaynak: {doc_id} -->")
+            md_lines.append("")
+            continue
+
+        if section.get("type") == "user_content":
+            md_lines.append(f"## {section_title}")
+            md_lines.append("")
+            for p in section.get("placeholders", []):
+                md_lines.append(p)
+                md_lines.append("")
+            # Include content_ref if present
+            if section.get("content_ref") == "issue" and pack_meta.get("issue"):
+                md_lines.append(pack_meta["issue"])
+                md_lines.append("")
+            md_lines.append("")
+            continue
+
+        # Generic section
+        if section_title:
+            md_lines.append(f"## {section_title}")
+            md_lines.append("")
+
+    # Footer
+    md_lines.append("---")
+    md_lines.append(
+        f"> Taslak emsal-mcp v{CONTROLLED_DRAFT_VERSION} tarafından "
+        "otomatik olarak oluşturulmuştur."
+    )
+    md_lines.append("> Bu taslak avukat denetimi gerektirir.")
+    md_lines.append(
+        "> {{}} içindeki alanlar doğrulanmış bilgilerle doldurulmalıdır."
+    )
+
+    draft_md = "\n".join(md_lines)
+
+    # ── Write draft.md ──────────────────────────────────────────────────
+    draft_md_path = out_path / "draft.md"
+    draft_md_path.write_text(draft_md, encoding="utf-8")
+
+    # ── Compute counts for draft.json ───────────────────────────────────
+    paragraphs = [p for p in draft_md.split("\n\n") if p.strip()]
+    paragraph_count = len(paragraphs)
+
+    section_count = sum(
+        1 for line in draft_md.splitlines() if line.startswith("## ")
+    )
+
+    footnote_count = len(footnotes)
+    placeholder_count = len(PLACEHOLDER_PATTERN.findall(draft_md))
+    blocking_warning_count = len(blocking_warnings)
+
+    # ── Readiness scoring ───────────────────────────────────────────────
+    total_auths = petition_ready_count + citation_only_count + research_lead_count + excluded_count
+    if total_auths == 0:
+        readiness_score = 0.0
+    else:
+        readiness_score = round(petition_ready_count / total_auths, 2)
+
+    if readiness_score >= 0.7:
+        readiness_level = "high"
+    elif readiness_score >= 0.4:
+        readiness_level = "medium"
+    elif readiness_score > 0:
+        readiness_level = "low"
+    else:
+        readiness_level = "none"
+
+    # Finalization risk: higher when more blocking warnings or fewer ready
+    finalization_risk_score = round(
+        min(1.0, (blocking_warning_count * 0.3) + (1.0 - readiness_score) * 0.5),
+        2,
+    )
+
+    # ── Build draft.json ────────────────────────────────────────────────
+    draft_metadata = {
+        "version": CONTROLLED_DRAFT_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "pack_version": pack_meta.get("version", "unknown"),
+        "matter": pack_meta.get("matter", ""),
+        "issue": pack_meta.get("issue", ""),
+        "paragraph_count": paragraph_count,
+        "section_count": section_count,
+        "footnote_count": footnote_count,
+        "placeholder_count": placeholder_count,
+        "blocking_warning_count": blocking_warning_count,
+        "readiness_score": readiness_score,
+        "readiness_level": readiness_level,
+        "finalization_risk_score": finalization_risk_score,
+        "classification_counts": {
+            "petition_ready": petition_ready_count,
+            "citation_only": citation_only_count,
+            "research_lead_only": research_lead_count,
+            "excluded": excluded_count,
+        },
+        "citation_only_bibliography_count": citation_only_count,
+        "has_disclaimer": True,
+        "placeholders_in_skeleton": placeholders,
+        "files": {
+            "draft_md": str(draft_md_path),
+            "draft_json": str(out_path / "draft.json"),
+            "footnotes_json": str(out_path / "footnotes.json"),
+            "warnings_json": str(out_path / "warnings.json"),
+        },
+    }
+
+    # ── Write draft.json ────────────────────────────────────────────────
+    draft_json_path = out_path / "draft.json"
+    draft_json_path.write_text(
+        json.dumps(draft_metadata, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+
+    # ── Write footnotes.json ────────────────────────────────────────────
+    footnotes_data = {
+        "version": CONTROLLED_DRAFT_VERSION,
+        "footnote_count": footnote_count,
+        "footnotes": footnotes,
+        "citation_only_bibliography": [
+            {
+                "document_id": a.get("document_id", ""),
+                "source": a.get("source", ""),
+                "citation_label": a.get("citation_label", ""),
+                "warning": "Bibliyografik referans; doğrudan alıntı yapılamaz.",
+            }
+            for a in citation_only_auths
+        ],
+    }
+    footnotes_path = out_path / "footnotes.json"
+    footnotes_path.write_text(
+        json.dumps(footnotes_data, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+
+    # ── Write warnings.json ─────────────────────────────────────────────
+    all_warnings = [
+        {"level": "blocking", "message": w} for w in blocking_warnings
+    ] + [
+        {"level": "warning", "message": w} for w in warnings
+    ] + [
+        {"level": "info", "message": w} for w in bib_warnings
+    ]
+
+    warnings_data = {
+        "version": CONTROLLED_DRAFT_VERSION,
+        "blocking_count": blocking_warning_count,
+        "warning_count": len(warnings),
+        "info_count": len(bib_warnings),
+        "total": len(all_warnings),
+        "warnings": all_warnings,
+    }
+    warnings_path = out_path / "warnings.json"
+    warnings_path.write_text(
+        json.dumps(warnings_data, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+
+    return {
+        "ok": True,
+        "out_dir": str(out_path),
+        "draft_md_path": str(draft_md_path),
+        "draft_json_path": str(draft_json_path),
+        "footnotes_path": str(footnotes_path),
+        "warnings_path": str(warnings_path),
+        "draft_metadata": draft_metadata,
     }

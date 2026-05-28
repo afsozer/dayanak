@@ -16,7 +16,13 @@ from .release import archive_release, compare_history, readiness_dashboard, rele
 from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack, citation_check
 from .sources.registry import capabilities, get_source, registry, smoke_all_sync
-from .petition import inspect_petition_pack, prepare_drafting_input_pack
+from .petition import (
+    inspect_petition_pack,
+    prepare_controlled_petition_draft,
+    prepare_drafting_input_pack,
+    prepare_petition_outline,
+)
+from .exporter import prepare_docx_export, prepare_export_package_bundle
 from .udf import probe_udf, read_udf, udf_to_markdown, write_udf
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
@@ -440,6 +446,75 @@ def petition_inspect(
 ):
     """Inspect and validate a petition pack directory."""
     result = inspect_petition_pack(pack_dir)
+    _print(result, json_out)
+
+
+@petition_app.command("outline")
+def petition_outline(
+    pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
+    out_dir: Optional[Path] = typer.Option(None, help="Output directory for outline"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Generate a structured petition outline from a pack."""
+    result = prepare_petition_outline(
+        pack_dir=pack_dir,
+        out_dir=str(out_dir) if out_dir else None,
+    )
+    _print(result, json_out)
+
+
+@petition_app.command("draft")
+def petition_draft(
+    pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
+    outline_path: Optional[Path] = typer.Option(None, help="Pre-computed outline.json path"),
+    out_dir: Optional[Path] = typer.Option(None, help="Output directory for draft"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Generate a controlled petition draft from a pack."""
+    result = prepare_controlled_petition_draft(
+        pack_dir=pack_dir,
+        outline_path=str(outline_path) if outline_path else None,
+        out_dir=str(out_dir) if out_dir else None,
+    )
+    _print(result, json_out)
+
+
+@petition_app.command("export-docx")
+def petition_export_docx(
+    draft_path: Optional[Path] = typer.Option(None, help="Path to draft.md"),
+    draft_json_path: Optional[Path] = typer.Option(None, help="Path to draft.json"),
+    out_path: Optional[Path] = typer.Option(None, help="Output DOCX path"),
+    pack_dir: Optional[Path] = typer.Option(None, help="Pack directory for footnotes"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Create a validated DOCX export from a controlled draft."""
+    draft_json = None
+    if draft_json_path and draft_json_path.exists():
+        draft_json = json.loads(draft_json_path.read_text(encoding="utf-8"))
+    result = prepare_docx_export(
+        draft_path=str(draft_path) if draft_path else None,
+        draft_json=draft_json,
+        out_path=str(out_path) if out_path else None,
+        pack_dir=str(pack_dir) if pack_dir else None,
+    )
+    _print(result, json_out)
+
+
+@petition_app.command("export-bundle")
+def petition_export_bundle(
+    pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
+    draft_dir: Optional[Path] = typer.Option(None, help="Draft output directory"),
+    docx_path: Optional[Path] = typer.Option(None, help="Path to draft.docx"),
+    out_dir: Optional[Path] = typer.Option(None, help="Output bundle directory"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Create a complete export package bundle with verification."""
+    result = prepare_export_package_bundle(
+        pack_dir=pack_dir,
+        draft_dir=str(draft_dir) if draft_dir else None,
+        docx_path=str(docx_path) if docx_path else None,
+        out_dir=str(out_dir) if out_dir else None,
+    )
     _print(result, json_out)
 
 

@@ -4,7 +4,16 @@ from .cache import Cache
 from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
 from .document import controlled_draft, export_bundle as export_bundle_impl
 from .models import Document
-from .petition import inspect_petition_pack as inspect_petition_pack_impl, prepare_drafting_input_pack as prepare_drafting_input_pack_impl
+from .petition import (
+    inspect_petition_pack as inspect_petition_pack_impl,
+    prepare_controlled_petition_draft as prepare_controlled_petition_draft_impl,
+    prepare_drafting_input_pack as prepare_drafting_input_pack_impl,
+    prepare_petition_outline as prepare_petition_outline_impl,
+)
+from .exporter import (
+    prepare_docx_export as prepare_docx_export_impl,
+    prepare_export_package_bundle as prepare_export_package_bundle_impl,
+)
 from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack as build_input_pack_impl, citation_check
 from .sources.registry import capabilities, get_source, smoke_all_sync
@@ -325,6 +334,111 @@ def main() -> None:
             Dict with ok, draft_safe, errors, warnings, counts, checks.
         """
         return inspect_petition_pack_impl(pack_dir)
+
+    # ── Petition v0.8 MCP tools ──────────────────────────────────────────
+
+    @mcp.tool()
+    def prepare_petition_outline(
+        pack_dir: str,
+        out_dir: str | None = None,
+    ) -> dict:
+        """Generate a structured petition outline from a petition pack.
+
+        Reads petition-pack.json and produces an outline.json with sections,
+        placeholders, and authority classification for each section.
+        Only petition_ready authorities may supply direct content;
+        citation_only appear only in bibliography with warning.
+
+        Args:
+            pack_dir: Path to petition pack directory.
+            out_dir: Output directory for outline.json.
+
+        Returns:
+            Dict with ok, outline_path, sections, placeholder_total,
+            citation_only_bibliography_count, petition_ready_count.
+        """
+        return prepare_petition_outline_impl(pack_dir=pack_dir, out_dir=out_dir)
+
+    @mcp.tool()
+    def prepare_controlled_petition_draft(
+        pack_dir: str,
+        outline_path: str | None = None,
+        out_dir: str | None = None,
+    ) -> dict:
+        """Generate a controlled petition draft from a petition pack.
+
+        Produces draft.md, draft.json, footnotes.json, and warnings.json.
+        Only petition_ready authorities supply direct quotes; citation_only
+        appear in bibliography warnings only.  Placeholders are preserved.
+
+        Args:
+            pack_dir: Path to petition pack directory.
+            outline_path: Optional pre-computed outline.json.
+            out_dir: Output directory for draft files.
+
+        Returns:
+            Dict with ok, out_dir, draft_md_path, draft_json_path,
+            footnotes_path, warnings_path, draft_metadata.
+        """
+        return prepare_controlled_petition_draft_impl(
+            pack_dir=pack_dir, outline_path=outline_path, out_dir=out_dir,
+        )
+
+    @mcp.tool()
+    def prepare_docx_export(
+        draft_path: str | None = None,
+        draft_json: dict | None = None,
+        out_path: str | None = None,
+        pack_dir: str | None = None,
+    ) -> dict:
+        """Create a validated DOCX export from a controlled draft.
+
+        Accepts draft.md path or draft.json dict.  Creates DOCX with
+        disclaimer, footnotes, and placeholder preservation.
+
+        Args:
+            draft_path: Path to draft.md.
+            draft_json: Draft metadata dict (with files.draft_md reference).
+            out_path: Output DOCX path.
+            pack_dir: Pack directory for footnotes.
+
+        Returns:
+            Dict with checksum_sha256, file_size, validation dict.
+        """
+        return prepare_docx_export_impl(
+            draft_path=draft_path,
+            draft_json=draft_json,
+            out_path=out_path,
+            pack_dir=pack_dir,
+        )
+
+    @mcp.tool()
+    def prepare_export_package_bundle(
+        pack_dir: str,
+        draft_dir: str | None = None,
+        docx_path: str | None = None,
+        out_dir: str | None = None,
+    ) -> dict:
+        """Create a complete export package bundle with verification.
+
+        Bundles draft files, petition pack, source documents, manifest,
+        hash-manifest, and verification.txt.  Verifies integrity after
+        creation.
+
+        Args:
+            pack_dir: Path to petition pack directory.
+            draft_dir: Draft output directory.
+            docx_path: Path to draft.docx.
+            out_dir: Output bundle directory.
+
+        Returns:
+            Dict with ok, bundle_dir, manifest, hash_manifest,
+            verification, files, post_verification.
+        """
+        return prepare_export_package_bundle_impl(
+            pack_dir=pack_dir, draft_dir=draft_dir,
+            docx_path=docx_path, out_dir=out_dir,
+        )
 
     mcp.run()
 

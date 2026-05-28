@@ -323,3 +323,97 @@ emsal-mcp petition inspect <pack_dir> [--json]
 
 - All v0.6 tests pass.
 - New module is additive; no breaking changes.
+
+## v0.8 — Controlled Draft + DOCX/Export Validation
+
+### Controlled Draft Pipeline
+
+- **`prepare_petition_outline(pack_dir, out_dir=None)`**: generates a
+  structured outline from a petition pack with sections, placeholders,
+  and authority classification per section.  Only `petition_ready`
+  authorities may supply direct content; `citation_only` authorities
+  appear only in the bibliography section with a warning flag.
+
+- **`prepare_controlled_petition_draft(pack_dir, outline_path=None,
+  out_dir=None)`**: produces a controlled petition draft with:
+
+#### Draft Output Files
+
+| File | Description |
+|---|---|
+| `draft.md` | Markdown draft with disclaimer, sections, footnotes |
+| `draft.json` | Metadata: paragraph/section/footnote/placeholder counts, readiness scoring |
+| `footnotes.json` | Footnote references (petition_ready only) + citation_only bibliography |
+| `warnings.json` | Warnings with blocking/warning/info levels |
+
+#### Draft Metadata (`draft.json`)
+
+| Field | Type | Description |
+|---|---|---|
+| `paragraph_count` | int | Number of non-empty paragraphs |
+| `section_count` | int | Number of `##` sections |
+| `footnote_count` | int | Number of footnote references |
+| `placeholder_count` | int | Number of `{{…}}` patterns |
+| `blocking_warning_count` | int | Critical warnings preventing use |
+| `readiness_score` | float | 0.0–1.0 based on petition_ready ratio |
+| `readiness_level` | string | `high`/`medium`/`low`/`none` |
+| `finalization_risk_score` | float | 0.0–1.0 risk of issues |
+
+### Safety Invariants
+
+- **No metadata-only leak**: `citation_only` authorities never appear in
+  direct quotes or footnotes; restricted to bibliography only.
+- **Placeholder preservation**: all `{{…}}` patterns from draft-skeleton.md
+  are preserved verbatim in draft output.
+- **Disclaimer header**: automatic warning that document requires attorney
+  review and placeholders must be filled with verified information only.
+
+### DOCX Export Validation
+
+- **`prepare_docx_export(draft_path or draft_json, out_path, pack_dir=None)`**:
+  creates validated DOCX with:
+  - Disclaimer header paragraph
+  - Body content from draft.md
+  - Footnotes/citations section from pack
+  - Placeholder preservation
+  - Returns validation dict:
+
+| Validation Field | Type | Description |
+|---|---|---|
+| `zip_valid` | bool | DOCX opens as valid ZIP |
+| `disclaimer_present` | bool | Disclaimer text found in body |
+| `footnotes_consistent` | bool | Footnote count matches petition_ready |
+| `placeholders_preserved` | bool | All `{{…}}` patterns present |
+| `validation_warnings` | list | Non-fatal warnings |
+| `export_readiness` | bool | All checks pass |
+
+### Export Package Bundle v2
+
+- **`prepare_export_package_bundle(pack_dir, draft_dir/docx, out_dir)`**:
+  creates complete bundle with:
+  - Draft files: draft.md, draft.json, footnotes.json, warnings.json
+  - Pack files: petition-pack.json, citation-bank.md, source-documents/
+  - Verification: manifest.json, hash-manifest.json, verification.txt
+  - Post-creation verification of hash integrity and file presence
+
+### CLI Commands
+
+```
+emsal-mcp petition outline <pack_dir> [--out-dir] [--json]
+emsal-mcp petition draft <pack_dir> [--outline-path] [--out-dir] [--json]
+emsal-mcp petition export-docx [--draft-path] [--draft-json-path] [--out-path] [--pack-dir] [--json]
+emsal-mcp petition export-bundle <pack_dir> [--draft-dir] [--docx-path] [--out-dir] [--json]
+```
+
+### MCP Tools
+
+- `prepare_petition_outline`: generate structured outline from pack
+- `prepare_controlled_petition_draft`: generate controlled draft with scoring
+- `prepare_docx_export`: create validated DOCX export
+- `prepare_export_package_bundle`: create complete export bundle
+
+### Backward Compatibility
+
+- All v0.7 tests pass.
+- New module is additive; no breaking changes.
+- Existing pack files remain readable by new functions.

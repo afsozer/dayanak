@@ -346,3 +346,197 @@ source_smoke(online=true)              # include online checks
   "recommendations": ["Low full-text ratio; fetch more documents with content."]
 }
 ```
+
+## Petition Outline (v0.8)
+
+Returned by `prepare_petition_outline` and CLI `emsal-mcp petition outline --json`.
+
+```json
+{
+  "version": "0.8.0",
+  "created_at": "2026-05-29T12:00:00+00:00",
+  "pack_version": "0.8.0",
+  "matter": "Konut tahliye davası",
+  "issue": "Kira sözleşmesi feshi",
+  "petition_ready_count": 2,
+  "citation_only_count": 1,
+  "citation_only_bibliography_count": 1,
+  "placeholder_total": 8,
+  "sections": [
+    {
+      "id": "header",
+      "title": "Sorumluluk Reddi",
+      "type": "disclaimer",
+      "content_source": "generated",
+      "placeholders": [],
+      "authorities": []
+    },
+    {
+      "id": "bibliography",
+      "title": "Kaynakça",
+      "type": "bibliography",
+      "content_source": "mixed",
+      "placeholders": [],
+      "authorities": [
+        {
+          "document_id": "doc-001",
+          "source": "test_source",
+          "label": "Yargıtay | 3. Hukuk Dairesi | 2024-06-15 | 2024/12345 | 2024/5678",
+          "classification": "petition_ready",
+          "warning": null
+        },
+        {
+          "document_id": "cite-001",
+          "source": "test_source",
+          "label": "Test Court | 1. Daire | 2024-01-01 | 2024/1 | 123",
+          "classification": "citation_only",
+          "warning": "Bibliyografik referans; doğrudan alıntı yapılamaz."
+        }
+      ],
+      "has_citation_only_refs": true,
+      "warning": "Bu bölümdeki atıflar yalnızca bibliyografik referans olarak yer almaktadır..."
+    }
+  ],
+  "warnings": []
+}
+```
+
+## Controlled Draft Metadata (v0.8)
+
+Returned by `prepare_controlled_petition_draft` in `draft.json`.
+
+```json
+{
+  "version": "0.8.0",
+  "created_at": "2026-05-29T12:00:00+00:00",
+  "pack_version": "0.8.0",
+  "matter": "Konut tahliye davası",
+  "issue": "Kira sözleşmesi feshi",
+  "paragraph_count": 12,
+  "section_count": 6,
+  "footnote_count": 2,
+  "placeholder_count": 8,
+  "blocking_warning_count": 0,
+  "readiness_score": 0.67,
+  "readiness_level": "medium",
+  "finalization_risk_score": 0.33,
+  "classification_counts": {
+    "petition_ready": 2,
+    "citation_only": 1,
+    "research_lead_only": 0,
+    "excluded": 0
+  },
+  "citation_only_bibliography_count": 1,
+  "has_disclaimer": true,
+  "placeholders_in_skeleton": ["{{DILEKCE_BASLIK}}", "{{MAHKEME_ADRES}}"],
+  "files": {
+    "draft_md": "draft_output/draft.md",
+    "draft_json": "draft_output/draft.json",
+    "footnotes_json": "draft_output/footnotes.json",
+    "warnings_json": "draft_output/warnings.json"
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `paragraph_count` | int | Non-empty paragraphs in draft.md |
+| `section_count` | int | `##` heading sections |
+| `footnote_count` | int | Footnote references (petition_ready only) |
+| `placeholder_count` | int | `{{…}}` patterns in draft.md |
+| `blocking_warning_count` | int | Critical warnings (no petition_ready, etc.) |
+| `readiness_score` | float | 0.0–1.0: petition_ready / total authorities |
+| `readiness_level` | string | `high` (≥0.7), `medium` (≥0.4), `low` (>0), `none` |
+| `finalization_risk_score` | float | 0.0–1.0: composite risk of blocking + low readiness |
+
+## Footnotes (v0.8)
+
+Returned by `prepare_controlled_petition_draft` in `footnotes.json`.
+
+```json
+{
+  "version": "0.8.0",
+  "footnote_count": 2,
+  "footnotes": [
+    {
+      "footnote_id": 1,
+      "document_id": "doc-001",
+      "source": "test_source",
+      "citation_label": "Yargıtay | 3. Hukuk Dairesi | 2024-06-15 | 2024/12345 | 2024/5678",
+      "classification": "petition_ready",
+      "content_status": "full_text",
+      "type": "petition_ready",
+      "warning": null
+    }
+  ],
+  "citation_only_bibliography": [
+    {
+      "document_id": "cite-001",
+      "source": "test_source",
+      "citation_label": "Test Court | 1. Daire | 2024-01-01 | 2024/1 | 123",
+      "warning": "Bibliyografik referans; doğrudan alıntı yapılamaz."
+    }
+  ]
+}
+```
+
+## DOCX Export Validation (v0.8)
+
+Returned by `prepare_docx_export`.
+
+```json
+{
+  "ok": true,
+  "out_path": "output.docx",
+  "checksum_sha256": "a1b2c3...",
+  "file_size": 12345,
+  "validation": {
+    "zip_valid": true,
+    "disclaimer_present": true,
+    "footnotes_consistent": true,
+    "placeholders_preserved": true,
+    "validation_warnings": [],
+    "export_readiness": true
+  }
+}
+```
+
+## Export Package Bundle v2 (v0.8)
+
+Returned by `prepare_export_package_bundle`.
+
+```json
+{
+  "ok": true,
+  "bundle_dir": "export_bundle/",
+  "manifest": {
+    "version": "0.8.0",
+    "created_at": "2026-05-29T12:00:00+00:00",
+    "pack_dir": "petition_pack/",
+    "draft_dir": "draft_output/",
+    "file_count": 12,
+    "files": {
+      "petition-pack.json": {"sha256": "...", "size": 1234},
+      "draft.md": {"sha256": "...", "size": 5678},
+      "manifest.json": {"sha256": "...", "size": 901}
+    }
+  },
+  "hash_manifest": {
+    "petition-pack.json": "sha256...",
+    "draft.md": "sha256...",
+    "manifest.json": "sha256..."
+  },
+  "files": ["petition-pack.json", "citation-bank.md", "draft.md", "draft.json", "manifest.json", "hash-manifest.json", "verification.txt"],
+  "post_verification": {
+    "ok": true,
+    "errors": [],
+    "checks": {
+      "hash_manifest_valid": {"ok": true, "mismatches": [], "file_count": 12},
+      "required_files_present": {"ok": true, "missing": []},
+      "manifest_valid_json": {"ok": true, "file_count": 12}
+    }
+  }
+}
+```

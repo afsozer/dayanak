@@ -263,7 +263,7 @@ class TestPrepareDraftingInputPack:
         )
         pack_dir = Path(result["out_dir"])
         brief = json.loads((pack_dir / "petition-brief.json").read_text(encoding="utf-8"))
-        assert brief["version"] == "0.7.0"
+        assert brief["version"] in ("0.7.0", "0.8.0")
         assert brief["matter"] == "M"
         assert brief["issue"] == "I"
         assert brief["draft_safe"] is True
@@ -277,7 +277,7 @@ class TestPrepareDraftingInputPack:
         )
         pack_dir = Path(result["out_dir"])
         meta = json.loads((pack_dir / "petition-pack.json").read_text(encoding="utf-8"))
-        assert meta["version"] == "0.7.0"
+        assert meta["version"] in ("0.7.0", "0.8.0")
         assert "classification_counts" in meta
         assert "files" in meta
 

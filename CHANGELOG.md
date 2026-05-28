@@ -3,6 +3,94 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.8.0] — 2026-05-29
+
+### Added
+
+- **Controlled Draft Module** (`petition.py`):
+  - **`prepare_petition_outline(pack_dir, out_dir=None)`**: generates a
+    structured outline from a petition pack with sections, placeholders,
+    and authority classification.  Only `petition_ready` authorities may
+    supply direct content; `citation_only` appear only in the bibliography
+    section with a warning flag.
+  - **`prepare_controlled_petition_draft(pack_dir, outline_path=None,
+    out_dir=None)`**: produces a controlled petition draft with four
+    output files:
+    - `draft.md`: Markdown draft with disclaimer header, section content,
+      and footnotes.  Only `petition_ready` authorities supply direct
+      quotes; `citation_only` appear in bibliography warnings only.
+      All `{{PLACEHOLDER}}` patterns are preserved verbatim.
+    - `draft.json`: structured metadata with `paragraph_count`,
+      `section_count`, `footnote_count`, `placeholder_count`,
+      `blocking_warning_count`, `readiness_score`, `readiness_level`,
+      and `finalization_risk_score`.
+    - `footnotes.json`: footnote references from `petition_ready`
+      authorities only, plus `citation_only_bibliography` list.
+    - `warnings.json`: warnings with `blocking`/`warning`/`info` levels.
+  - **Disclaimer header**: automatic `DISCLAIMER_HEADER` in draft output
+    and DOCX exports, warning that the document requires attorney review.
+  - **Readiness scoring**: `readiness_score` (0.0–1.0) based on
+    petition_ready ratio; `readiness_level` maps to high/medium/low/none;
+    `finalization_risk_score` combines blocking warnings and readiness.
+  - **No metadata-only leak**: `citation_only` authorities never appear
+    in direct quotes or footnotes; they are restricted to bibliography.
+
+- **DOCX Export Validation** (`exporter.py`):
+  - **`prepare_docx_export(draft_path=None, draft_json=None, out_path=None,
+    pack_dir=None)`**: creates a validated DOCX with disclaimer header,
+    footnotes/citations, and placeholder preservation.  Returns
+    `checksum_sha256`, `file_size`, and `validation` dict with:
+    - `zip_valid`: DOCX opens as valid ZIP
+    - `disclaimer_present`: disclaimer text found in DOCX body
+    - `footnotes_consistent`: footnote count matches petition_ready count
+    - `placeholders_preserved`: all original `{{…}}` patterns present
+    - `validation_warnings`: list of non-fatal warnings
+    - `export_readiness`: overall boolean (all checks pass)
+
+- **Export Package Bundle v2** (`exporter.py`):
+  - **`prepare_export_package_bundle(pack_dir, draft_dir=None,
+    docx_path=None, out_dir=None)`**: creates a complete export bundle
+    containing: draft.md, draft.json, footnotes.json, warnings.json,
+    petition-pack.json, citation-bank.md, source-documents/,
+    manifest.json, hash-manifest.json, verification.txt.
+  - **Post-creation verification**: hash-manifest integrity, required
+    files present, manifest valid JSON, DOCX ZIP validity (if included).
+
+- **CLI Commands**:
+  - `emsal-mcp petition outline <pack_dir> [--out-dir] [--json]`
+  - `emsal-mcp petition draft <pack_dir> [--outline-path] [--out-dir] [--json]`
+  - `emsal-mcp petition export-docx [--draft-path] [--draft-json-path] [--out-path] [--pack-dir] [--json]`
+  - `emsal-mcp petition export-bundle <pack_dir> [--draft-dir] [--docx-path] [--out-dir] [--json]`
+
+- **MCP Tools**:
+  - `prepare_petition_outline`: generate structured outline from pack
+  - `prepare_controlled_petition_draft`: generate controlled draft with scoring
+  - `prepare_docx_export`: create validated DOCX export
+  - `prepare_export_package_bundle`: create complete export bundle with verification
+
+- **Tests**: `tests/test_controlled_draft.py` with 49 test cases covering:
+  - Outline generation (sections, placeholders, authority filtering)
+  - Controlled draft output (disclaimer, footnotes, warnings, scoring)
+  - No metadata-only leak (citation_only not in direct quotes)
+  - Placeholder preservation (all skeleton placeholders in draft)
+  - DOCX validation (ZIP valid, disclaimer present, footnotes consistent)
+  - Export bundle (manifest validation, hash integrity, post-verification)
+  - CLI and MCP imports
+
+### Changed
+
+- **Version bumped to 0.8.0** in `__init__.py`, `pyproject.toml`, and
+  `petition.py` (`PACK_VERSION`, `CONTROLLED_DRAFT_VERSION`).
+- **`ROADMAP.md`** updated with v0.8 controlled draft details.
+- **Existing tests** updated for version assertion flexibility.
+
+### Backward Compatibility
+
+- All v0.7 tests continue to pass (361 total tests, all passing).
+- Petition module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+- `PACK_VERSION` updated but existing pack files remain readable.
+
 ## [0.7.0] — 2026-05-29
 
 ### Added

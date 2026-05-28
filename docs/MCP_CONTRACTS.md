@@ -210,3 +210,100 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
   "recommendedNextStep": "..."
 }
 ```
+
+## Petition v0.8 Tools
+
+### `prepare_petition_outline`
+
+**Input**:
+- `pack_dir: str` — Path to petition pack directory
+- `out_dir: str | None = None` — Output directory for outline.json
+
+**Output**: `dict` with keys:
+- `ok: bool`
+- `outline_path: str` — Path to generated outline.json
+- `sections: list[dict]` — Section descriptors with id, title, type, placeholders, authorities
+- `placeholder_total: int` — Total placeholder count across all sections
+- `citation_only_bibliography_count: int` — citation_only authorities in bibliography
+- `petition_ready_count: int` — petition_ready authorities
+
+**Invariants**:
+- Only `petition_ready` authorities appear in `decisions` and `explanations` sections
+- `citation_only` authorities appear only in `bibliography` section with warning flags
+- Disclaimer section is always first
+
+### `prepare_controlled_petition_draft`
+
+**Input**:
+- `pack_dir: str` — Path to petition pack directory
+- `outline_path: str | None = None` — Pre-computed outline.json path
+- `out_dir: str | None = None` — Output directory for draft files
+
+**Output**: `dict` with keys:
+- `ok: bool`
+- `out_dir: str` — Output directory path
+- `draft_md_path: str` — Path to draft.md
+- `draft_json_path: str` — Path to draft.json
+- `footnotes_path: str` — Path to footnotes.json
+- `warnings_path: str` — Path to warnings.json
+- `draft_metadata: dict` — Full draft.json content (paragraph_count, section_count, etc.)
+
+**Output files**:
+- `draft.md`: Markdown with disclaimer, sections, footnotes, placeholders
+- `draft.json`: Metadata with counts and readiness scoring
+- `footnotes.json`: petition_ready footnotes + citation_only bibliography
+- `warnings.json`: blocking/warning/info level warnings
+
+**Invariants**:
+- `citation_only` authorities never appear in direct quotes or footnotes
+- All `{{…}}` placeholders preserved verbatim
+- Disclaimer header always present
+
+### `prepare_docx_export`
+
+**Input**:
+- `draft_path: str | None = None` — Path to draft.md
+- `draft_json: dict | None = None` — Draft metadata dict
+- `out_path: str | None = None` — Output DOCX path
+- `pack_dir: str | None = None` — Pack directory for footnotes
+
+**Output**: `dict` with keys:
+- `ok: bool`
+- `out_path: str` — Path to generated DOCX
+- `checksum_sha256: str` — SHA-256 of DOCX file
+- `file_size: int` — File size in bytes
+- `validation: dict` — Validation results:
+  - `zip_valid: bool` — DOCX is valid ZIP
+  - `disclaimer_present: bool` — Disclaimer text in body
+  - `footnotes_consistent: bool` — Footnote count matches petition_ready
+  - `placeholders_preserved: bool` — All `{{…}}` patterns present
+  - `validation_warnings: list[str]` — Non-fatal warnings
+  - `export_readiness: bool` — All checks pass
+
+### `prepare_export_package_bundle`
+
+**Input**:
+- `pack_dir: str` — Path to petition pack directory
+- `draft_dir: str | None = None` — Draft output directory
+- `docx_path: str | None = None` — Path to draft.docx
+- `out_dir: str | None = None` — Output bundle directory
+
+**Output**: `dict` with keys:
+- `ok: bool`
+- `bundle_dir: str` — Bundle directory path
+- `manifest: dict` — Manifest with version, file_count, files (sha256+size per file)
+- `hash_manifest: dict` — Flat SHA-256 map of all files
+- `verification: list[str]` — Verification.txt content lines
+- `files: list[str]` — List of files written
+- `warnings: list[str]` — Any warnings during creation
+- `post_verification: dict` — Integrity check results:
+  - `ok: bool`
+  - `errors: list[str]`
+  - `checks: dict` — hash_manifest_valid, required_files_present, manifest_valid_json, docx_zip_valid
+
+**Bundle contents**:
+- petition-pack.json, citation-bank.md, argument-map.md, petition-instructions.md, draft-skeleton.md
+- source-documents/*.md
+- draft.md, draft.json, footnotes.json, warnings.json (if draft_dir exists)
+- draft.docx (if docx_path provided)
+- manifest.json, hash-manifest.json, verification.txt
