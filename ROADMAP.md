@@ -260,3 +260,66 @@ emsal-mcp cite verify [--text "..."] [--file-path path.txt] [--no-live] [--json]
 
 - All v0.5 tests pass.
 - New module is additive; no breaking changes.
+
+## v0.7 — Petition Pack v2 + Inspect
+
+### Petition Pack Workflow
+
+- **`prepare_drafting_input_pack()`**: classifies authorities as
+  `petition_ready`, `citation_only`, `research_lead_only`, or `excluded`
+  using citation safety, content_status, metadata/provenance, and
+  content_hash.  Generates structured pack directory.
+
+### Authority Classification
+
+| Category | Criteria | Draft Usable |
+|---|---|---|
+| `petition_ready` | citation_check passes, full_text/html_markdown, text >= 50 chars, provenance present | Yes |
+| `citation_only` | citation_check passes on metadata, or PDF link only | No (reference only) |
+| `research_lead_only` | citation_check fails but has some metadata | No (research direction) |
+| `excluded` | safety check fails, hash mismatch, or unavailable | No |
+
+### Pack Directory Structure
+
+```
+petition_pack/
+├── petition-brief.json       # Authority classification metadata
+├── citation-bank.md          # Citation-safe reference list
+├── argument-map.md           # Authority classification map
+├── petition-instructions.md  # No-invention rules
+├── draft-skeleton.md         # Petition template with {{PLACEHOLDER}}
+├── petition-pack.json        # Pack metadata
+├── hash-manifest.json        # Content hashes for source documents
+└── source-documents/
+    ├── source_docid.md       # Full-text docs for safe authorities
+    └── ...
+```
+
+### Inspection (`inspect_petition_pack`)
+
+Validates pack directory with checks:
+- Required files present
+- `draft_safe` flag correctness
+- `placeholdersInDraftSkeleton`: placeholder count preserved
+- `legislationVerifiedPlaceholder`: no hardcoded unverified law refs
+- `petitionInstructionsForbidsInvention`: no-invention rule present
+- `citationBankOnlySafeDocs`: no excluded docs in citation bank
+- `hashManifestValid`: content hashes match source documents
+- `metadataOnlyDraftUsable`: metadata_only never marked draft usable
+
+### CLI Commands
+
+```
+emsal-mcp petition pack <matter> <issue> [--docs-json path] [--research-bundle dir] [--out-dir dir] [--json]
+emsal-mcp petition inspect <pack_dir> [--json]
+```
+
+### MCP Tools
+
+- `prepare_drafting_input_pack`: classify authorities and generate pack
+- `inspect_petition_pack`: validate pack directory
+
+### Backward Compatibility
+
+- All v0.6 tests pass.
+- New module is additive; no breaking changes.

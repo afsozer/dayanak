@@ -16,6 +16,7 @@ from .release import archive_release, compare_history, readiness_dashboard, rele
 from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack, citation_check
 from .sources.registry import capabilities, get_source, registry, smoke_all_sync
+from .petition import inspect_petition_pack, prepare_drafting_input_pack
 from .udf import probe_udf, read_udf, udf_to_markdown, write_udf
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
@@ -24,11 +25,13 @@ release_app = typer.Typer(help="Release smoke/dashboard/history/regression/notes
 cache_app = typer.Typer(help="Cache v2: istatistik, listeleme, arama, yedekleme, import/export")
 research_app = typer.Typer(help="Research workflow: topic search, refresh, quality dashboard")
 cite_app = typer.Typer(help="Citation verification and formatting")
+petition_app = typer.Typer(help="Petition pack: prepare drafting input, inspect packs")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
 app.add_typer(research_app, name="research")
 app.add_typer(cite_app, name="cite")
+app.add_typer(petition_app, name="petition")
 
 
 def _print(obj, json_out: bool):
@@ -399,6 +402,44 @@ def cite_verify(
         min_score=min_score,
         strategy_debug=strategy_debug,
     )
+    _print(result, json_out)
+
+
+# ── Petition subcommands ────────────────────────────────────────────────────
+
+
+@petition_app.command("pack")
+def petition_pack(
+    matter: str = typer.Argument(..., help="Legal matter description"),
+    issue: str = typer.Argument(..., help="Legal issue description"),
+    docs_json: Optional[Path] = typer.Option(None, help="JSON file with Document list"),
+    research_bundle: Optional[Path] = typer.Option(None, help="Research bundle directory"),
+    out_dir: Optional[Path] = typer.Option(None, help="Output directory for petition pack"),
+    strict: bool = typer.Option(True, help="Strict mode: exclude hash-mismatch docs"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Prepare a petition drafting input pack."""
+    docs = []
+    if docs_json:
+        docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
+    result = prepare_drafting_input_pack(
+        matter=matter,
+        issue=issue,
+        documents=docs,
+        research_bundle_dir=str(research_bundle) if research_bundle else None,
+        out_dir=str(out_dir) if out_dir else None,
+        strict=strict,
+    )
+    _print(result, json_out)
+
+
+@petition_app.command("inspect")
+def petition_inspect(
+    pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Inspect and validate a petition pack directory."""
+    result = inspect_petition_pack(pack_dir)
     _print(result, json_out)
 
 

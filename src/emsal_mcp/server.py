@@ -4,6 +4,7 @@ from .cache import Cache
 from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
 from .document import controlled_draft, export_bundle as export_bundle_impl
 from .models import Document
+from .petition import inspect_petition_pack as inspect_petition_pack_impl, prepare_drafting_input_pack as prepare_drafting_input_pack_impl
 from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack as build_input_pack_impl, citation_check
 from .sources.registry import capabilities, get_source, smoke_all_sync
@@ -267,6 +268,63 @@ def main() -> None:
             live_only=live_only,
             min_score=min_score,
         )
+
+    # ── Petition Pack v0.7 MCP tools ────────────────────────────────────────
+
+    @mcp.tool()
+    def prepare_drafting_input_pack(
+        matter: str,
+        issue: str,
+        documents: list[dict] | None = None,
+        research_bundle_dir: str | None = None,
+        out_dir: str | None = None,
+        strict: bool = True,
+    ) -> dict:
+        """Prepare a petition drafting input pack.
+
+        Classifies authorities as petition_ready, citation_only,
+        research_lead_only, or excluded.  Generates a structured pack
+        directory with petition-brief.json, citation-bank.md, argument-map.md,
+        petition-instructions.md, draft-skeleton.md, petition-pack.json,
+        and source-documents/*.md.
+
+        Args:
+            matter: Legal matter description.
+            issue: Legal issue description.
+            documents: Optional list of Document dicts to classify.
+            research_bundle_dir: Optional research bundle directory path.
+            out_dir: Output directory for the pack.
+            strict: If True, exclude hash-mismatch docs.
+
+        Returns:
+            Dict with ok, out_dir, draft_safe, counts, classifications,
+            files, warnings, hash_manifest.
+        """
+        docs = [Document.model_validate(d) for d in (documents or [])]
+        return prepare_drafting_input_pack_impl(
+            matter=matter,
+            issue=issue,
+            documents=docs,
+            research_bundle_dir=research_bundle_dir,
+            out_dir=out_dir,
+            strict=strict,
+        )
+
+    @mcp.tool()
+    def inspect_petition_pack(pack_dir: str) -> dict:
+        """Inspect and validate a petition pack directory.
+
+        Checks required files, draft_safe flag, classification counts,
+        placeholder presence, no-invention rule, citation bank safety,
+        and hash manifest validity.
+
+        Args:
+            pack_dir: Path to petition pack directory.
+
+        Returns:
+            Dict with ok, draft_safe, errors, warnings, counts, checks.
+        """
+        return inspect_petition_pack_impl(pack_dir)
 
     mcp.run()
 

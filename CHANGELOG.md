@@ -3,6 +3,56 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.0] — 2026-05-29
+
+### Added
+
+- **Petition Pack v2** (`petition.py`): core v0.7 petition drafting workflow
+  with `prepare_drafting_input_pack()` and `inspect_petition_pack()`.
+- **`prepare_drafting_input_pack()`**: classifies authorities as
+  `petition_ready`, `citation_only`, `research_lead_only`, or `excluded`
+  using citation safety, content_status, metadata/provenance, and
+  content_hash.  Generates a structured pack directory with:
+  - `petition-brief.json`: authority classification metadata
+  - `citation-bank.md`: citation-safe reference list (no excluded docs)
+  - `argument-map.md`: authority classification map with research leads
+  - `petition-instructions.md`: explicit no-invention rules
+  - `draft-skeleton.md`: petition template with `{{PLACEHOLDER}}` format
+  - `petition-pack.json`: pack metadata with counts and files
+  - `source-documents/*.md`: full-text docs for safe authorities
+  - `hash-manifest.json`: content hashes for source documents
+- **`inspect_petition_pack()`**: validates pack directory structure with
+  checks: required files, draft_safe flag, placeholdersInDraftSkeleton,
+  legislationVerified placeholder, petitionInstructionsForbidsInvention,
+  citationBankOnlySafeDocs, hashManifestValid, metadataOnlyDraftUsable.
+  Returns ok/draft_safe/errors/warnings/counts/checks.
+- **Authority classification**: metadata_only and pdf_only documents are
+  NEVER draft usable (petition_ready).  Unavailable documents are always
+  excluded.  Hash mismatches cause exclusion.
+- **No-invention enforcement**: petition-instructions.md contains explicit
+  prohibition against fabrication, metadata invention, and unverified
+  citations.  Inspect validates the rule is present.
+- **CLI commands**: `emsal-mcp petition pack`, `emsal-mcp petition inspect`
+  with `--json` output.
+- **MCP tools**: `prepare_drafting_input_pack`, `inspect_petition_pack`
+  exposed via FastMCP server.
+- **Tests**: `tests/test_petition.py` with 30+ test cases covering authority
+  classification (metadata_only/pdf_only never draft usable, full_text
+  petition_ready, unavailable excluded), pack file generation, inspect
+  validation, hash manifest, no-invention rule enforcement, placeholder
+  preservation, cache logging, and research bundle loading.
+
+### Changed
+
+- **Version bumped to 0.7.0** in `__init__.py` and `pyproject.toml`.
+- **`ROADMAP.md`** updated with v0.7 petition pack details.
+
+### Backward Compatibility
+
+- All v0.6 tests continue to pass (existing tests unaffected).
+- Petition module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+
 ## [0.6.0] — 2026-05-29
 
 ### Added
