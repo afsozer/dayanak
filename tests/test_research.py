@@ -284,8 +284,6 @@ class TestResearchTopic:
 
     def test_stores_documents_in_cache(self, tmp_path: Path, fake_sources: dict):
         """Verify research_topic stores fetched documents in the default cache."""
-        from emsal_mcp.cache import Cache
-
         out_dir = tmp_path / "research"
         result = research_topic(
             query="test query",
