@@ -183,6 +183,21 @@ class SourceCapability(BaseModel):
         return d
 
 
+class SourceSmokeResult(BaseModel):
+    """Per-source smoke test result. Offline-safe by default."""
+
+    source_id: str
+    offline_ok: bool = True
+    online_ok: bool | None = None  # None = not tested
+    search_callable: bool = True
+    get_document_callable: bool = True
+    min_content_length_ok: bool = True
+    content_length_chars: int = 0
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+    tested_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
 class SourceProvenance(BaseModel):
     source: str
     document_id: str
@@ -351,3 +366,48 @@ class Draft(BaseModel):
             if re.search(p, self.body_markdown):
                 found.append(p)
         return found
+
+
+MIN_CONTENT_LENGTH = 50  # minimum chars for full_text/html_markdown to be considered real content
+
+
+def finalize_document(doc: Document, warnings: list[str] | None = None) -> Document:
+    """Finalize a Document after source-specific parsing.
+
+    - Applies min content length sanity: if content is too short for a
+      full_text/html_markdown doc, downgrades to metadata_only with a warning.
+    - Enriches content_status fields via build_content_status_fields.
+    - Never fabricates metadata; warnings list is appended to, not replaced.
+    - Returns the document (mutated in-place and returned for convenience).
+    """
+    import hashlib
+
+    w = list(warnings or [])
+
+    text = doc.text or ""
+
+    # Min content length sanity
+    if doc.content_status in {ContentStatus.FULL_TEXT, ContentStatus.HTML_MARKDOWN}:
+        if len(text.strip()) < MIN_CONTENT_LENGTH:
+            w.append(
+                f"Content length {len(text.strip())} chars < {MIN_CONTENT_LENGTH} "
+                f"minimum; downgrading to metadata_only."
+            )
+            doc.content_status = ContentStatus.METADATA_ONLY
+            doc.full_text = None
+            doc.markdown = None
+            doc.content_hash = None
+
+    # Compute content_hash if missing
+    if doc.content_hash is None and text.strip() and doc.content_status in {
+        ContentStatus.FULL_TEXT,
+        ContentStatus.HTML_MARKDOWN,
+    }:
+        doc.content_hash = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+
+    # Attach warnings via metadata if not already present
+    if w:
+        existing = doc.metadata.get("_emsal_warnings", []) if isinstance(doc.metadata, dict) else []
+        doc.metadata["_emsal_warnings"] = existing + w
+
+    return doc

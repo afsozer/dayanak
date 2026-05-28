@@ -7,14 +7,16 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .sources.registry import capabilities, registry
+from .sources.registry import capabilities, registry, smoke_all_sync
 from .verification import check_cache_integrity, smoke_test_offline
 
 
 def release_smoke() -> dict[str, Any]:
     offline = smoke_test_offline()
     cache = check_cache_integrity()
-    ok = bool(offline.get("ok")) and bool(cache.get("ok")) and all(
+    source_smoke = smoke_all_sync(online=False)
+    source_ok = all(s.get("offline_ok", False) for s in source_smoke)
+    ok = bool(offline.get("ok")) and bool(cache.get("ok")) and source_ok and all(
         bool(t.get("ok")) for t in offline.get("tests", []) + cache.get("tests", [])
     )
     return {
@@ -25,6 +27,8 @@ def release_smoke() -> dict[str, Any]:
             "sources_registered": list(registry()),
             "offline_smoke": offline,
             "cache_integrity": cache,
+            "source_smoke": source_smoke,
+            "source_smoke_ok": source_ok,
             "citation_safety": any(t.get("name") == "safety_udf_roundtrip" and t.get("ok") for t in offline.get("tests", [])),
             "udf": any(t.get("name") == "safety_udf_roundtrip" and t.get("ok") for t in offline.get("tests", [])),
             "mcp_surface": any(t.get("name") == "imports" and t.get("ok") for t in offline.get("tests", [])),

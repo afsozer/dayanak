@@ -225,3 +225,53 @@ Returned by `search_local_cache` MCP tool and CLI `cache search-local`:
   "snippet": "...text around matching query..."
 }
 ```
+
+## SourceSmokeResult (v0.4)
+
+Returned by `source_smoke` MCP tool, CLI `sources-smoke`, and
+`release_smoke` checks. Per-source offline/online smoke test result.
+
+```json
+{
+  "source_id": "bedesten",
+  "offline_ok": true,
+  "online_ok": null,
+  "search_callable": true,
+  "get_document_callable": true,
+  "min_content_length_ok": true,
+  "content_length_chars": 0,
+  "warnings": [],
+  "errors": [],
+  "tested_at": "2026-05-29T00:30:00+00:00"
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `source_id` | `string` | Source identifier |
+| `offline_ok` | `bool` | Offline smoke passed |
+| `online_ok` | `bool?` | Online smoke result (null = not tested) |
+| `search_callable` | `bool` | search() method available |
+| `get_document_callable` | `bool` | get_document() method available |
+| `min_content_length_ok` | `bool` | Min content length check passed |
+| `content_length_chars` | `int` | Content length tested |
+| `warnings` | `string[]` | Non-fatal warnings |
+| `errors` | `string[]` | Fatal errors |
+| `tested_at` | `datetime` | When smoke was run |
+
+### CLI usage
+
+```
+emsal-mcp sources-smoke                # offline only (default)
+emsal-mcp sources-smoke --online       # include online checks
+emsal-mcp sources-smoke --json         # JSON output
+```
+
+### MCP usage
+
+```
+source_smoke(online=false)             # offline only (default)
+source_smoke(online=true)              # include online checks
+```

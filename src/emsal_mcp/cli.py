@@ -13,7 +13,7 @@ from .document import controlled_draft, export_bundle, markdown_to_docx
 from .models import Document
 from .release import archive_release, compare_history, readiness_dashboard, release_notes, release_smoke, write_history
 from .safety import build_input_pack, citation_check
-from .sources.registry import capabilities, get_source, registry
+from .sources.registry import capabilities, get_source, registry, smoke_all_sync
 from .udf import probe_udf, read_udf, udf_to_markdown, write_udf
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
@@ -42,6 +42,23 @@ def version():
 @app.command()
 def sources(json_out: bool = typer.Option(False, "--json")):
     _print(capabilities(), json_out)
+
+
+@app.command("sources-smoke")
+def sources_smoke(
+    offline: bool = typer.Option(True, help="Run offline smoke checks"),
+    online: bool = typer.Option(False, help="Run online connectivity checks"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Run per-source smoke tests (offline by default, online opt-in)."""
+    results = smoke_all_sync(online=online)
+    summary = {
+        "ok": all(r.get("offline_ok", False) for r in results),
+        "online_requested": online,
+        "source_count": len(results),
+        "sources": results,
+    }
+    _print(summary, json_out)
 
 
 @app.command()

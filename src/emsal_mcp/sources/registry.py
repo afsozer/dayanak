@@ -12,12 +12,13 @@ from .simple_public import (
     SayistayClient,
     UyusmazlikClient,
 )
-from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceCapability, SourceStatus
+from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceCapability, SourceSmokeResult, SourceStatus
 
 
 class YargitayClient(BedestenClient):
     source_id = "yargitay"
     name = "Yargıtay/Bedesten"
+    _default_item_type = "YARGITAYKARARI"
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +98,16 @@ class _KikUnavailableClient:
             content_status=ContentStatus.METADATA_ONLY,
             metadata={"knownLimitations": self._known_limitations},
             recommended_next_step="Belge içeriği için resmi EKAP ekranından manuel doğrulama gerekir.",
+        )
+
+    async def smoke(self, online: bool = False) -> SourceSmokeResult:
+        return SourceSmokeResult(
+            source_id=self.source_id,
+            offline_ok=True,
+            search_callable=False,
+            get_document_callable=True,
+            min_content_length_ok=True,
+            warnings=["KIK intentionally registered as unavailable placeholder."],
         )
 
 
@@ -210,3 +221,24 @@ def get_source(source: str):
     if source not in reg:
         raise KeyError(f"Bilinmeyen kaynak: {source}. Geçerli: {', '.join(reg)}")
     return reg[source]
+
+
+async def smoke_all(online: bool = False) -> list[SourceSmokeResult]:
+    """Run offline/online smoke for all registered sources."""
+    results: list[SourceSmokeResult] = []
+    for sid, src in registry().items():
+        try:
+            result = await src.smoke(online=online)
+            results.append(result)
+        except Exception as exc:
+            results.append(SourceSmokeResult(
+                source_id=sid, offline_ok=False,
+                errors=[f"smoke() raised: {exc}"],
+            ))
+    return results
+
+
+def smoke_all_sync(online: bool = False) -> list[dict[str, Any]]:
+    """Synchronous wrapper for smoke_all (for CLI)."""
+    import asyncio
+    return [r.model_dump(mode="json") for r in asyncio.run(smoke_all(online=online))]

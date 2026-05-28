@@ -4,7 +4,7 @@ from .cache import Cache
 from .document import controlled_draft, export_bundle as export_bundle_impl
 from .models import Document
 from .safety import build_input_pack as build_input_pack_impl, citation_check
-from .sources.registry import capabilities, get_source
+from .sources.registry import capabilities, get_source, smoke_all_sync
 from .udf import probe_udf, read_udf as read_udf_impl, write_udf as write_udf_impl
 from .release import archive_release, readiness_dashboard, release_notes, release_smoke as release_smoke_result
 
@@ -39,6 +39,17 @@ def main() -> None:
     @mcp.tool()
     def source_capabilities() -> list[dict]:
         return capabilities()
+
+    @mcp.tool()
+    def source_smoke(online: bool = False) -> dict:
+        """Run per-source smoke tests. Offline by default, online opt-in."""
+        results = smoke_all_sync(online=online)
+        return {
+            "ok": all(r.get("offline_ok", False) for r in results),
+            "online_requested": online,
+            "source_count": len(results),
+            "sources": results,
+        }
 
     @mcp.tool()
     def citation_safety(document: dict) -> dict:

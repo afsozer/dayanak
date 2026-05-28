@@ -98,7 +98,51 @@ emsal-mcp cache import <path>   # Import from JSON
 - All v0.2 tests continue to pass
 - `store_document()` writes to both tables
 
-## Future (v0.4+)
+## v0.4 — Adapter Hardening & Source Smoke Contracts
+
+### Source Smoke Layer
+
+- **`SourceSmokeResult` model**: typed per-source smoke result with
+  `offline_ok`, `online_ok`, `search_callable`, `get_document_callable`,
+  `min_content_length_ok`, `warnings`, `errors`.
+- **`SourceClient.smoke()`**: offline-safe default; each source overrides
+  for source-specific warnings.
+- **`smoke_all()` / `smoke_all_sync()`**: run smoke across all sources.
+- **CLI `sources-smoke`**: `--offline` (default) / `--online` opt-in.
+- **MCP `source_smoke` tool**: callable from MCP clients.
+- **Release integration**: `release_smoke()` includes source smoke summaries.
+
+### Base Utility Hardening
+
+- `decode_b64()`: returns empty bytes on failure (no false `full_text`).
+- `check_http_response()`: consistent 4xx/5xx handling.
+- `finalize_document()`: min content length sanity (50 chars), auto
+  content_hash, structured warnings.
+- User-Agent: `EmsalMcp/{version}` with GitHub URL.
+
+### Adapter Correctness (local-yargi patterns)
+
+- **Bedesten/Yargıtay**: `item_type` normalization, `source_id`
+  preservation via `_default_item_type`, `decode_b64` failure → UNAVAILABLE.
+- **Mevzuat**: `mevzuatAdi` title priority, `decode_b64` failure handling,
+  `experimental` status.
+- **AYM**: fallback `metadata_only` on short content.
+- **Danıştay**: `Accept` header, min content check.
+- **GİB**: query normalization dict, HTML-stripped titles.
+- **Uyuşmazlık/Rekabet/Sayıştay**: graceful `UNAVAILABLE` on parser
+  failures; `finalize_document` applied.
+
+### Tests
+
+- 73 new adapter tests (mocked httpx, contract tests, CLI smoke).
+- Total: 199 tests, all passing.
+
+### Backward Compatibility
+
+- All v0.3 tests pass (199/199).
+- New models/functions are additive; no breaking changes.
+
+## Future (v0.5+)
 
 - Live smoke tests with configurable rate limits
 - Partial sources (`status: "partial"`) for degraded-access scenarios

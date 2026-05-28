@@ -9,7 +9,15 @@ from typing import Any
 import httpx
 from bs4 import BeautifulSoup
 
-from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceCapability, SourceStatus
+from emsal_mcp import __version__
+from emsal_mcp.models import (
+    ContentStatus,
+    Document,
+    SearchResult,
+    SourceCapability,
+    SourceSmokeResult,
+    SourceStatus,
+)
 
 
 class SourceClient(ABC):
@@ -61,6 +69,23 @@ class SourceClient(ABC):
         """Legacy dict form — kept for backward compat with callers."""
         return self.capability_model().to_legacy_dict()
 
+    async def smoke(self, online: bool = False) -> SourceSmokeResult:
+        """Offline-safe smoke test. Override for online-specific checks.
+
+        Offline: verifies callable status and capability consistency.
+        Online: subclass should call super() then do a lightweight search.
+        """
+        result = SourceSmokeResult(source_id=self.source_id)
+        result.search_callable = self._supports_search
+        result.get_document_callable = self._supports_get_document
+        cap = self.capability_model()
+        if cap.source_id != self.source_id:
+            result.warnings.append(
+                f"capability_model().source_id ({cap.source_id}) != self.source_id ({self.source_id})"
+            )
+            result.offline_ok = False
+        return result
+
 
 def html_to_text(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
@@ -74,12 +99,31 @@ def sha(text: str) -> str:
 
 
 def decode_b64(data: str) -> bytes:
-    return base64.b64decode(data + "=" * (-len(data) % 4))
+    """Decode base64 with padding fix. Returns empty bytes on failure."""
+    try:
+        padded = data + "=" * (-len(data) % 4)
+        return base64.b64decode(padded)
+    except Exception:
+        return b""
 
 
 def client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": "EmsalMcp/0.1 FatihSozer"})
+    return httpx.AsyncClient(
+        timeout=30,
+        follow_redirects=True,
+        headers={"User-Agent": f"EmsalMcp/{__version__} (+https://github.com/fatihsozer/emsal-mcp)"},
+    )
 
 
 def metadata_doc(source: str, document_id: str, title: str, **kw: Any) -> Document:
     return Document(source=source, document_id=document_id, title=title, content_status=ContentStatus.METADATA_ONLY, **kw)
+
+
+def check_http_response(r: httpx.Response, source: str = "") -> None:
+    """Raise on non-2xx HTTP responses with structured info."""
+    if r.status_code >= 400:
+        raise httpx.HTTPStatusError(
+            f"HTTP {r.status_code} from {source or 'source'}: {r.url}",
+            request=r.request,
+            response=r,
+        )

@@ -3,7 +3,73 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.3.0] — 2026-05-29
+## [0.4.0] — 2026-05-29
+
+### Added
+
+- **`SourceSmokeResult` model** (`models.py`): per-source smoke test result
+  with `offline_ok`, `online_ok`, `search_callable`, `get_document_callable`,
+  `min_content_length_ok`, `warnings`, `errors`, `tested_at`.
+- **`SourceClient.smoke()` method** (`base.py`): offline-safe default smoke
+  test for all sources. Override for online-specific checks.
+- **`smoke_all()` / `smoke_all_sync()`** (`registry.py`): run smoke tests
+  for all registered sources (async and sync wrappers).
+- **`finalize_document()` helper** (`models.py`): min content length sanity
+  (downgrades full_text/html_markdown to metadata_only if < 50 chars),
+  content_hash auto-computation, structured warnings via metadata.
+- **`check_http_response()` helper** (`base.py`): consistent HTTP status
+  handling across all adapters; raises `HTTPStatusError` on 4xx/5xx.
+- **CLI `sources-smoke` command** (`cli.py`): `emsal-mcp sources-smoke
+  --offline/--online --json` for per-source smoke summaries.
+- **MCP `source_smoke` tool** (`server.py`): `source_smoke(online=False)`
+  returns per-source smoke results.
+- **Source smoke summaries in `release_smoke()`** (`release.py`):
+  `release_smoke` now includes `source_smoke` and `source_smoke_ok` in
+  its `checks` dict.
+- **Tests**: `tests/test_adapters.py` with 73 test cases covering
+  SourceSmokeResult model, decode_b64 error handling, finalize_document,
+  mocked adapter search/get_document for all 10 sources, CLI smoke
+  command, document status sanity, KIK graceful contract, no-error-HTML
+  citation-safe invariant.
+
+### Changed
+
+- **`decode_b64()`** (`base.py`): now returns empty bytes on failure
+  instead of raising; prevents false `full_text` from corrupt base64.
+- **`client()` User-Agent** (`base.py`): updated to `EmsalMcp/{version}`
+  with GitHub URL; consistent across all adapters.
+- **Bedesten/Yargıtay** (`bedesten.py`): item_type normalization accepts
+  lowercase/Turkish-char variants; source_id preserved through
+  `_default_item_type` class attribute; `decode_b64` failures result in
+  `UNAVAILABLE` not false `full_text`.
+- **Mevzuat** (`mevzuat.py`): source_id/title fixed (`mevzuatAdi` prioritized);
+  `decode_b64` failures properly surface as `UNAVAILABLE`; capability
+  status set to `experimental`.
+- **AYM** (`simple_public.py`): fallback to `metadata_only` when parsed
+  content is too short; `finalize_document` applied.
+- **Danıştay** (`simple_public.py`): `Accept` header added for AJAX
+  endpoint; min content length check; `finalize_document` applied.
+- **GİB** (`simple_public.py`): query normalization via dict; HTML
+  stripped from titles; structured field-based text construction;
+  `finalize_document` applied.
+- **Uyuşmazlık** (`simple_public.py`): graceful `UNAVAILABLE` on parser
+  failures (search and get_document); `finalize_document` applied.
+- **Rekabet** (`simple_public.py`): graceful `UNAVAILABLE` on parser
+  failures; `finalize_document` applied.
+- **Sayıştay** (`simple_public.py`): graceful `UNAVAILABLE` on parser
+  failures; `finalize_document` applied.
+- **Registry** (`registry.py`): `smoke_all()` / `smoke_all_sync()` added;
+  `YargitayClient` now has `_default_item_type`; KIK has `smoke()`.
+- **Version bumped to 0.4.0** in `__init__.py` and `pyproject.toml`.
+- **`ROADMAP.md`** updated with v0.4 details.
+
+### Backward Compatibility
+
+- All v0.3 tests continue to pass (199/199).
+- `SourceSmokeResult` is a new additive model; no breaking changes.
+- `smoke()` is opt-in on `SourceClient`; existing subclasses inherit
+  the offline-safe default.
+- `finalize_document()` is additive; existing code paths unaffected.
 
 ### Added
 
