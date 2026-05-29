@@ -810,3 +810,185 @@ class TestKikGraceful:
         doc = asyncio.run(kik.get_document("test"))
         assert doc.content_status == ContentStatus.METADATA_ONLY
         assert doc.quote_usable is False
+
+
+# ── KIK optional token activation (M-16) ─────────────────────────────
+
+
+class TestKikOptionalToken:
+    """Tests for the optional token-based KİK activation layer."""
+
+    def test_kik_no_token_unavailable(self, monkeypatch):
+        """Without token, KIK is UNAVAILABLE — current default behaviour."""
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        assert client._capability_status.value == "unavailable"
+        assert client._supports_search is False
+        assert client._token is None
+
+    def test_kik_with_kik_api_token(self, monkeypatch):
+        """KIK_API_TOKEN env var activates KIK to EXPERIMENTAL."""
+        monkeypatch.setenv("KIK_API_TOKEN", "test-token-kik")
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        assert client._capability_status.value == "experimental"
+        assert client._supports_search is True
+        assert client._token == "test-token-kik"
+
+    def test_kik_with_ekap_api_token(self, monkeypatch):
+        """EKAP_API_TOKEN env var also activates KIK (fallback)."""
+        monkeypatch.setenv("EKAP_API_TOKEN", "test-token-ekap")
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        assert client._capability_status.value == "experimental"
+        assert client._supports_search is True
+        assert client._token == "test-token-ekap"
+
+    def test_kik_kik_token_preferred_over_ekap(self, monkeypatch):
+        """KIK_API_TOKEN takes precedence over EKAP_API_TOKEN."""
+        monkeypatch.setenv("KIK_API_TOKEN", "kik-first")
+        monkeypatch.setenv("EKAP_API_TOKEN", "ekap-second")
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        assert client._token == "kik-first"
+
+    def test_kik_search_returns_empty_when_no_token(self, monkeypatch):
+        """search() returns one UNAVAILABLE placeholder result when no token."""
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        results = asyncio.run(client.search("test query"))
+        assert len(results) == 1
+        assert results[0].content_status == ContentStatus.UNAVAILABLE
+
+    def test_kik_search_with_token_handles_api_error(self, monkeypatch):
+        """With token, search() catches API errors gracefully."""
+        monkeypatch.setenv("KIK_API_TOKEN", "test-token")
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        # Mock the HTTP call to raise
+        with patch.object(client, "_search_with_token", new_callable=AsyncMock) as mock_search:
+            mock_search.side_effect = Exception("Connection refused")
+            results = asyncio.run(client.search("test"))
+        assert len(results) == 1
+        assert results[0].content_status == ContentStatus.UNAVAILABLE
+        assert "başarısız" in results[0].summary.lower()
+
+    def test_kik_smoke_no_token(self, monkeypatch):
+        """Smoke without token: offline_ok, search not callable."""
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        result = asyncio.run(client.smoke(online=False))
+        assert result.offline_ok is True
+        assert result.search_callable is False
+        assert result.get_document_callable is True
+
+    def test_kik_smoke_with_token_offline(self, monkeypatch):
+        """Smoke with token but offline: still offline_ok."""
+        monkeypatch.setenv("KIK_API_TOKEN", "test-token")
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        result = asyncio.run(client.smoke(online=False))
+        assert result.offline_ok is True
+        assert result.search_callable is True
+
+    def test_kik_smoke_online_no_network(self, monkeypatch):
+        """Smoke with token + online=True but network fails: online_ok=False."""
+        monkeypatch.setenv("KIK_API_TOKEN", "test-token")
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        # Mock httpx.AsyncClient at the httpx module level
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_resp.raise_for_status = MagicMock(side_effect=Exception("Server error"))
+        mock_http = AsyncMock()
+        mock_http.__aenter__ = AsyncMock(return_value=mock_http)
+        mock_http.__aexit__ = AsyncMock(return_value=False)
+        mock_http.post = AsyncMock(return_value=mock_resp)
+        with patch("httpx.AsyncClient", return_value=mock_http):
+            result = asyncio.run(client.smoke(online=True))
+        assert result.offline_ok is True
+        assert result.online_ok is False
+        assert len(result.warnings) > 0
+
+    def test_kik_capability_model_no_token(self, monkeypatch):
+        """Capability model reflects UNAVAILABLE when no token."""
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        cap = client.capability_model()
+        assert cap.status.value == "unavailable"
+        assert cap.supports_search is False
+        assert cap.live_smoke_recommended is False
+        assert len(cap.known_limitations) > 0
+
+    def test_kik_capability_model_with_token(self, monkeypatch):
+        """Capability model reflects EXPERIMENTAL when token present."""
+        monkeypatch.setenv("KIK_API_TOKEN", "test-token")
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        cap = client.capability_model()
+        assert cap.status.value == "experimental"
+        assert cap.supports_search is True
+        assert cap.live_smoke_recommended is True
+        assert len(cap.known_limitations) > 0
+
+    def test_kik_get_document_no_token(self, monkeypatch):
+        """get_document without token returns metadata-only placeholder."""
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        doc = asyncio.run(client.get_document("123"))
+        assert doc.content_status == ContentStatus.METADATA_ONLY
+        assert doc.document_id == "123"
+
+    def test_kik_get_document_with_token_error(self, monkeypatch):
+        """get_document with token handles API errors gracefully."""
+        monkeypatch.setenv("KIK_API_TOKEN", "test-token")
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        client = _KikClient()
+        with patch.object(client, "_get_document_with_token", new_callable=AsyncMock) as mock_get:
+            mock_get.side_effect = Exception("Timeout")
+            doc = asyncio.run(client.get_document("456"))
+        assert doc.content_status == ContentStatus.UNAVAILABLE
+        assert doc.document_id == "456"
+
+    def test_kik_registry_uses_new_client(self, monkeypatch):
+        """Registry returns _KikClient (not old _KikUnavailableClient)."""
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        from emsal_mcp.sources.registry import _KikClient
+        kik = get_source("kik")
+        assert isinstance(kik, _KikClient)
+        assert kik.source_id == "kik"
+
+    def test_kik_known_limitations_vary_by_token(self, monkeypatch):
+        """Known limitations differ based on token presence."""
+        from emsal_mcp.sources.registry import _KikClient
+
+        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
+        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
+        client_no_token = _KikClient()
+        lims_no_token = client_no_token._known_limitations
+
+        monkeypatch.setenv("KIK_API_TOKEN", "tok")
+        client_with_token = _KikClient()
+        lims_with_token = client_with_token._known_limitations
+
+        assert lims_no_token != lims_with_token
+        assert any("Token yapılandırılmadı" in lim for lim in lims_no_token)
+        assert any("EXPERIMENTAL" in lim for lim in lims_with_token)

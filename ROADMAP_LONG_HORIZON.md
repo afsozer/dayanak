@@ -218,7 +218,7 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 3 | M-13 Multi-issue pack | [x] |
 | 3 | M-14 Draft diff | [x] |
 | 3 | M-15 Export formatları | [x] |
-| 4 | M-16 KİK adapter | [ ] |
+| 4 | M-16 KİK adapter | [x] |
 | 4 | M-17 Health/circuit breaker | [ ] |
 | 4 | M-18 Retry/rate-limit | [ ] |
 | 4 | M-19 Capability routing | [ ] |
