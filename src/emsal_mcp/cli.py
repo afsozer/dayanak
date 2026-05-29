@@ -110,6 +110,11 @@ from .circuit import (
     get_source_health,
     reset_circuit,
 )
+from .router import (
+    get_capable_sources as get_capable_sources_impl,
+    route_get_document as route_get_document_impl,
+    route_search as route_search_impl,
+)
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
 udf_app = typer.Typer(help="UDF okuma/yazma araçları")
@@ -128,6 +133,7 @@ template_app = typer.Typer(help="Petition templates: list, show, render")
 draft_app = typer.Typer(help="Draft diffing, placeholder tracking, versioning")
 export_app = typer.Typer(help="Export formats: plain text, DOCX, PDF, UDF")
 circuit_app = typer.Typer(help="Circuit breaker: status, health, reset")
+router_app = typer.Typer(help="Capability-based routing: capable sources, search routing, document routing")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -144,6 +150,7 @@ app.add_typer(template_app, name="template")
 app.add_typer(draft_app, name="draft")
 app.add_typer(export_app, name="export")
 app.add_typer(circuit_app, name="circuit")
+app.add_typer(router_app, name="router")
 
 
 def _print(obj, json_out: bool):
@@ -1405,6 +1412,45 @@ def circuit_reset_cmd(
     """Manually reset a circuit breaker to CLOSED state."""
     result = reset_circuit(source)
     _print(result, json_out)
+
+
+# ── Router subcommands (M-19) ────────────────────────────────────────────────
+
+
+@router_app.command("capable-sources")
+def router_capable_sources(
+    capability: str = typer.Argument(..., help="Capability name (e.g. full_text, search, pdf_link)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """List source_ids that support a given capability."""
+    _print(get_capable_sources_impl(capability), json_out)
+
+
+@router_app.command("search")
+def router_search_cmd(
+    query: str = typer.Argument(..., help="Search query"),
+    require: Optional[str] = typer.Option(None, help="Comma-separated required capabilities"),
+    prefer: Optional[str] = typer.Option(None, help="Comma-separated preferred sources"),
+    exclude: Optional[str] = typer.Option(None, help="Comma-separated sources to exclude"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Route a search request to capable sources."""
+    required = [c.strip() for c in require.split(",")] if require else None
+    preferred = [s.strip() for s in prefer.split(",")] if prefer else None
+    excluded = [s.strip() for s in exclude.split(",")] if exclude else None
+    _print(route_search_impl(query, required_capabilities=required, preferred_sources=preferred, exclude_sources=excluded), json_out)
+
+
+@router_app.command("get-document")
+def router_get_document_cmd(
+    document_id: str = typer.Argument(..., help="Document ID"),
+    require: Optional[str] = typer.Option(None, help="Comma-separated required capabilities"),
+    preferred_source: Optional[str] = typer.Option(None, help="Preferred source"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Route a get_document request to capable sources."""
+    required = [c.strip() for c in require.split(",")] if require else None
+    _print(route_get_document_impl(document_id, required_capabilities=required, preferred_source=preferred_source), json_out)
 
 
 if __name__ == "__main__":

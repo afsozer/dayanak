@@ -1531,6 +1531,80 @@ def main() -> None:
         finally:
             cache.close()
 
+    # ── Capability Router MCP tools (M-19) ──────────────────────────────
+
+    @mcp.tool()
+    def get_capable_sources(capability: str) -> list[str]:
+        """Get list of source_ids that support a given capability.
+
+        Args:
+            capability: Capability name (e.g. 'full_text', 'search', 'pdf_link',
+                       'article_search', 'type_filter', 'workflow').
+
+        Returns:
+            List of source_ids sorted by preference (stable sources first).
+        """
+        from .router import get_capable_sources as get_capable_sources_impl
+
+        return get_capable_sources_impl(capability)
+
+    @mcp.tool()
+    def route_search(
+        query: str,
+        required_capabilities: list[str] | None = None,
+        preferred_sources: list[str] | None = None,
+        exclude_sources: list[str] | None = None,
+    ) -> dict:
+        """Route a search request to capable sources based on capability matrix.
+
+        Returns routing metadata with eligible sources, exclusions, and
+        per-source capability match info. Does NOT execute searches.
+
+        Args:
+            query: Search query string.
+            required_capabilities: List of capabilities needed (e.g. ['full_text']).
+            preferred_sources: Try these sources first.
+            exclude_sources: Skip these sources (e.g. ['kik']).
+
+        Returns:
+            Dict with ok, query, routing (eligible_sources, excluded_sources),
+            results (empty), per_source capability match info.
+        """
+        from .router import route_search as route_search_impl
+
+        return route_search_impl(
+            query=query,
+            required_capabilities=required_capabilities,
+            preferred_sources=preferred_sources,
+            exclude_sources=exclude_sources,
+        )
+
+    @mcp.tool()
+    def route_get_document(
+        document_id: str,
+        required_capabilities: list[str] | None = None,
+        preferred_source: str | None = None,
+    ) -> dict:
+        """Route a get_document request to capable sources.
+
+        Tries preferred source first, then falls back to other capable sources.
+
+        Args:
+            document_id: Document ID to look up.
+            required_capabilities: List of capabilities needed.
+            preferred_source: Try this source first.
+
+        Returns:
+            Dict with ok, document_id, routing (eligible_sources), results (empty).
+        """
+        from .router import route_get_document as route_get_document_impl
+
+        return route_get_document_impl(
+            document_id=document_id,
+            required_capabilities=required_capabilities,
+            preferred_source=preferred_source,
+        )
+
     # ── Circuit Breaker MCP tools (M-17) ──────────────────────────────
 
     @mcp.tool()

@@ -221,7 +221,7 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 4 | M-16 KİK adapter | [x] |
 | 4 | M-17 Health/circuit breaker | [x] |
 | 4 | M-18 Retry/rate-limit | [x] |
-| 4 | M-19 Capability routing | [ ] |
+| 4 | M-19 Capability routing | [x] |
 | 5 | M-20 Packaging | [ ] |
 | 5 | M-21 CI pipeline | [ ] |
 | 5 | M-22 MCP sertleştirme | [ ] |
