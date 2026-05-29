@@ -13,6 +13,13 @@ from .legislation import (
     search_legislation as search_legislation_impl,
     search_legislation_articles as search_legislation_articles_impl,
 )
+from .semantic import (
+    build_semantic_index as build_semantic_index_impl,
+    get_index_status as get_index_status_impl,
+    hybrid_search as hybrid_search_impl,
+    rebuild_index as rebuild_index_impl,
+    semantic_search as semantic_search_impl,
+)
 from .models import Document
 from .petition import (
     inspect_petition_pack as inspect_petition_pack_impl,
@@ -644,6 +651,99 @@ def main() -> None:
             List of {type_id, display_name} dicts.
         """
         return get_legislation_types_impl()
+
+    # ── Semantic v0.11 MCP tools ──────────────────────────────────────────
+
+    @mcp.tool()
+    def build_semantic_index(
+        force_rebuild: bool = False,
+    ) -> dict:
+        """Build FTS5 + TF-IDF search indices on cached documents.
+
+        Creates SQLite FTS5 virtual table and TF-IDF vectors for hybrid search.
+        Run this after importing or caching documents.
+
+        Args:
+            force_rebuild: If True, drop and recreate all indices.
+
+        Returns:
+            Dict with ok, fts5_row_count, vectors_count, documents_total, warnings.
+        """
+        return build_semantic_index_impl(force_rebuild=force_rebuild)
+
+    @mcp.tool()
+    def semantic_search(
+        query: str,
+        limit: int = 10,
+        filters: dict | None = None,
+    ) -> dict:
+        """Search cached documents using TF-IDF cosine similarity.
+
+        Pure term-frequency search without keyword dependency.
+        Works best with documents that share vocabulary.
+
+        Args:
+            query: Search query string.
+            limit: Max results (default 10).
+            filters: Optional dict with source, court, chamber, content_status,
+                     quote_usable, draft_usable.
+
+        Returns:
+            Dict with ok, query, results (score + snippet), total_matches, method.
+        """
+        return semantic_search_impl(
+            query=query, limit=limit, filters=filters,
+        )
+
+    @mcp.tool()
+    def hybrid_search(
+        query: str,
+        limit: int = 10,
+        filters: dict | None = None,
+        hybrid_weight: float = 0.6,
+    ) -> dict:
+        """Combined FTS5 BM25 + TF-IDF cosine hybrid search.
+
+        Balances exact keyword matching (FTS5 BM25) with semantic similarity
+        (TF-IDF cosine).  hybrid_weight controls the balance: higher = more
+        keyword-oriented, lower = more semantic.
+
+        Args:
+            query: Search query string.
+            limit: Max results (default 10).
+            filters: Optional dict with source, court, chamber, content_status,
+                     quote_usable, draft_usable.
+            hybrid_weight: Balance 0.0-1.0 (0.0 = pure semantic, 1.0 = pure BM25).
+
+        Returns:
+            Dict with ok, query, results (bm25/cosine/hybrid scores + snippet),
+            total_matches, method, hybrid_weight.
+        """
+        return hybrid_search_impl(
+            query=query, limit=limit, filters=filters,
+            hybrid_weight=hybrid_weight,
+        )
+
+    @mcp.tool()
+    def index_status() -> dict:
+        """Check FTS5 + TF-IDF index health and statistics.
+
+        Returns:
+            Dict with ok, fts5_exists, fts5_document_count, vectors_count,
+            total_cached_documents, unindexed_documents, warnings.
+        """
+        return get_index_status_impl()
+
+    @mcp.tool()
+    def rebuild_search_index() -> dict:
+        """Force rebuild of FTS5 and TF-IDF search indices.
+
+        Drops and recreates all search indices from cached documents.
+
+        Returns:
+            Dict with ok, fts5_row_count, vectors_count, documents_total.
+        """
+        return rebuild_index_impl()
 
     mcp.run()
 

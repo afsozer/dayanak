@@ -32,6 +32,13 @@ from .legislation import (
     search_legislation as search_leg_impl,
     search_legislation_articles as search_leg_articles_impl,
 )
+from .semantic import (
+    build_semantic_index as build_semantic_impl,
+    get_index_status as index_status_impl,
+    hybrid_search as hybrid_search_impl,
+    rebuild_index as rebuild_impl,
+    semantic_search as semantic_search_cli_impl,
+)
 from .exporter import prepare_docx_export, prepare_export_package_bundle
 from .udf import (
     convert_docx_to_udf_experimental,
@@ -53,6 +60,7 @@ research_app = typer.Typer(help="Research workflow: topic search, refresh, quali
 cite_app = typer.Typer(help="Citation verification and formatting")
 petition_app = typer.Typer(help="Petition pack: prepare drafting input, inspect packs")
 legislation_app = typer.Typer(help="Mevzuat: ara, belge al, madde ara, gerekçe çıkar")
+semantic_app = typer.Typer(help="Semantic search: FTS5 + TF-IDF hybrid, index yönetimi")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -60,6 +68,7 @@ app.add_typer(research_app, name="research")
 app.add_typer(cite_app, name="cite")
 app.add_typer(petition_app, name="petition")
 app.add_typer(legislation_app, name="legislation")
+app.add_typer(semantic_app, name="semantic")
 
 
 def _print(obj, json_out: bool):
@@ -685,6 +694,60 @@ def legislation_format(
         "gazette_date": gazette_date,
     }
     result = format_leg_citation_impl(doc, style=style)  # type: ignore[arg-type]
+    _print(result, json_out)
+
+
+# ── Semantic search subcommands ──────────────────────────────────────────────
+
+
+@semantic_app.command("index")
+def semantic_index(
+    force_rebuild: bool = typer.Option(False, "--force-rebuild", help="Drop and recreate indices"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Build FTS5 + TF-IDF search indices."""
+    result = build_semantic_impl(force_rebuild=force_rebuild)
+    _print(result, json_out)
+
+
+@semantic_app.command("search")
+def semantic_search_cmd(
+    query: str = typer.Argument(..., help="Arama sorgusu"),
+    limit: int = typer.Option(10, help="Maksimum sonuç"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """TF-IDF cosine similarity search."""
+    result = semantic_search_cli_impl(query=query, limit=limit)
+    _print(result, json_out)
+
+
+@semantic_app.command("hybrid")
+def semantic_hybrid(
+    query: str = typer.Argument(..., help="Arama sorgusu"),
+    limit: int = typer.Option(10, help="Maksimum sonuç"),
+    weight: float = typer.Option(0.6, help="Hybrid ağırlık (0.0=sadece semantic, 1.0=sadece BM25)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """FTS5 BM25 + TF-IDF cosine hybrid search."""
+    result = hybrid_search_impl(query=query, limit=limit, hybrid_weight=weight)
+    _print(result, json_out)
+
+
+@semantic_app.command("status")
+def semantic_status(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Check index health and statistics."""
+    result = index_status_impl()
+    _print(result, json_out)
+
+
+@semantic_app.command("rebuild")
+def semantic_rebuild(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Force rebuild all search indices."""
+    result = rebuild_impl()
     _print(result, json_out)
 
 
