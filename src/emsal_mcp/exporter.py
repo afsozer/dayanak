@@ -11,7 +11,7 @@ from zipfile import ZipFile
 from docx import Document as DocxDocument
 from docx.shared import Pt, RGBColor
 
-from .models import Draft, InputPack
+from .models import Draft, InputPack, build_error
 
 DISCLAIMER_TEXT = (
     "DİKKAT: Bu belge emsal-mcp tarafından otomatik olarak oluşturulmuştur. "
@@ -216,7 +216,7 @@ def prepare_docx_export(
         if draft_md_path.exists():
             markdown_content = draft_md_path.read_text(encoding="utf-8")
         else:
-            return {"error": f"Draft file not found: {draft_path}"}
+            return build_error("FILE_NOT_FOUND", f"Draft file not found: {draft_path}", error=f"Draft file not found: {draft_path}")
     elif draft_json is not None:
         # draft.json may reference a draft_md file
         ref_md = draft_json.get("files", {}).get("draft_md")
@@ -229,7 +229,7 @@ def prepare_docx_export(
             markdown_content += f"{draft_json.get('issue', '')}\n\n"
             markdown_content += DISCLAIMER_TEXT + "\n"
     else:
-        return {"error": "Either draft_path or draft_json must be provided"}
+        return build_error("INVALID_INPUT", "Either draft_path or draft_json must be provided", error="Either draft_path or draft_json must be provided")
 
     # ── Determine out_path ──────────────────────────────────────────────
     if out_path is None:
@@ -443,7 +443,7 @@ def prepare_export_package_bundle(
 
     # ── Validate pack_dir ───────────────────────────────────────────────
     if not (pack_path / "petition-pack.json").exists():
-        return {"ok": False, "error": "petition-pack.json not found in pack_dir"}
+        return build_error("PACK_NOT_FOUND", "petition-pack.json not found in pack_dir")
 
     # ── Copy/include petition pack files ────────────────────────────────
     pack_files = [
@@ -640,7 +640,7 @@ def _verify_export_bundle(
                 "file_count": loaded.get("file_count", 0),
             }
         except json.JSONDecodeError as e:
-            checks["manifest_valid_json"] = {"ok": False, "error": str(e)}
+            checks["manifest_valid_json"] = build_error("CHECK_FAILED", str(e))
             errors.append("manifest.json is not valid JSON")
 
     # Check DOCX ZIP if present
@@ -650,7 +650,7 @@ def _verify_export_bundle(
             with ZipFile(docx_path, "r") as _zf:
                 checks["docx_zip_valid"] = {"ok": True}
         except Exception as e:
-            checks["docx_zip_valid"] = {"ok": False, "error": str(e)}
+            checks["docx_zip_valid"] = build_error("CHECK_FAILED", str(e))
             errors.append(f"DOCX ZIP invalid: {e}")
 
     return {

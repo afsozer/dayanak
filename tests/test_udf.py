@@ -177,7 +177,7 @@ class TestConvertUdfToDocx:
         write_udf("Test", path)
         result = convert_udf_to_docx(path)
         assert result["ok"] is False
-        assert result["error"] == "toolkit_unavailable"
+        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
         assert "toolkit_status" in result
 
     def test_file_not_found_when_toolkit_available(self, tmp_path, monkeypatch):
@@ -189,7 +189,7 @@ class TestConvertUdfToDocx:
         with patch("emsal_mcp.udf.shutil.which", return_value="/usr/bin/soffice"):
             result = convert_udf_to_docx(tmp_path / "missing.udf")
             assert result["ok"] is False
-            assert result["error"] == "file_not_found"
+            assert result["errorCode"] == "FILE_NOT_FOUND"
 
     def test_returns_structured_dict(self, tmp_path):
         path = tmp_path / "test.udf"
@@ -209,7 +209,7 @@ class TestConvertUdfToPdf:
         write_udf("Test", path)
         result = convert_udf_to_pdf(path)
         assert result["ok"] is False
-        assert result["error"] == "toolkit_unavailable"
+        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
         assert "toolkit_status" in result
 
     def test_file_not_found_when_toolkit_available(self, tmp_path, monkeypatch):
@@ -220,7 +220,7 @@ class TestConvertUdfToPdf:
         with patch("emsal_mcp.udf.shutil.which", return_value="/usr/bin/soffice"):
             result = convert_udf_to_pdf(tmp_path / "missing.udf")
             assert result["ok"] is False
-            assert result["error"] == "file_not_found"
+            assert result["errorCode"] == "FILE_NOT_FOUND"
 
     def test_returns_structured_dict(self, tmp_path):
         path = tmp_path / "test.udf"
@@ -240,7 +240,7 @@ class TestConvertDocxToUdfExperimental:
         path.write_bytes(b"fake docx")
         result = convert_docx_to_udf_experimental(path, experimental=False)
         assert result["ok"] is False
-        assert result["error"] == "experimental_required"
+        assert result["errorCode"] == "EXPERIMENTAL_REQUIRED"
         assert DOCX_TO_UDF_EXPERIMENTAL_WARNING in result["warning"]
 
     def test_missing_toolkit_returns_error(self, tmp_path):
@@ -248,7 +248,7 @@ class TestConvertDocxToUdfExperimental:
         path.write_bytes(b"fake docx")
         result = convert_docx_to_udf_experimental(path, experimental=True)
         assert result["ok"] is False
-        assert result["error"] == "toolkit_unavailable"
+        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
 
     def test_file_not_found_when_toolkit_available(self, tmp_path, monkeypatch):
         """When toolkit is available but file doesn't exist, returns file_not_found."""
@@ -260,7 +260,7 @@ class TestConvertDocxToUdfExperimental:
                 tmp_path / "missing.docx", experimental=True,
             )
             assert result["ok"] is False
-            assert result["error"] == "file_not_found"
+            assert result["errorCode"] == "FILE_NOT_FOUND"
 
     def test_returns_structured_dict(self, tmp_path):
         path = tmp_path / "test.docx"

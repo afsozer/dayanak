@@ -115,3 +115,100 @@ class TestVerifyDocumentHash:
         doc = make_doc(full_text="Test content")
         doc.content_hash = None
         assert verify_document_hash(doc) is True
+
+
+class TestSafetyInvariants:
+    """Invariant tests for safety.py — these must NEVER break."""
+
+    def test_metadata_only_never_draft_usable(self):
+        """Invariant: metadata_only documents are NEVER quote/draft usable."""
+        statuses = [
+            ContentStatus.METADATA_ONLY,
+            ContentStatus.PDF_LINK_ONLY,
+            ContentStatus.UNAVAILABLE,
+        ]
+        for status in statuses:
+            doc = make_doc(content_status=status, full_text=None, markdown=None)
+            result = citation_check(doc)
+            assert result.ok is False, f"{status} should NOT pass citation_check"
+            assert result.quoteUsable is False, f"{status} should NOT be quoteUsable"
+            assert result.draftUsable is False, f"{status} should NOT be draftUsable"
+
+    def test_full_text_is_usable(self):
+        """Invariant: full_text and html_markdown with content ARE usable."""
+        doc = make_doc(content_status=ContentStatus.FULL_TEXT, full_text="A" * 100)
+        result = citation_check(doc)
+        assert result.ok is True
+        assert result.quoteUsable is True
+        assert result.draftUsable is True
+
+    def test_empty_full_text_not_usable(self):
+        """Invariant: empty full_text is NOT usable."""
+        doc = make_doc(content_status=ContentStatus.FULL_TEXT, full_text="")
+        result = citation_check(doc)
+        assert result.ok is False
+
+    def test_no_provenance_not_usable(self):
+        """Invariant: missing provenance (date/esas/karar/url) is NOT usable."""
+        doc = make_doc(
+            decision_date=None, esas_no=None, karar_no=None, source_url=None
+        )
+        result = citation_check(doc)
+        assert result.ok is False
+        assert "metadata" in " ".join(result.reasons).lower()
+
+    def test_exact_quote_never_fabricates(self):
+        """Invariant: exact_quote never returns text that doesn't contain the phrase."""
+        doc = make_doc(full_text="Test metni burada.")
+        with pytest.raises(ValueError):
+            exact_quote(doc, "olmayan bir ibare")
+        # Also test with empty text
+        doc2 = make_doc(full_text="")
+        with pytest.raises(ValueError):
+            exact_quote(doc2, "anything")
+
+    def test_build_input_pack_excludes_unsafe(self):
+        """Invariant: build_input_pack excludes all metadata_only documents."""
+        safe = make_doc(document_id="safe")
+        meta_only = make_doc(
+            document_id="meta", content_status=ContentStatus.METADATA_ONLY,
+            full_text=None, markdown=None,
+        )
+        pdf_only = make_doc(
+            document_id="pdf", content_status=ContentStatus.PDF_LINK_ONLY,
+            full_text=None, markdown=None,
+        )
+        pack = build_input_pack("m", "i", [safe, meta_only, pdf_only])
+        assert len(pack.documents) == 1
+        assert pack.documents[0].document_id == "safe"
+        assert len(pack.excluded) == 2
+        excluded_ids = {e["document_id"] for e in pack.excluded}
+        assert excluded_ids == {"meta", "pdf"}
+
+    def test_input_pack_has_no_invention_warning(self):
+        """Invariant: build_input_pack always includes the no-invention warning."""
+        pack = build_input_pack("m", "i", [make_doc()])
+        assert any("eksik metadata uydurulmaz" in w for w in pack.warnings)
+
+    def test_citation_check_markdown_usable(self):
+        """Invariant: html_markdown with content IS usable."""
+        doc = make_doc(
+            content_status=ContentStatus.HTML_MARKDOWN,
+            full_text=None, markdown="A" * 100,
+        )
+        result = citation_check(doc)
+        assert result.ok is True
+        assert result.draftUsable is True
+
+    def test_verify_document_hash_without_text(self):
+        """Invariant: document without text but with hash should fail."""
+        doc = make_doc(full_text=None, markdown=None, content_status=ContentStatus.METADATA_ONLY)
+        doc.content_hash = "some_hash"
+        result = verify_document_hash(doc)
+        assert result is False
+
+    def test_verify_document_hash_without_hash(self):
+        """Invariant: no hash to verify means OK."""
+        doc = make_doc()
+        doc.content_hash = None
+        assert verify_document_hash(doc) is True

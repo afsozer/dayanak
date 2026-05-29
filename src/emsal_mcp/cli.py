@@ -105,6 +105,13 @@ def version():
 
 
 @app.command()
+def doctor(json_out: bool = typer.Option(False, "--json")):
+    """Run environment diagnostics: Python, cache, sources, UDF toolkit."""
+    from .config import config as app_config
+    _print(app_config.doctor(), json_out)
+
+
+@app.command()
 def sources(json_out: bool = typer.Option(False, "--json")):
     _print(capabilities(), json_out)
 

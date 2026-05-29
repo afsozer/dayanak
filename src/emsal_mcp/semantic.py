@@ -17,6 +17,8 @@ from collections import Counter
 from typing import Any
 
 from .cache import Cache
+from .models import build_error  # noqa: F401
+
 
 SEMANTIC_VERSION = "0.11.0"
 
@@ -406,16 +408,17 @@ def build_semantic_index(cache: Cache | None = None, force_rebuild: bool = False
             "version": SEMANTIC_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "fts5_exists": False,
-            "fts5_row_count": 0,
-            "vectors_count": 0,
-            "documents_total": 0,
-            "warnings": [str(exc)],
-            "recommended_next_steps": ["Check database permissions and schema."],
-            "version": SEMANTIC_VERSION,
-        }
+        return build_error(
+            "INDEX_BUILD_FAILED",
+            str(exc),
+            fts5_exists=False,
+            fts5_row_count=0,
+            vectors_count=0,
+            documents_total=0,
+            warnings=[str(exc)],
+            recommended_next_steps=["Check database permissions and schema."],
+            version=SEMANTIC_VERSION,
+        )
     finally:
         if own_cache:
             try:
@@ -531,15 +534,16 @@ def semantic_search(
             "version": SEMANTIC_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "query": query,
-            "results": [],
-            "total_matches": 0,
-            "method": "tfidf_cosine",
-            "warnings": [str(exc)],
-            "version": SEMANTIC_VERSION,
-        }
+        return build_error(
+            "SEARCH_FAILED",
+            str(exc),
+            query=query,
+            results=[],
+            total_matches=0,
+            method="tfidf_cosine",
+            warnings=[str(exc)],
+            version=SEMANTIC_VERSION,
+        )
     finally:
         if own_cache:
             try:
@@ -713,17 +717,18 @@ def hybrid_search(
             "version": SEMANTIC_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "query": query,
-            "results": [],
-            "total_matches": 0,
-            "method": "hybrid",
-            "hybrid_weight": hybrid_weight,
-            "warnings": [str(exc)],
-            "recommended_next_steps": [],
-            "version": SEMANTIC_VERSION,
-        }
+        return build_error(
+            "SEARCH_FAILED",
+            str(exc),
+            query=query,
+            results=[],
+            total_matches=0,
+            method="hybrid",
+            hybrid_weight=hybrid_weight,
+            warnings=[str(exc)],
+            recommended_next_steps=[],
+            version=SEMANTIC_VERSION,
+        )
     finally:
         if own_cache:
             try:
@@ -802,18 +807,19 @@ def get_index_status(cache: Cache | None = None) -> dict[str, Any]:
             "version": SEMANTIC_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "fts5_exists": False,
-            "fts5_document_count": 0,
-            "vectors_table_exists": False,
-            "vectors_count": 0,
-            "total_cached_documents": 0,
-            "unindexed_documents": 0,
-            "warnings": [str(exc)],
-            "recommended_next_steps": ["Check database accessibility."],
-            "version": SEMANTIC_VERSION,
-        }
+        return build_error(
+            "INDEX_QUERY_FAILED",
+            str(exc),
+            fts5_exists=False,
+            fts5_document_count=0,
+            vectors_table_exists=False,
+            vectors_count=0,
+            total_cached_documents=0,
+            unindexed_documents=0,
+            warnings=[str(exc)],
+            recommended_next_steps=["Check database accessibility."],
+            version=SEMANTIC_VERSION,
+        )
     finally:
         if own_cache:
             try:

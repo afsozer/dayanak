@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .models import ContentStatus, Document
+from .models import ContentStatus, Document, build_error
 from .safety import citation_check, verify_document_hash
 
 
@@ -869,7 +869,7 @@ def prepare_petition_outline(
     # ── Load pack metadata ──────────────────────────────────────────────
     pack_meta_path = pack_path / "petition-pack.json"
     if not pack_meta_path.exists():
-        return {"ok": False, "error": "petition-pack.json not found in pack_dir"}
+        return build_error("PACK_NOT_FOUND", "petition-pack.json not found in pack_dir")
 
     pack_meta = json.loads(pack_meta_path.read_text(encoding="utf-8"))
     counts = pack_meta.get("classification_counts", {})
@@ -1096,7 +1096,7 @@ def prepare_controlled_petition_draft(
     # ── Load pack metadata ──────────────────────────────────────────────
     pack_meta_path = pack_path / "petition-pack.json"
     if not pack_meta_path.exists():
-        return {"ok": False, "error": "petition-pack.json not found in pack_dir"}
+        return build_error("PACK_NOT_FOUND", "petition-pack.json not found in pack_dir")
 
     pack_meta = json.loads(pack_meta_path.read_text(encoding="utf-8"))
     counts = pack_meta.get("classification_counts", {})

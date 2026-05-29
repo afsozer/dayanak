@@ -147,7 +147,7 @@ class TestPreparePetitionOutline:
     def test_missing_pack_dir(self, tmp_path: Path):
         result = prepare_petition_outline(tmp_path / "nonexistent")
         assert result["ok"] is False
-        assert "error" in result
+        assert "errorCode" in result
 
     def test_disclaimer_section_present(self, tmp_path: Path):
         pack_dir = _build_pack(tmp_path, [_make_doc()])

@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from .cache import Cache
+from .models import build_error
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -155,16 +156,17 @@ def get_chamber_overview(
         # Get total documents first (for ok check)
         total_docs = db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
         if total_docs == 0:
-            return {
-                "ok": False,
-                "court_filter": court,
-                "total_chambers": 0,
-                "total_documents": 0,
-                "chambers": [],
-                "warnings": ["No cached documents found in the database."],
-                "recommended_next_steps": ["Use store_document() to add documents."],
-                "version": CHAMBER_MODULE_VERSION,
-            }
+            return build_error(
+                "EMPTY_DB",
+                "No cached documents found in the database.",
+                court_filter=court,
+                total_chambers=0,
+                total_documents=0,
+                chambers=[],
+                warnings=["No cached documents found in the database."],
+                recommended_next_steps=["Use store_document() to add documents."],
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         # Group by court + chamber
         sql = f"""
@@ -190,16 +192,17 @@ def get_chamber_overview(
                 + ". Some documents may not have chamber metadata."
             )
             recommended.append("Ensure documents are stored with chamber metadata.")
-            return {
-                "ok": False,
-                "court_filter": court,
-                "total_chambers": 0,
-                "total_documents": total_docs,
-                "chambers": [],
-                "warnings": warnings,
-                "recommended_next_steps": recommended,
-                "version": CHAMBER_MODULE_VERSION,
-            }
+            return build_error(
+                "NO_CHAMBERS_FOUND",
+                warnings[-1] if warnings else "No chambers found",
+                court_filter=court,
+                total_chambers=0,
+                total_documents=total_docs,
+                chambers=[],
+                warnings=warnings,
+                recommended_next_steps=recommended,
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         chambers: list[dict[str, Any]] = []
         for row in rows:
@@ -224,16 +227,17 @@ def get_chamber_overview(
             "version": CHAMBER_MODULE_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "court_filter": court,
-            "total_chambers": 0,
-            "total_documents": 0,
-            "chambers": [],
-            "warnings": [str(exc)],
-            "recommended_next_steps": ["Check database accessibility."],
-            "version": CHAMBER_MODULE_VERSION,
-        }
+        return build_error(
+            "DB_QUERY_FAILED",
+            str(exc),
+            court_filter=court,
+            total_chambers=0,
+            total_documents=0,
+            chambers=[],
+            warnings=[str(exc)],
+            recommended_next_steps=["Check database accessibility."],
+            version=CHAMBER_MODULE_VERSION,
+        )
     finally:
         if own_cache:
             try:
@@ -291,11 +295,12 @@ def profile_chamber(
                 + (f" in court '{court}'" if court else "")
                 + "."
             )
-            return {
-                "ok": False,
-                "chamber": chamber,
-                "court_filter": court,
-                "metrics": {
+            return build_error(
+                "NO_DOCUMENTS_FOUND",
+                warnings[-1],
+                chamber=chamber,
+                court_filter=court,
+                metrics={
                     "total_documents": 0,
                     "content_available_count": 0,
                     "content_status_distribution": {},
@@ -305,12 +310,12 @@ def profile_chamber(
                     "latest_date": None,
                     "date_range_years": None,
                 },
-                "top_keywords": [],
-                "recent_documents": [],
-                "warnings": warnings,
-                "recommended_next_steps": ["Check that documents exist with this chamber metadata."],
-                "version": CHAMBER_MODULE_VERSION,
-            }
+                top_keywords=[],
+                recent_documents=[],
+                warnings=warnings,
+                recommended_next_steps=["Check that documents exist with this chamber metadata."],
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         # Compute metrics
         total_docs = len(rows)
@@ -381,11 +386,12 @@ def profile_chamber(
             "version": CHAMBER_MODULE_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "chamber": chamber,
-            "court_filter": court,
-            "metrics": {
+        return build_error(
+            "DB_QUERY_FAILED",
+            str(exc),
+            chamber=chamber,
+            court_filter=court,
+            metrics={
                 "total_documents": 0,
                 "content_available_count": 0,
                 "content_status_distribution": {},
@@ -395,12 +401,12 @@ def profile_chamber(
                 "latest_date": None,
                 "date_range_years": None,
             },
-            "top_keywords": [],
-            "recent_documents": [],
-            "warnings": [str(exc)],
-            "recommended_next_steps": ["Check database accessibility."],
-            "version": CHAMBER_MODULE_VERSION,
-        }
+            top_keywords=[],
+            recent_documents=[],
+            warnings=[str(exc)],
+            recommended_next_steps=["Check database accessibility."],
+            version=CHAMBER_MODULE_VERSION,
+        )
     finally:
         if own_cache:
             try:
@@ -451,16 +457,17 @@ def chamber_timeline(
         rows = db.execute(sql, params).fetchall()
 
         if not rows:
-            return {
-                "ok": False,
-                "chamber_filter": chamber,
-                "court_filter": court,
-                "year_range": {"start": 0, "end": 0},
-                "total_documents": 0,
-                "timeline": [],
-                "warnings": ["No documents found for the given filters."],
-                "version": CHAMBER_MODULE_VERSION,
-            }
+            return build_error(
+                "EMPTY_DB",
+                "No documents found for the given filters.",
+                chamber_filter=chamber,
+                court_filter=court,
+                year_range={"start": 0, "end": 0},
+                total_documents=0,
+                timeline=[],
+                warnings=["No documents found for the given filters."],
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         # Extract years
         year_counter: Counter = Counter()
@@ -471,16 +478,17 @@ def chamber_timeline(
 
         if not year_counter:
             warnings.append("Could not parse any years from decision_date fields.")
-            return {
-                "ok": False,
-                "chamber_filter": chamber,
-                "court_filter": court,
-                "year_range": {"start": 0, "end": 0},
-                "total_documents": len(rows),
-                "timeline": [],
-                "warnings": warnings,
-                "version": CHAMBER_MODULE_VERSION,
-            }
+            return build_error(
+                "PARSE_FAILED",
+                "Could not parse any years from decision_date fields.",
+                chamber_filter=chamber,
+                court_filter=court,
+                year_range={"start": 0, "end": 0},
+                total_documents=len(rows),
+                timeline=[],
+                warnings=warnings,
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         # Build timeline
         all_years = sorted(year_counter.keys())
@@ -513,16 +521,17 @@ def chamber_timeline(
             "version": CHAMBER_MODULE_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "chamber_filter": chamber,
-            "court_filter": court,
-            "year_range": {"start": 0, "end": 0},
-            "total_documents": 0,
-            "timeline": [],
-            "warnings": [str(exc)],
-            "version": CHAMBER_MODULE_VERSION,
-        }
+        return build_error(
+            "DB_QUERY_FAILED",
+            str(exc),
+            chamber_filter=chamber,
+            court_filter=court,
+            year_range={"start": 0, "end": 0},
+            total_documents=0,
+            timeline=[],
+            warnings=[str(exc)],
+            version=CHAMBER_MODULE_VERSION,
+        )
     finally:
         if own_cache:
             try:
@@ -560,39 +569,42 @@ def find_similar_chambers(
         # Get target chamber keywords via profile_chamber
         target_profile = profile_chamber(chamber, court=court, cache=c)
         if not target_profile["ok"]:
-            return {
-                "ok": False,
-                "target_chamber": chamber,
-                "similar_chambers": [],
-                "warnings": target_profile.get("warnings", []),
-                "recommended_next_steps": ["Ensure the target chamber exists in cached documents."],
-                "version": CHAMBER_MODULE_VERSION,
-            }
+            return build_error(
+                "CHAMBER_NOT_FOUND",
+                f"Chamber '{chamber}' not found",
+                target_chamber=chamber,
+                similar_chambers=[],
+                warnings=target_profile.get("warnings", []),
+                recommended_next_steps=["Ensure the target chamber exists in cached documents."],
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         target_keywords = {kw["word"] for kw in target_profile.get("top_keywords", [])}
 
         if not target_keywords:
             warnings.append("Target chamber has no extractable keywords for comparison.")
-            return {
-                "ok": False,
-                "target_chamber": chamber,
-                "similar_chambers": [],
-                "warnings": warnings,
-                "recommended_next_steps": ["Ensure the target chamber has documents with title text."],
-                "version": CHAMBER_MODULE_VERSION,
-            }
+            return build_error(
+                "NO_KEYWORDS",
+                "Target chamber has no extractable keywords for comparison.",
+                target_chamber=chamber,
+                similar_chambers=[],
+                warnings=warnings,
+                recommended_next_steps=["Ensure the target chamber has documents with title text."],
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         # Get all other chambers
         overview = get_chamber_overview(cache=c)
         if not overview["ok"]:
-            return {
-                "ok": False,
-                "target_chamber": chamber,
-                "similar_chambers": [],
-                "warnings": overview.get("warnings", []),
-                "recommended_next_steps": ["No chambers available for comparison."],
-                "version": CHAMBER_MODULE_VERSION,
-            }
+            return build_error(
+                "NO_CHAMBERS_AVAILABLE",
+                "No chambers available for comparison.",
+                target_chamber=chamber,
+                similar_chambers=[],
+                warnings=overview.get("warnings", []),
+                recommended_next_steps=["No chambers available for comparison."],
+                version=CHAMBER_MODULE_VERSION,
+            )
 
         # Get keywords for each candidate chamber
         similar: list[dict[str, Any]] = []
@@ -646,14 +658,15 @@ def find_similar_chambers(
             "version": CHAMBER_MODULE_VERSION,
         }
     except Exception as exc:
-        return {
-            "ok": False,
-            "target_chamber": chamber,
-            "similar_chambers": [],
-            "warnings": [str(exc)],
-            "recommended_next_steps": ["Check database accessibility."],
-            "version": CHAMBER_MODULE_VERSION,
-        }
+        return build_error(
+            "DB_QUERY_FAILED",
+            str(exc),
+            target_chamber=chamber,
+            similar_chambers=[],
+            warnings=[str(exc)],
+            recommended_next_steps=["Check database accessibility."],
+            version=CHAMBER_MODULE_VERSION,
+        )
     finally:
         if own_cache:
             try:

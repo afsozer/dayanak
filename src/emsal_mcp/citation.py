@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .cache import Cache
-from .models import Document
+from .models import Document, build_error
 
 
 # ---------------------------------------------------------------------------
@@ -693,32 +693,34 @@ def verify_legal_citation(
     if file_path:
         fp = Path(file_path)
         if not fp.exists():
-            return {
-                "ok": False,
-                "error": f"Dosya bulunamadı: {fp}",
-                "candidates": [],
-                "search_attempts": [],
-                "matched_documents": [],
-                "formatted_citations": [],
-                "verification_findings": [],
-                "warnings": [f"Dosya bulunamadı: {fp}"],
-                "recommended_next_steps": ["Dosya yolunu kontrol edin."],
-                "timing": {"elapsed_ms": round((time.time() - t0) * 1000, 1)},
-            }
+            return build_error(
+                "FILE_NOT_FOUND",
+                f"Dosya bulunamadı: {fp}",
+                error=f"Dosya bulunamadı: {fp}",
+                candidates=[],
+                search_attempts=[],
+                matched_documents=[],
+                formatted_citations=[],
+                verification_findings=[],
+                warnings=[f"Dosya bulunamadı: {fp}"],
+                recommended_next_steps=["Dosya yolunu kontrol edin."],
+                timing={"elapsed_ms": round((time.time() - t0) * 1000, 1)},
+            )
         text = fp.read_text(encoding="utf-8")
     elif text is None:
-        return {
-            "ok": False,
-            "error": "Metin veya dosya yolu belirtilmedi.",
-            "candidates": [],
-            "search_attempts": [],
-            "matched_documents": [],
-            "formatted_citations": [],
-            "verification_findings": [],
-            "warnings": ["Metin veya dosya yolu belirtilmedi."],
-            "recommended_next_steps": ["text veya file_path parametresi verin."],
-            "timing": {"elapsed_ms": round((time.time() - t0) * 1000, 1)},
-        }
+        return build_error(
+            "INVALID_INPUT",
+            "Metin veya dosya yolu belirtilmedi.",
+            error="Metin veya dosya yolu belirtilmedi.",
+            candidates=[],
+            search_attempts=[],
+            matched_documents=[],
+            formatted_citations=[],
+            verification_findings=[],
+            warnings=["Metin veya dosya yolu belirtilmedi."],
+            recommended_next_steps=["text veya file_path parametresi verin."],
+            timing={"elapsed_ms": round((time.time() - t0) * 1000, 1)},
+        )
 
     # --- Phase 2: Extract candidates ---
     candidates = extract_citation_candidates(text, limit=limit)

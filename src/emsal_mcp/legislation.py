@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from .models import ContentStatus, Document
+from .models import ContentStatus, Document, build_error
 from .safety import citation_check
 from .sources.registry import capabilities as get_capabilities, smoke_all_sync
 
@@ -321,15 +321,16 @@ def get_legislation_document(
     warnings: list[str] = []
     doc, error = _fetch_doc(document_id, source, sources_override)
     if error:
-        return {
-            "ok": False,
-            "error": error,
-            "document_id": document_id,
-            "document": None,
-            "warnings": [error],
-            "version": LEGISLATION_VERSION,
-            "rule": _NO_INVENTION_BLOCK,
-        }
+        return build_error(
+            "FETCH_FAILED",
+            error,
+            error=error,
+            document_id=document_id,
+            document=None,
+            warnings=[error],
+            version=LEGISLATION_VERSION,
+            rule=_NO_INVENTION_BLOCK,
+        )
 
     classification = _classify_type(
         doc.title or "",
@@ -391,36 +392,38 @@ def search_legislation_articles(
     warnings: list[str] = []
     doc, error = _fetch_doc(document_id, source, sources_override)
     if error:
-        return {
-            "ok": False,
-            "error": error,
-            "document_id": document_id,
-            "matching_articles": [],
-            "total_articles_found": 0,
-            "warnings": [error],
-            "recommended_next_steps": [error],
-            "version": LEGISLATION_VERSION,
-            "rule": _NO_INVENTION_BLOCK,
-        }
+        return build_error(
+            "FETCH_FAILED",
+            error,
+            error=error,
+            document_id=document_id,
+            matching_articles=[],
+            total_articles_found=0,
+            warnings=[error],
+            recommended_next_steps=[error],
+            version=LEGISLATION_VERSION,
+            rule=_NO_INVENTION_BLOCK,
+        )
 
     text = doc.text or ""
     if not text.strip():
         warnings.append("Belge içeriği mevcut değil; madde araması yapılamaz.")
-        return {
-            "ok": False,
-            "document_id": document_id,
-            "source": doc.source,
-            "title": doc.title,
-            "article_number": article_number,
-            "article_query": article_query,
-            "total_articles_found": 0,
-            "matching_articles": [],
-            "content_status": doc.content_status.value,
-            "warnings": warnings,
-            "recommended_next_steps": ["Belgenin tam metnini resmi kaynaktan edinin."],
-            "version": LEGISLATION_VERSION,
-            "rule": _NO_INVENTION_BLOCK,
-        }
+        return build_error(
+            "EMPTY_DB",
+            "Belge içeriği mevcut değil; madde araması yapılamaz.",
+            document_id=document_id,
+            source=doc.source,
+            title=doc.title,
+            article_number=article_number,
+            article_query=article_query,
+            total_articles_found=0,
+            matching_articles=[],
+            content_status=doc.content_status.value,
+            warnings=warnings,
+            recommended_next_steps=["Belgenin tam metnini resmi kaynaktan edinin."],
+            version=LEGISLATION_VERSION,
+            rule=_NO_INVENTION_BLOCK,
+        )
 
     if doc.content_status == ContentStatus.METADATA_ONLY:
         warnings.append("Belge metadata_only durumunda; içerik sınırlı olabilir.")
@@ -481,39 +484,41 @@ def get_legislation_article_tree(
     warnings: list[str] = []
     doc, error = _fetch_doc(document_id, source, sources_override)
     if error:
-        return {
-            "ok": False,
-            "error": error,
-            "document_id": document_id,
-            "article_count": 0,
-            "section_count": 0,
-            "part_count": 0,
-            "tree": {"parts": []},
-            "flat_article_list": [],
-            "warnings": [error],
-            "recommended_next_steps": [error],
-            "version": LEGISLATION_VERSION,
-            "rule": _NO_INVENTION_BLOCK,
-        }
+        return build_error(
+            "FETCH_FAILED",
+            error,
+            error=error,
+            document_id=document_id,
+            article_count=0,
+            section_count=0,
+            part_count=0,
+            tree={"parts": []},
+            flat_article_list=[],
+            warnings=[error],
+            recommended_next_steps=[error],
+            version=LEGISLATION_VERSION,
+            rule=_NO_INVENTION_BLOCK,
+        )
 
     text = doc.text or ""
     if not text.strip():
         warnings.append("Belge içeriği mevcut değil.")
-        return {
-            "ok": False,
-            "document_id": document_id,
-            "source": doc.source,
-            "title": doc.title,
-            "article_count": 0,
-            "section_count": 0,
-            "part_count": 0,
-            "tree": {"parts": []},
-            "flat_article_list": [],
-            "warnings": warnings,
-            "recommended_next_steps": ["Belge içeriği mevcut değil."],
-            "version": LEGISLATION_VERSION,
-            "rule": _NO_INVENTION_BLOCK,
-        }
+        return build_error(
+            "EMPTY_DB",
+            "Belge içeriği mevcut değil.",
+            document_id=document_id,
+            source=doc.source,
+            title=doc.title,
+            article_count=0,
+            section_count=0,
+            part_count=0,
+            tree={"parts": []},
+            flat_article_list=[],
+            warnings=warnings,
+            recommended_next_steps=["Belge içeriği mevcut değil."],
+            version=LEGISLATION_VERSION,
+            rule=_NO_INVENTION_BLOCK,
+        )
 
     articles = _parse_articles(text)
     tree = _build_tree(articles, text)
@@ -575,36 +580,38 @@ def get_legislation_gerekce(
     warnings: list[str] = []
     doc, error = _fetch_doc(document_id, source, sources_override)
     if error:
-        return {
-            "ok": False,
-            "error": error,
-            "document_id": document_id,
-            "found": False,
-            "genel_gerekce": None,
-            "madde_gerekceleri": None,
-            "raw_text": None,
-            "warnings": [error],
-            "recommended_next_steps": [error],
-            "version": LEGISLATION_VERSION,
-            "rule": _NO_INVENTION_BLOCK,
-        }
+        return build_error(
+            "FETCH_FAILED",
+            error,
+            error=error,
+            document_id=document_id,
+            found=False,
+            genel_gerekce=None,
+            madde_gerekceleri=None,
+            raw_text=None,
+            warnings=[error],
+            recommended_next_steps=[error],
+            version=LEGISLATION_VERSION,
+            rule=_NO_INVENTION_BLOCK,
+        )
 
     text = doc.text or ""
     if not text.strip():
-        return {
-            "ok": False,
-            "document_id": document_id,
-            "source": doc.source,
-            "title": doc.title,
-            "found": False,
-            "genel_gerekce": None,
-            "madde_gerekceleri": None,
-            "raw_text": None,
-            "warnings": ["Belge içeriği mevcut değil."],
-            "recommended_next_steps": ["Belge içeriği mevcut değil."],
-            "version": LEGISLATION_VERSION,
-            "rule": _NO_INVENTION_BLOCK,
-        }
+        return build_error(
+            "EMPTY_DB",
+            "Belge içeriği mevcut değil.",
+            document_id=document_id,
+            source=doc.source,
+            title=doc.title,
+            found=False,
+            genel_gerekce=None,
+            madde_gerekceleri=None,
+            raw_text=None,
+            warnings=["Belge içeriği mevcut değil."],
+            recommended_next_steps=["Belge içeriği mevcut değil."],
+            version=LEGISLATION_VERSION,
+            rule=_NO_INVENTION_BLOCK,
+        )
 
     # Extract GENEL GEREKCE
     genel_gerekce_raw: str | None = None
@@ -744,7 +751,7 @@ def format_legislation_citation(
         gazette_date = document.get("gazette_date") or document.get("decision_date", "")
         meta_for_type = document.get("metadata") if isinstance(document.get("metadata"), dict) else None
     else:
-        return {"error": "Geçersiz belge formatı; Document modeli veya dict gerekli."}
+        return build_error("INVALID_INPUT", "Geçersiz belge formatı; Document modeli veya dict gerekli.", error="Geçersiz belge formatı; Document modeli veya dict gerekli.")
 
     classification = _classify_type(title, meta_for_type)
     leg_type = classification["display_name"]

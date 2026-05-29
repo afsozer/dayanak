@@ -8,8 +8,11 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
-
 from .models import build_error
+
+
+class UdfError(ValueError):
+    pass
 
 
 UDF_TOOLKIT_VERSION = "0.9.0"

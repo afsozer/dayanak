@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .models import build_error  # noqa: F401
 from .sources.registry import capabilities, registry, smoke_all_sync
 from .verification import check_cache_integrity, smoke_test_offline
 
@@ -105,7 +106,7 @@ def release_command_center(cache: Any | None = None) -> dict[str, Any]:
     try:
         checks["release_smoke"] = release_smoke()
     except Exception as exc:
-        checks["release_smoke"] = {"ok": False, "error": str(exc)}
+        checks["release_smoke"] = build_error("CHECK_FAILED", str(exc))
         warnings.append(f"release_smoke başarısız: {exc}")
 
     # 2. Source capabilities
@@ -129,7 +130,7 @@ def release_command_center(cache: Any | None = None) -> dict[str, Any]:
                 f"{', '.join(checks['source_capabilities']['unavailable_sources'])}"
             )
     except Exception as exc:
-        checks["source_capabilities"] = {"ok": False, "error": str(exc)}
+        checks["source_capabilities"] = build_error("CHECK_FAILED", str(exc))
         warnings.append(f"source_capabilities başarısız: {exc}")
 
     # 3. Module imports
@@ -173,7 +174,7 @@ def release_command_center(cache: Any | None = None) -> dict[str, Any]:
                 f"Search index: {si.get('unindexed_documents', '?')} unindexed docs"
             )
     except Exception as exc:
-        checks["search_index"] = {"ok": False, "error": str(exc)}
+        checks["search_index"] = build_error("CHECK_FAILED", str(exc))
 
     # 5. Chamber overview (if cache available)
     try:
@@ -185,7 +186,7 @@ def release_command_center(cache: Any | None = None) -> dict[str, Any]:
             "total_documents": co.get("total_documents", 0),
         }
     except Exception as exc:
-        checks["chambers"] = {"ok": False, "error": str(exc)}
+        checks["chambers"] = build_error("CHECK_FAILED", str(exc))
 
     # 6. UDF toolkit status
     try:
@@ -197,7 +198,7 @@ def release_command_center(cache: Any | None = None) -> dict[str, Any]:
                 f"UDF toolkit not available: {udf_status.get('warnings', [])}"
             )
     except Exception as exc:
-        checks["udf_toolkit"] = {"ok": False, "error": str(exc)}
+        checks["udf_toolkit"] = build_error("CHECK_FAILED", str(exc))
 
     # 7. Overall readiness
     check_results = [
@@ -245,18 +246,20 @@ def version_bump(
     try:
         maj, min_, pat = int(parts[0]), int(parts[1]), int(parts[2])
     except (ValueError, IndexError):
-        return {
-            "ok": False,
-            "current_version": __version__,
-            "error": f"Sürüm parse edilemedi: {__version__}",
-        }
+        return build_error(
+            "VERSION_PARSE_FAILED",
+            f"Sürüm parse edilemedi: {__version__}",
+            error=f"Sürüm parse edilemedi: {__version__}",
+            current_version=__version__,
+        )
 
     if sum([major, minor, patch]) != 1:
-        return {
-            "ok": False,
-            "current_version": __version__,
-            "error": "Yalnızca bir bump tipi seçin (--major, --minor, --patch).",
-        }
+        return build_error(
+            "INVALID_BUMP_FLAGS",
+            "Yalnızca bir bump tipi seçin (--major, --minor, --patch).",
+            error="Yalnızca bir bump tipi seçin (--major, --minor, --patch).",
+            current_version=__version__,
+        )
 
     if major:
         next_ver = f"{maj + 1}.0.0"
