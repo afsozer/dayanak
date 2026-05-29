@@ -12,3 +12,4 @@ build/
 exports/
 *.sqlite3
 *.sqlite
+.emsal_research/
