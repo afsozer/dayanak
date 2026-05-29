@@ -51,6 +51,12 @@ from .udf import (
     write_udf as write_udf_impl,
 )
 from .release import archive_release, readiness_dashboard, release_notes, release_smoke as release_smoke_result
+from .release import (
+    final_v1_readiness as final_v1_readiness_impl,
+    generate_release_summary as generate_release_summary_impl,
+    release_command_center as release_command_center_impl,
+    version_bump as version_bump_impl,
+)
 
 
 def main() -> None:
@@ -834,6 +840,64 @@ def main() -> None:
         return find_similar_chambers_impl(
             chamber=chamber, court=court, limit=limit,
         )
+
+    # ── Release v0.13 MCP tools ──────────────────────────────────────────
+
+    @mcp.tool()
+    def release_command_center() -> dict:
+        """Comprehensive release verification running ALL checks.
+
+        Runs source smoke, cache integrity, module imports, FTS5 index status,
+        chamber overview, and UDF toolkit status.  Aggregates into a single
+        readiness report.
+
+        Returns:
+            Dict with ok, overall_readiness (0-100), checks detail, warnings,
+            recommended_actions.
+        """
+        return release_command_center_impl()
+
+    @mcp.tool()
+    def version_bump(
+        major: bool = False,
+        minor: bool = False,
+        patch: bool = True,
+    ) -> dict:
+        """Compute a bumped version string (does NOT modify files).
+
+        Args:
+            major: Bump major version.
+            minor: Bump minor version.
+            patch: Bump patch version (default).
+
+        Returns:
+            Dict with current_version, next_version, bump_type.
+        """
+        return version_bump_impl(major=major, minor=minor, patch=patch)
+
+    @mcp.tool()
+    def final_v1_readiness() -> dict:
+        """Final v1.0.0 readiness gate.
+
+        Checks all criteria needed for v1 release: module imports, stable
+        sources, smoke tests, and no blocking issues.
+
+        Returns:
+            Dict with ok, ready, criteria, blocking_issues, recommendation.
+        """
+        return final_v1_readiness_impl()
+
+    @mcp.tool()
+    def generate_release_summary() -> dict:
+        """Generate a human-readable release summary.
+
+        Includes version, module inventory, source status, document counts,
+        and readiness assessment.  Returns both markdown and JSON formats.
+
+        Returns:
+            Dict with ok, markdown_summary, json_summary, version.
+        """
+        return generate_release_summary_impl()
 
     mcp.run()
 

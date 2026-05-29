@@ -12,7 +12,18 @@ from .cache import Cache
 from .citation import format_legal_citation, verify_legal_citation
 from .document import controlled_draft, export_bundle, markdown_to_docx
 from .models import Document
-from .release import archive_release, compare_history, readiness_dashboard, release_notes, release_smoke, write_history
+from .release import (
+    archive_release,
+    compare_history,
+    final_v1_readiness as final_v1_readiness_impl,
+    generate_release_summary as generate_summary_impl,
+    readiness_dashboard,
+    release_command_center as cmd_center_impl,
+    release_notes,
+    release_smoke,
+    version_bump as version_bump_impl,
+    write_history,
+)
 from .research import refresh_research_bundle, research_quality_dashboard, research_topic
 from .safety import build_input_pack, citation_check
 from .sources.registry import capabilities, get_source, registry, smoke_all_sync
@@ -330,6 +341,41 @@ def release_notes_cmd(out: Optional[Path] = None):
 @release_app.command("archive")
 def release_archive(out_dir: Path = Path("exports/release-archive"), json_out: bool = typer.Option(False, "--json")):
     _print(archive_release(out_dir), json_out)
+
+
+@release_app.command("command-center")
+def release_cmd_center(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Comprehensive release verification - all checks."""
+    _print(cmd_center_impl(), json_out)
+
+
+@release_app.command("version-bump")
+def release_version_bump(
+    major: bool = typer.Option(False, "--major"),
+    minor: bool = typer.Option(False, "--minor"),
+    patch: bool = typer.Option(True, "--patch"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Compute next version (does NOT modify files)."""
+    _print(version_bump_impl(major=major, minor=minor, patch=patch), json_out)
+
+
+@release_app.command("v1-readiness")
+def release_v1_readiness(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Final v1.0.0 readiness gate."""
+    _print(final_v1_readiness_impl(), json_out)
+
+
+@release_app.command("summary")
+def release_summary(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Human-readable release summary."""
+    _print(generate_summary_impl(), json_out)
 
 
 # ── UDF subcommands ────────────────────────────────────────────────────────
