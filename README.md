@@ -1,5 +1,7 @@
 # Emsal-mcp
 
+> **v0.13.0** — 54 MCP tools · 65+ CLI commands · 513 tests · 10 source modules
+
 Fatih Sözer'in yerel makinesinde çalışan, resmi/public hukuk kaynak odaklı, citation-safe MCP araştırma ve belge hazırlık sistemi.
 
 ## Kırmızı çizgiler
@@ -21,7 +23,8 @@ KİK/EKAP v2 canlı arama şu anda `unavailable` capability ile kayıtlıdır; �
 cd C:\Users\Sozer\Emsal-mcp
 python -m venv .venv
 .\.venv\Scripts\pip install -e .[dev,mcp]
-pytest
+emsal-mcp version
+emsal-mcp release command-center --json
 ```
 
 ## CLI örnekleri
@@ -39,4 +42,19 @@ emsal-mcp smoke --offline
 emsal-mcp-server
 ```
 
-Tool'lar: `search_decisions`, `get_document`, `build_input_pack`, `draft_document`, `export_bundle`, `read_udf`, `write_udf`, `source_capabilities`, `release_smoke`.
+## Özellikler
+
+| Modül | Sürüm | Araç Sayısı | Açıklama |
+|-------|-------|-------------|----------|
+| **Core** (search, get, capabilities, smoke) | v0.1–0.4 | 5 | Kaynak arama, belge erişimi, yetenek keşfi |
+| **Cache v2** | v0.3 | 3 | Yerel arama, istatistikler, belge listeleme |
+| **Research** | v0.5 | 3 | Konu araştırması, bundle yenileme, kalite paneli |
+| **Citation** | v0.6 | 2 | Hukuk alıntı formatlama ve doğrulama |
+| **Petition Pack** | v0.7–0.8 | 6 | Dilekçe paketi, denetim, anahat, kontrollü taslak |
+| **UDF Toolkit** | v0.9 | 5 | UDF durumu, yazar kılavuzu, DOCX/UDF dönüşümü |
+| **Legislation** | v0.10 | 8 | Mevzuat arama, madde analizi, ağaç yapısı, gerekçe |
+| **Semantic Search** | v0.11 | 5 | FTS5 BM25 + TF-IDF cosine hibrit arama |
+| **Chamber Profiling** | v0.12 | 4 | Daire analizi, profil, zaman çizelgesi, benzerlik |
+| **Release Management** | v0.13 | 4 | Komuta merkezi, sürüm, v1 hazırlık, özet |
+
+**Toplam:** 54 MCP tool · 65+ CLI komutu · 513 test

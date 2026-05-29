@@ -1,6 +1,9 @@
 # docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
-## Tools
+> **emsal-mcp v0.13.0** — 54 MCP tools across 10 modules.
+> Input parameters use Python type hints; output shapes are documented per tool.
+
+## Core Tools (v0.1–0.4)
 
 ### `source_capabilities`
 
@@ -80,9 +83,30 @@ tool errors.
 
 UDF file operations (read/write round-trip).
 
-### `release_smoke` / `release_dashboard` / `release_notes_tool` / `release_archive`
+### `release_smoke`
 
-Release management tools.
+**Input**: none
+
+**Output**: `dict` — `ok`, `version`, `generated_at`, `checks` (offline_smoke, cache_integrity, source_smoke, source_smoke_ok, citation_safety, udf, mcp_surface).
+
+### `release_dashboard`
+
+**Input**: none
+
+**Output**: `dict` — `ok`, `version`, `readiness_score` (0–100), `release_decision` ("ship" / "review"), `smoke`, `risks`.
+
+### `release_notes_tool`
+
+**Input**: none
+
+**Output**: `dict` with key `markdown` — release notes in Markdown format.
+
+### `release_archive`
+
+**Input**:
+- `out_dir: str` — Output directory
+
+**Output**: `dict` — `ok`, `out_dir`, `manifest` with `version`, `files`.
 
 ## Cache v2 Tools (v0.3)
 
@@ -347,3 +371,174 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
 - `experimental: bool = False` — Must be `True` to proceed
 
 **Output**: `dict` — `ok`, `out_path`, `file_size`, `warning`, `experimental`, `text_length` on success; `error`, `message` on failure.
+
+## Legislation v0.10 Tools
+
+### `search_legislation`
+
+**Input**:
+- `query: str` — Search phrase
+- `sources: list[str] | None = None` — Source IDs (default: `["mevzuat"]`)
+- `legislation_type: str | None = None` — Filter by type (e.g. "Kanun", "Yönetmelik")
+- `limit: int = 10` — Max results
+
+**Output**: `dict` — `ok`, `query`, `sources`, `legislation_type`, `total_results`, `results[]` (document_id, source, title, legislation_no, gazette_date, legislation_type, legislation_type_id, type_confidence, summary, content_status, court), `warnings`, `recommended_next_steps`, `version`, `rule`.
+
+### `get_legislation_document`
+
+**Input**:
+- `document_id: str` — Mevzuat document ID
+- `source: str | None = None` — Source ID (default: `"mevzuat"`)
+
+**Output**: `dict` — `ok`, `document_id`, `source`, `title`, `legislation_no`, `gazette_date`, `legislation_type`, `content_status`, `content_hash`, `citation_check` (ok, quote_usable, draft_usable, warnings), `article_count`, `text_length`, `warnings`, `recommended_next_steps`, `version`, `rule`.
+
+### `search_legislation_articles`
+
+**Input**:
+- `document_id: str` — Mevzuat document ID
+- `article_number: str | None = None` — Specific article number
+- `article_query: str | None = None` — Keyword search in article text
+- `source: str | None = None` — Source ID (default: `"mevzuat"`)
+
+**Output**: `dict` — `ok`, `document_id`, `source`, `title`, `article_number`, `article_query`, `total_articles_found`, `matching_articles[]` (number, text, preview), `content_status`, `warnings`, `recommended_next_steps`, `version`, `rule`.
+
+### `get_legislation_article_tree`
+
+**Input**:
+- `document_id: str` — Mevzuat document ID
+- `source: str | None = None` — Source ID (default: `"mevzuat"`)
+
+**Output**: `dict` — `ok`, `document_id`, `source`, `title`, `article_count`, `section_count`, `part_count`, `tree` (parts → sections → articles), `flat_article_list[]`, `warnings`, `recommended_next_steps`, `version`, `rule`.
+
+### `get_legislation_gerekce`
+
+**Input**:
+- `document_id: str` — Mevzuat document ID
+- `source: str | None = None` — Source ID (default: `"mevzuat"`)
+
+**Output**: `dict` — `ok`, `document_id`, `source`, `title`, `found`, `genel_gerekce`, `madde_gerekceleri[]` (article, gerekce), `raw_text`, `warnings`, `recommended_next_steps`, `version`, `rule`.
+
+### `legislation_source_status`
+
+**Input**: none
+
+**Output**: `dict` — `ok`, `sources[]`, `overall_ok`, `source_count`, `healthy_sources`, `degraded_sources`, `warnings`, `recommended_next_steps`, `version`, `rule`.
+
+### `format_legislation_citation`
+
+**Input**:
+- `document: dict | None = None` — Document dict with title, legislation_no, gazette_date
+- `style: str = "full"` — `"full"`, `"short"`, or `"article"`
+
+**Output**: `dict` — `formatted_citation`, `style`, `legislation_no`, `gazette_date`, `legislation_type`, `title`, `warnings`.
+
+### `get_legislation_types`
+
+**Input**: none
+
+**Output**: `list[dict]` — each `{type_id, display_name}` for 11 Turkish legislation types.
+
+## Semantic Search v0.11 Tools
+
+### `build_semantic_index`
+
+**Input**:
+- `force_rebuild: bool = False` — Drop and recreate all indices
+
+**Output**: `dict` — `ok`, `fts5_exists`, `fts5_row_count`, `vectors_count`, `documents_total`, `warnings`, `recommended_next_steps`, `version`.
+
+### `semantic_search`
+
+**Input**:
+- `query: str` — Search query string
+- `limit: int = 10` — Max results
+- `filters: dict | None = None` — Metadata filters (source, court, chamber, content_status, quote_usable, draft_usable)
+
+**Output**: `dict` — `ok`, `query`, `results[]` (document_id, source, title, court, chamber, decision_date, score, snippet, content_status, quote_usable, draft_usable), `total_matches`, `method` (`"tfidf_cosine"`), `warnings`, `version`.
+
+### `hybrid_search`
+
+**Input**:
+- `query: str` — Search query string
+- `limit: int = 10` — Max results
+- `filters: dict | None = None` — Metadata filters
+- `hybrid_weight: float = 0.6` — Balance 0.0–1.0 (0.0 = pure semantic, 1.0 = pure BM25)
+
+**Output**: `dict` — `ok`, `query`, `results[]` (document_id, source, title, court, chamber, decision_date, bm25_score, cosine_score, hybrid_score, snippet, content_status, quote_usable, draft_usable), `total_matches`, `method` (`"hybrid"`), `hybrid_weight`, `warnings`, `recommended_next_steps`, `version`.
+
+### `index_status`
+
+**Input**: none
+
+**Output**: `dict` — `ok`, `fts5_exists`, `fts5_document_count`, `vectors_table_exists`, `vectors_count`, `total_cached_documents`, `unindexed_documents`, `warnings`, `recommended_next_steps`, `version`.
+
+### `rebuild_search_index`
+
+**Input**: none
+
+**Output**: `dict` — Same as `build_semantic_index` with `force_rebuild=True`. Drops and recreates all FTS5 and TF-IDF indices.
+
+## Chamber Profiling v0.12 Tools
+
+### `chamber_overview`
+
+**Input**:
+- `court: str | None = None` — Optional court name filter
+
+**Output**: `dict` — `ok`, `court_filter`, `total_chambers`, `total_documents`, `chambers[]` (court, chamber, document_count, content_available_count, earliest_date, latest_date, recent_count), `warnings`, `recommended_next_steps`, `version`.
+
+### `profile_chamber`
+
+**Input**:
+- `chamber: str` — Chamber name (e.g. "3. Hukuk Dairesi")
+- `court: str | None = None` — Optional court name filter
+
+**Output**: `dict` — `ok`, `chamber`, `court_filter`, `metrics` (total_documents, content_available_count, content_status_distribution, quote_usable_count, draft_usable_count, earliest_date, latest_date, date_range_years), `top_keywords[]` (word, count), `recent_documents[]` (document_id, title, decision_date), `warnings`, `recommended_next_steps`, `version`.
+
+### `chamber_timeline`
+
+**Input**:
+- `chamber: str | None = None` — Optional chamber filter
+- `court: str | None = None` — Optional court filter
+- `start_year: int | None = None` — Start year (inclusive)
+- `end_year: int | None = None` — End year (inclusive)
+
+**Output**: `dict` — `ok`, `chamber_filter`, `court_filter`, `year_range` (start, end), `total_documents`, `timeline[]` (year, count), `warnings`, `version`.
+
+### `find_similar_chambers`
+
+**Input**:
+- `chamber: str` — Target chamber name
+- `court: str | None = None` — Optional court filter
+- `limit: int = 5` — Max results
+
+**Output**: `dict` — `ok`, `target_chamber`, `similar_chambers[]` (chamber, court, similarity_score, shared_keywords, document_count), `warnings`, `recommended_next_steps`, `version`.
+
+## Release v0.13 Tools
+
+### `release_command_center`
+
+**Input**: none
+
+**Output**: `dict` — `ok`, `version`, `generated_at`, `overall_readiness` (0–100), `checks_passed`, `checks_total`, `checks` (release_smoke, source_capabilities, module_imports, search_index, chambers, udf_toolkit), `warnings`, `recommended_actions`.
+
+### `version_bump`
+
+**Input**:
+- `major: bool = False` — Bump major version
+- `minor: bool = False` — Bump minor version
+- `patch: bool = True` — Bump patch version (default)
+
+**Output**: `dict` — `ok`, `current_version`, `next_version`, `bump_type`.
+
+### `final_v1_readiness`
+
+**Input**: none
+
+**Output**: `dict` — `ok`, `ready`, `criteria` (all_modules_importable, has_stable_sources, release_smoke_ok, only_kik_unavailable), `blocking_issues`, `recommendation`, `command_center`, `version`, `generated_at`.
+
+### `generate_release_summary`
+
+**Input**: none
+
+**Output**: `dict` — `ok`, `markdown_summary`, `json_summary` (version, generated_at, readiness, modules, sources, chambers, cached_documents, udf_toolkit_available, search_index), `version`.

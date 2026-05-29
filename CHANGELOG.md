@@ -3,6 +3,156 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.13.0] — 2026-05-29
+
+### Added
+
+- **Release Command Center** (`release.py`):
+  - **`release_command_center()`**: runs comprehensive pre-release verification
+    (smoke tests, source capabilities, module imports, FTS5 index health, chamber
+    overview, UDF toolkit). Returns structured dict with overall_readiness score
+    (0–100), checks_passed/total, per-check ok/fail, warnings, and
+    recommended_actions.
+  - **`version_bump(current_version, bump_type)`**: calculates next version
+    string from major/minor/patch bump. Returns ok, current_version, bump_type,
+    next_version. Does not modify files.
+  - **`final_v1_readiness()`**: v1.0.0 go/no-go gate checking all modules
+    importable, has stable sources, release smoke passes, only KİK is
+    unavailable. Returns ok, ready, criteria with pass/fail, version.
+  - **`generate_release_summary(version)`**: human-readable + JSON release
+    summary with version, date, test count, module count, source stats, UDF
+    status, warnings, recommended_actions.
+
+- **4 CLI Commands** under `emsal-mcp release`:
+  - `command-center [--json]`
+  - `version-bump [--major|--minor|--patch] [--json]`
+  - `v1-readiness [--json]`
+  - `summary [--json]`
+
+- **4 MCP Tools**:
+  - `release_command_center`: comprehensive pre-release verification
+  - `version_bump`: calculate next version
+  - `final_v1_readiness`: v1.0.0 go/no-go gate
+  - `generate_release_summary`: release summary in markdown + JSON
+
+- **Tests**: `tests/test_release.py` with test cases covering command center
+  scoring, version bump types, v1 readiness criteria, summary generation,
+  CLI and MCP imports.
+
+### Changed
+
+- **Version bumped to 0.13.0** in `__init__.py` and `pyproject.toml`.
+- **All v0.12 tests pass** (513 total, all passing).
+
+### Backward Compatibility
+
+- All v0.12 tests continue to pass (513 total tests, all passing).
+- Release module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+
+## [0.12.0] — 2026-05-29
+
+### Added
+
+- **Chamber Profiling Module** (`chamber.py`):
+  - **`get_chamber_overview(court=None)`**: returns all chambers with document
+    counts, date ranges, and last activity. Optional court filter. Returns ok,
+    chamber_count, chambers list with name, court, document_count,
+    date_range_earliest, date_range_latest, last_activity.
+  - **`profile_chamber(chamber, court=None)`**: detailed chamber profile with
+    metrics (document_count, avg_text_length, content_status_distribution),
+    top 20 keywords (Turkish stopword-filtered), and recent documents.
+  - **`chamber_timeline(chamber=None, court=None, start_year=None,
+    end_year=None)`**: year-grouped decision distribution supporting both
+    ISO and DD.MM.YYYY date formats. Returns timeline with year, count,
+    earliest, latest.
+  - **`find_similar_chambers(chamber, court=None, limit=5)`**: Jaccard
+    similarity on keyword sets to find related chambers. Returns ok, chamber,
+    similar_chambers with similarity score and shared keywords.
+
+- **Turkish stopword filtering**: "ve", "bir", "bu", "ile", "hakkında",
+  "ilişkin", "için", "üzerinde", "olarak", "sonra" and more excluded
+  from keyword extraction.
+
+- **4 CLI Commands** under `emsal-mcp chamber`:
+  - `overview [--court] [--json]`
+  - `profile <chamber> [--court] [--json]`
+  - `timeline [--chamber] [--court] [--start-year] [--end-year] [--json]`
+  - `similar <chamber> [--court] [--limit] [--json]`
+
+- **4 MCP Tools**:
+  - `chamber_overview`: list all chambers with document counts
+  - `profile_chamber`: detailed chamber profile with keywords
+  - `chamber_timeline`: year-grouped decision distribution
+  - `find_similar_chambers`: Jaccard similarity chamber matching
+
+- **Tests**: `tests/test_chamber.py` with 14 test cases covering overview
+  structure, profile metrics/keywords, timeline year grouping, similarity
+  scoring, NULL chamber/date edge cases, CLI and MCP imports.
+
+### Changed
+
+- **Version bumped to 0.12.0** in `__init__.py` and `pyproject.toml`.
+
+### Backward Compatibility
+
+- All v0.11 tests continue to pass (499 total tests, all passing).
+- Chamber module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+
+## [0.11.0] — 2026-05-29
+
+### Added
+
+- **Semantic/Hybrid Search Module** (`semantic.py`):
+  - **SQLite FTS5 virtual table** (`documents_v2_fts`): tokenized full-text
+    search with BM25 ranking. Content-sync triggers auto-update index on
+    INSERT/UPDATE/DELETE in `documents_v2`.
+  - **TF-IDF cosine similarity**: pure Python implementation with
+    `search_vectors` table for sparse vector storage. No external ML deps.
+  - **Hybrid ranking**: `final_score = hybrid_weight * BM25 +
+    (1 - hybrid_weight) * cosine_similarity`.
+  - **`build_semantic_index()`**: creates FTS5 + TF-IDF index from cached
+    documents. Returns ok, fts_count, vector_count, duration_ms.
+  - **`semantic_search(query, limit=10)`**: TF-IDF cosine-only search.
+    Returns ok, query, results with document_id, score, snippet, source.
+  - **`hybrid_search(query, limit=10, hybrid_weight=0.5)`**: combined
+    FTS5 BM25 + TF-IDF cosine ranking. Returns ok, query, results.
+  - **`get_index_status()`**: index health and statistics. Returns ok,
+    fts_count, vector_count, documents_indexed, last_rebuild.
+  - **`rebuild_index(force=False)`**: force rebuild of semantic index.
+
+- **Zero new dependencies**: stdlib + sqlite3 only.
+
+- **5 CLI Commands** under `emsal-mcp semantic`:
+  - `index [--force-rebuild] [--json]`
+  - `search <query> [--limit] [--json]`
+  - `hybrid <query> [--limit] [--weight] [--json]`
+  - `status [--json]`
+  - `rebuild [--json]`
+
+- **5 MCP Tools**:
+  - `build_semantic_index`: create FTS5 + TF-IDF index
+  - `semantic_search`: TF-IDF cosine search
+  - `hybrid_search`: combined BM25 + cosine ranking
+  - `index_status`: index health and stats
+  - `rebuild_search_index`: force index rebuild
+
+- **Tests**: `tests/test_semantic.py` with 57 test cases covering FTS5
+  indexing, TF-IDF vector computation, cosine similarity, hybrid ranking,
+  empty index handling, rebuild, status, CLI and MCP imports.
+
+### Changed
+
+- **Version bumped to 0.11.0** in `__init__.py` and `pyproject.toml`.
+
+### Backward Compatibility
+
+- All v0.10 tests continue to pass (442 total tests, all passing).
+- Semantic module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+- FTS5 and search_vectors tables are created on first use; no migration.
+
 ## [0.10.0] — 2026-05-29
 
 ### Added

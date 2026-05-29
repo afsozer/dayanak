@@ -1,5 +1,9 @@
 # docs/JSON_CONTRACTS.md — Canonical JSON Contracts
 
+> **emsal-mcp v0.13.0** — 54 MCP tools, 65+ CLI commands, 18 source modules.
+> All JSON contracts below are the canonical shapes returned by CLI `--json`
+> output and MCP tool responses.
+
 ## Source Capability
 
 Returned by `capabilities()`, CLI `emsal-mcp sources --json`, and MCP
@@ -667,5 +671,463 @@ Success output:
   "warning": "DOCX -> UDF dönüşümü deneysel ve geri döndürülemez bir işlemdir. ...",
   "experimental": true,
   "text_length": 5678
+}
+```
+
+## Legislation (v0.10)
+
+### `search_legislation`
+
+```json
+{
+  "ok": true,
+  "query": "konut kirası",
+  "sources": ["mevzuat"],
+  "legislation_type": null,
+  "total_results": 3,
+  "results": [
+    {
+      "document_id": "mevzuat-001",
+      "source": "mevzuat",
+      "title": "Kira Kanunu",
+      "legislation_no": "6570",
+      "gazette_date": "1972-07-08",
+      "legislation_type": "Kanun",
+      "legislation_type_id": "kanun",
+      "type_confidence": "high",
+      "summary": null,
+      "content_status": "full_text",
+      "court": null
+    }
+  ],
+  "warnings": [],
+  "recommended_next_steps": ["Mevzuat araması tamamlandı."],
+  "version": "0.10.0",
+  "rule": "Yasak: Bu modül hiçbir surette mevzuat numarası uydurmaz."
+}
+```
+
+### `get_legislation_document`
+
+```json
+{
+  "ok": true,
+  "document_id": "mevzuat-001",
+  "source": "mevzuat",
+  "title": "Kira Kanunu",
+  "legislation_no": "6570",
+  "gazette_date": "1972-07-08",
+  "legislation_type": "Kanun",
+  "legislation_type_id": "kanun",
+  "type_confidence": "high",
+  "content_status": "full_text",
+  "content_hash": "sha256...",
+  "citation_check": {
+    "ok": true,
+    "quote_usable": true,
+    "draft_usable": true,
+    "warnings": []
+  },
+  "article_count": 40,
+  "text_length": 15200,
+  "warnings": [],
+  "recommended_next_steps": ["Tam metin mevcut; alıntı için kullanılabilir."],
+  "version": "0.10.0",
+  "rule": "Yasak: Bu modül hiçbir surette mevzuat numarası uydurmaz."
+}
+```
+
+### `search_legislation_articles`
+
+```json
+{
+  "ok": true,
+  "document_id": "mevzuat-001",
+  "source": "mevzuat",
+  "title": "Kira Kanunu",
+  "article_number": "6",
+  "article_query": null,
+  "total_articles_found": 40,
+  "matching_articles": [
+    {
+      "number": "6",
+      "text": "Kira sözleşmesi...",
+      "preview": "Kira sözleşmesiwritten text..."
+    }
+  ],
+  "content_status": "full_text",
+  "warnings": [],
+  "recommended_next_steps": ["1 madde bulundu."],
+  "version": "0.10.0",
+  "rule": "Yasak: Bu modül hiçbir surette mevzuat numarası uydurmaz."
+}
+```
+
+### `get_legislation_article_tree`
+
+```json
+{
+  "ok": true,
+  "document_id": "mevzuat-001",
+  "source": "mevzuat",
+  "title": "Kira Kanunu",
+  "article_count": 40,
+  "section_count": 3,
+  "part_count": 2,
+  "tree": {
+    "parts": [
+      {
+        "title": "BİRİNCİ KISIM",
+        "sections": [
+          {
+            "title": "BİRİNCİ BÖLÜM",
+            "articles": [
+              {"number": "1", "title": "MADDE 1 - ...", "preview": "..."}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "flat_article_list": [
+    {"number": "1", "preview": "...", "parent_part": "BİRİNCİ KISIM", "parent_section": "BİRİNCİ BÖLÜM"}
+  ],
+  "warnings": [],
+  "recommended_next_steps": ["40 madde, 2 kısım, 3 bölüm bulundu."],
+  "version": "0.10.0",
+  "rule": "Yasak: Bu modül hiçbir surette mevzuat numarası uydurmaz."
+}
+```
+
+### `get_legislation_gerekce`
+
+```json
+{
+  "ok": true,
+  "document_id": "mevzuat-001",
+  "source": "mevzuat",
+  "title": "Kira Kanunu",
+  "found": true,
+  "genel_gerekce": "Bu kanunun gerekçesi...",
+  "madde_gerekceleri": [
+    {"article": "1", "gerekce": "Madde 1 gerekçesi..."},
+    {"article": "2", "gerekce": "Madde 2 gerekçesi..."}
+  ],
+  "raw_text": "...(first 2000 chars)...",
+  "warnings": [],
+  "recommended_next_steps": ["Gerekçe metni bulundu; doğrudan alıntılanabilir."],
+  "version": "0.10.0",
+  "rule": "Yasak: Bu modül hiçbir surette mevzuat numarası uydurmaz."
+}
+```
+
+### `get_legislation_source_status`
+
+```json
+{
+  "ok": true,
+  "sources": [
+    {"source_id": "mevzuat", "display_name": "Mevzuat", "status": "experimental"}
+  ],
+  "overall_ok": true,
+  "source_count": 1,
+  "healthy_sources": ["mevzuat"],
+  "degraded_sources": [],
+  "warnings": [],
+  "recommended_next_steps": ["Tüm kaynaklar sağlıklı."],
+  "version": "0.10.0",
+  "rule": "Yasak: Bu modül hiçbir surette mevzuat numarası uydurmaz."
+}
+```
+
+### `format_legislation_citation`
+
+```json
+{
+  "formatted_citation": "Kanun No: 6570 RG: 1972-07-08 \"Kira Kanunu\"",
+  "style": "full",
+  "legislation_no": "6570",
+  "gazette_date": "1972-07-08",
+  "legislation_type": "Kanun",
+  "title": "Kira Kanunu",
+  "warnings": []
+}
+```
+
+## Semantic Search (v0.11)
+
+### `build_semantic_index`
+
+```json
+{
+  "ok": true,
+  "fts5_exists": true,
+  "fts5_row_count": 42,
+  "vectors_count": 42,
+  "documents_total": 42,
+  "warnings": [],
+  "recommended_next_steps": [
+    "Use hybrid_search() to query the index.",
+    "Call get_index_status() to verify index health."
+  ],
+  "version": "0.11.0"
+}
+```
+
+### `semantic_search`
+
+```json
+{
+  "ok": true,
+  "query": "konut tahliye",
+  "results": [
+    {
+      "document_id": "abc-123",
+      "source": "yargitay",
+      "title": "Yargıtay Kararı",
+      "court": "Yargıtay",
+      "chamber": "3. Hukuk Dairesi",
+      "decision_date": "2024-01-15",
+      "score": 0.854321,
+      "snippet": "...text around match...",
+      "content_status": "full_text",
+      "quote_usable": true,
+      "draft_usable": true
+    }
+  ],
+  "total_matches": 5,
+  "method": "tfidf_cosine",
+  "warnings": [],
+  "version": "0.11.0"
+}
+```
+
+### `hybrid_search`
+
+```json
+{
+  "ok": true,
+  "query": "konut tahliye",
+  "results": [
+    {
+      "document_id": "abc-123",
+      "source": "yargitay",
+      "title": "Yargıtay Kararı",
+      "court": "Yargıtay",
+      "chamber": "3. Hukuk Dairesi",
+      "decision_date": "2024-01-15",
+      "bm25_score": -3.21,
+      "cosine_score": 0.85,
+      "hybrid_score": 0.78,
+      "snippet": "...text around match...",
+      "content_status": "full_text",
+      "quote_usable": true,
+      "draft_usable": true
+    }
+  ],
+  "total_matches": 5,
+  "method": "hybrid",
+  "hybrid_weight": 0.6,
+  "warnings": [],
+  "recommended_next_steps": [],
+  "version": "0.11.0"
+}
+```
+
+### `get_index_status`
+
+```json
+{
+  "ok": true,
+  "fts5_exists": true,
+  "fts5_document_count": 42,
+  "vectors_table_exists": true,
+  "vectors_count": 42,
+  "total_cached_documents": 42,
+  "unindexed_documents": 0,
+  "warnings": [],
+  "recommended_next_steps": [],
+  "version": "0.11.0"
+}
+```
+
+### `rebuild_index`
+
+Same output as `build_semantic_index` with `force_rebuild=True`. All existing FTS5 tables and vector tables are dropped and recreated.
+
+## Chamber Profiling (v0.12)
+
+### `get_chamber_overview`
+
+```json
+{
+  "ok": true,
+  "court_filter": null,
+  "total_chambers": 8,
+  "total_documents": 150,
+  "chambers": [
+    {
+      "court": "Yargıtay",
+      "chamber": "3. Hukuk Dairesi",
+      "document_count": 25,
+      "content_available_count": 20,
+      "earliest_date": "2020-01-15",
+      "latest_date": "2024-12-01",
+      "recent_count": 10
+    }
+  ],
+  "warnings": [],
+  "recommended_next_steps": ["Chamber overview retrieved."],
+  "version": "0.12.0"
+}
+```
+
+### `profile_chamber`
+
+```json
+{
+  "ok": true,
+  "chamber": "3. Hukuk Dairesi",
+  "court_filter": null,
+  "metrics": {
+    "total_documents": 25,
+    "content_available_count": 20,
+    "content_status_distribution": {"full_text": 18, "metadata_only": 7},
+    "quote_usable_count": 18,
+    "draft_usable_count": 18,
+    "earliest_date": "2020-01-15",
+    "latest_date": "2024-12-01",
+    "date_range_years": 4.9
+  },
+  "top_keywords": [
+    {"word": "kira", "count": 15},
+    {"word": "tahliye", "count": 12},
+    {"word": "sözleşme", "count": 8}
+  ],
+  "recent_documents": [
+    {"document_id": "doc-001", "title": "Tahliye Kararı", "decision_date": "2024-12-01"}
+  ],
+  "warnings": [],
+  "recommended_next_steps": ["Profile generated for chamber '3. Hukuk Dairesi'."],
+  "version": "0.12.0"
+}
+```
+
+### `chamber_timeline`
+
+```json
+{
+  "ok": true,
+  "chamber_filter": "3. Hukuk Dairesi",
+  "court_filter": null,
+  "year_range": {"start": 2020, "end": 2024},
+  "total_documents": 25,
+  "timeline": [
+    {"year": 2020, "count": 3},
+    {"year": 2021, "count": 5},
+    {"year": 2022, "count": 4},
+    {"year": 2023, "count": 6},
+    {"year": 2024, "count": 7}
+  ],
+  "warnings": [],
+  "version": "0.12.0"
+}
+```
+
+### `find_similar_chambers`
+
+```json
+{
+  "ok": true,
+  "target_chamber": "3. Hukuk Dairesi",
+  "similar_chambers": [
+    {
+      "chamber": "2. Hukuk Dairesi",
+      "court": "Yargıtay",
+      "similarity_score": 0.4523,
+      "shared_keywords": ["kira", "tahliye", "sözleşme", "borçlar"],
+      "document_count": 18
+    }
+  ],
+  "warnings": [],
+  "recommended_next_steps": ["Found 1 chambers with similar topic profiles."],
+  "version": "0.12.0"
+}
+```
+
+## Release Command Center (v0.13)
+
+### `release_command_center`
+
+```json
+{
+  "ok": true,
+  "version": "0.13.0",
+  "generated_at": "2026-05-29T12:00:00+00:00",
+  "overall_readiness": 85,
+  "checks_passed": 2,
+  "checks_total": 3,
+  "checks": {
+    "release_smoke": {"ok": true, "version": "0.13.0", "...": "..."},
+    "source_capabilities": {"ok": true, "source_count": 10, "stable_sources": ["bedesten", "aym"], "unavailable_sources": ["kik"]},
+    "module_imports": {"ok": true, "passed": ["emsal_mcp.citation", "..."], "failed": [], "total": 13},
+    "search_index": {"ok": true, "fts5_exists": true, "vectors_count": 42, "unindexed_documents": 0},
+    "chambers": {"ok": true, "total_chambers": 8, "total_documents": 150},
+    "udf_toolkit": {"ok": false, "enabled": false, "...": "..."}
+  },
+  "warnings": ["UDF toolkit not available: [...]"],
+  "recommended_actions": ["BİLGİ: Küçük uyarılar var; release sonrası takip edin."]
+}
+```
+
+### `version_bump`
+
+```json
+{
+  "ok": true,
+  "current_version": "0.13.0",
+  "next_version": "0.13.1",
+  "bump_type": "patch"
+}
+```
+
+### `final_v1_readiness`
+
+```json
+{
+  "ok": true,
+  "ready": false,
+  "criteria": {
+    "all_modules_importable": true,
+    "has_stable_sources": true,
+    "release_smoke_ok": true,
+    "only_kik_unavailable": true
+  },
+  "blocking_issues": [],
+  "recommendation": "SHIP: v1.0.0 çıkışa hazır.",
+  "command_center": {"...": "release_command_center output"},
+  "version": "0.13.0",
+  "generated_at": "2026-05-29T12:00:00+00:00"
+}
+```
+
+### `generate_release_summary`
+
+```json
+{
+  "ok": true,
+  "markdown_summary": "# Emsal-mcp 0.13.0 Release Summary\n\n...",
+  "json_summary": {
+    "version": "0.13.0",
+    "generated_at": "2026-05-29T12:00:00+00:00",
+    "readiness": 85,
+    "modules": {"total": 13, "importable": 13, "failed": 0},
+    "sources": {"total": 10, "stable": 7, "unavailable": ["kik"]},
+    "chambers": 8,
+    "cached_documents": 150,
+    "udf_toolkit_available": false,
+    "search_index": {"ok": true}
+  },
+  "version": "0.13.0"
 }
 ```
