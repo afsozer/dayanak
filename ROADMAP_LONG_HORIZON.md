@@ -225,4 +225,4 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 5 | M-20 Packaging | [x] |
 | 5 | M-21 CI pipeline | [x] |
 | 5 | M-22 MCP sertleştirme | [x] |
-| 5 | M-23 v2.0.0 review | [ ] |
+| 5 | M-23 v2.0.0 review | [x] |
