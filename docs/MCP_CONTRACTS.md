@@ -219,6 +219,41 @@ Example agent flow:
 
 **Output**: `dict` — Quality metrics: full_text_ratio, citation_safe_ratio, metadata_only_count, pdf_only_count, unavailable_count, source_distribution, missing_metadata_count, duplicate_citation_count, draft_readiness_score, recommendations.
 
+## Citation v0.6 Tools
+
+### `format_legal_citation`
+
+**Input**:
+- `document: dict | None = None` — Document dict with title, court, chamber, decision_date, esas_no, karar_no, source_url, content_status
+- `style: str = "petition"` — Citation style: `"petition"`, `"parenthetical"`, or `"short"`
+- `source: str | None = None` — Optional source for cache lookup
+- `document_id: str | None = None` — Optional document ID for cache lookup
+
+**Output**: `dict` — `formatted_citation`, `style`, `court`, `chamber`, `date`, `esas_no`, `karar_no`, `document_id`, `source`, `source_url`, `content_status`, `quote_usable`, `draft_usable`, `confidence`, `warnings`.
+
+**Styles**:
+- `petition`: "Yargıtay, 3. Hukuk Dairesi, E.2023/12345, K.2024/5678, Tarihi: 2024-06-15"
+- `parenthetical`: "(Yargıtay, 3. Hukuk Dairesi, 2024-06-15, E.2023/12345, K.2024/5678)"
+- `short`: "Ygt. 2023/12345"
+
+**No fabrication**: missing metadata fields produce `warnings`, never invented values.
+
+### `verify_legal_citation`
+
+**Input**:
+- `text: str | None = None` — Text to extract citations from
+- `file_path: str | None = None` — Path to file to read
+- `source: str | None = None` — Source filter for live search
+- `limit: int = 10` — Max candidates to process
+- `fetch: bool = True` — Whether to fetch matching documents
+- `no_live: bool = False` — Skip live search (cache only)
+- `live_only: bool = False` — Skip cache search (live only)
+- `min_score: float = 0.0` — Minimum match score threshold
+
+**Output**: `dict` — `ok`, `candidates[]` (index, raw_text, parsed, confidence, field_count, warnings), `search_attempts[]`, `matched_documents[]`, `formatted_citations[]`, `verification_findings` (total_candidates, searched, matched, matched_via_cache, matched_via_live, unmatched), `warnings`, `recommended_next_steps`, `timing` (extraction_ms, search_ms, total_ms).
+
+**Pipeline**: extract candidates → local cache search (unless `live_only`) → live search (unless `no_live`) → rank by metadata match score → optionally fetch → format citations.
+
 ## Structured error shape
 
 Fatal/domain errors should use this JSON-compatible shape where possible:
@@ -234,6 +269,50 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
   "recommendedNextStep": "..."
 }
 ```
+
+## Petition v0.7 Tools
+
+### `prepare_drafting_input_pack`
+
+**Input**:
+- `matter: str` — Legal matter (e.g. "Konut tahliye davası")
+- `issue: str` — Specific issue (e.g. "Kira sözleşmesi feshi")
+- `docs_json: str | None = None` — JSON file with document list
+- `research_bundle: str | None = None` — Path to research bundle directory
+- `out_dir: str | None = None` — Output directory for petition pack
+- `strict: bool = False` — Require at least one petition_ready authority
+
+**Output**: `dict` — `ok`, `pack_dir`, `matter`, `issue`, `pack_version`, `classification` (petition_ready_count, citation_only_count, research_lead_only_count, excluded_count, total), `created_at`, `files[]`, `source_documents`, `warnings[]`, `recommended_next_steps[]`.
+
+**Authority classification**:
+- `petition_ready`: citation_check passes, full_text/html_markdown, text ≥ 50 chars, provenance present → draft usable
+- `citation_only`: metadata-only or PDF link only → reference only, bibliography restricted
+- `research_lead_only`: citation_check fails but has some metadata → research direction
+- `excluded`: safety check fails, hash mismatch, unavailable → removed
+
+**Invariants**:
+- metadata_only and pdf_only documents are NEVER petition_ready
+- Hash mismatches cause exclusion
+- No-invention enforcement in petition-instructions.md
+
+**Output files**: petition-brief.json, citation-bank.md, argument-map.md, petition-instructions.md, draft-skeleton.md, petition-pack.json, hash-manifest.json, source-documents/*.md
+
+### `inspect_petition_pack`
+
+**Input**:
+- `pack_dir: str` — Path to petition pack directory
+
+**Output**: `dict` — `ok`, `pack_dir`, `draft_safe`, `pack_version`, `errors[]`, `warnings[]`, `counts` (total_documents, petition_ready, citation_only, research_lead_only, excluded), `checks` (8 validation checks), `recommended_next_steps[]`.
+
+**8 inspection checks**:
+1. `required_files_present` — All 7 required files exist
+2. `draft_safe_flag_correct` — draft_safe flag matches authority classification
+3. `placeholders_in_draft_skeleton` — Placeholder count preserved
+4. `legislation_verified_placeholder` — No hardcoded unverified law refs
+5. `petition_instructions_forbids_invention` — No-invention rule present
+6. `citation_bank_only_safe_docs` — No excluded docs in citation bank
+7. `hash_manifest_valid` — Content hashes match source documents
+8. `metadata_only_draft_usable` — metadata_only never marked draft usable
 
 ## Petition v0.8 Tools
 

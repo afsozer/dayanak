@@ -204,7 +204,7 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | Faz | Milestone | Durum |
 |---|---|---|
 | 1 | M-01 Doküman senkron | [x] |
-| 1 | M-02 Test/coverage | [ ] |
+| 1 | M-02 Test/coverage | [x] |
 | 1 | M-03 Kontrat tutarlılık | [ ] |
 | 1 | M-04 Config/observability | [ ] |
 | 1 | M-05 v1.0.0 release | [ ] |

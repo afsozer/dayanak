@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 
-class UdfError(ValueError):
-    pass
+from .models import build_error
 
 
 UDF_TOOLKIT_VERSION = "0.9.0"
@@ -219,16 +218,17 @@ def probe_udf(path: str | Path) -> dict:
 def _toolkit_unavailable(action: str) -> dict:
     """Return a structured error dict when toolkit is disabled/missing."""
     status = get_udf_toolkit_status()
-    return {
-        "ok": False,
-        "action": action,
-        "error": "toolkit_unavailable",
-        "message": (
-            "UDF toolkit is not available. Set EMSAL_UDF_TOOLKIT_DIR or "
-            "UDF_TOOLKIT_DIR environment variable, or install LibreOffice."
-        ),
-        "toolkit_status": status,
-    }
+    return build_error(
+        "TOOLKIT_UNAVAILABLE",
+        "UDF toolkit is not available. Set EMSAL_UDF_TOOLKIT_DIR or "
+        "UDF_TOOLKIT_DIR environment variable, or install LibreOffice.",
+        action=action,
+        toolkit_status=status,
+        recommended_next_steps=[
+            "Set EMSAL_UDF_TOOLKIT_DIR environment variable.",
+            "Install LibreOffice and ensure soffice is on PATH.",
+        ],
+    )
 
 
 def convert_udf_to_docx(file_path: str | Path, out_path: str | Path | None = None) -> dict:
@@ -244,7 +244,7 @@ def convert_udf_to_docx(file_path: str | Path, out_path: str | Path | None = Non
 
     src = Path(file_path)
     if not src.exists():
-        return {"ok": False, "action": action, "error": "file_not_found", "message": f"UDF file not found: {src}"}
+        return build_error("FILE_NOT_FOUND", f"UDF file not found: {src}", action=action)
 
     out = Path(out_path) if out_path else src.with_suffix(".docx")
     try:
@@ -259,13 +259,12 @@ def convert_udf_to_docx(file_path: str | Path, out_path: str | Path | None = Non
                 timeout=60,
             )
             if result.returncode != 0:
-                return {
-                    "ok": False,
-                    "action": action,
-                    "error": "conversion_failed",
-                    "message": result.stderr.strip() or "LibreOffice conversion failed",
-                    "stdout": result.stdout.strip(),
-                }
+                return build_error(
+                    "CONVERSION_FAILED",
+                    result.stderr.strip() or "LibreOffice conversion failed",
+                    action=action,
+                    stdout=result.stdout.strip(),
+                )
             # LibreOffice may name the output differently; find the generated docx
             generated = out.parent / (src.stem + ".docx")
             return {
@@ -277,7 +276,7 @@ def convert_udf_to_docx(file_path: str | Path, out_path: str | Path | None = Non
             }
         return _toolkit_unavailable(action)
     except Exception as e:
-        return {"ok": False, "action": action, "error": "exception", "message": str(e)}
+        return build_error("EXCEPTION", str(e), action=action)
 
 
 def convert_udf_to_pdf(file_path: str | Path, out_path: str | Path | None = None) -> dict:
@@ -292,7 +291,7 @@ def convert_udf_to_pdf(file_path: str | Path, out_path: str | Path | None = None
 
     src = Path(file_path)
     if not src.exists():
-        return {"ok": False, "action": action, "error": "file_not_found", "message": f"UDF file not found: {src}"}
+        return build_error("FILE_NOT_FOUND", f"UDF file not found: {src}", action=action)
 
     out = Path(out_path) if out_path else src.with_suffix(".pdf")
     try:
@@ -307,13 +306,12 @@ def convert_udf_to_pdf(file_path: str | Path, out_path: str | Path | None = None
                 timeout=60,
             )
             if result.returncode != 0:
-                return {
-                    "ok": False,
-                    "action": action,
-                    "error": "conversion_failed",
-                    "message": result.stderr.strip() or "LibreOffice conversion failed",
-                    "stdout": result.stdout.strip(),
-                }
+                return build_error(
+                    "CONVERSION_FAILED",
+                    result.stderr.strip() or "LibreOffice conversion failed",
+                    action=action,
+                    stdout=result.stdout.strip(),
+                )
             generated = out.parent / (src.stem + ".pdf")
             return {
                 "ok": True,
@@ -323,7 +321,7 @@ def convert_udf_to_pdf(file_path: str | Path, out_path: str | Path | None = None
             }
         return _toolkit_unavailable(action)
     except Exception as e:
-        return {"ok": False, "action": action, "error": "exception", "message": str(e)}
+        return build_error("EXCEPTION", str(e), action=action)
 
 
 def convert_docx_to_udf_experimental(
@@ -338,16 +336,13 @@ def convert_docx_to_udf_experimental(
     """
     action = "convert_docx_to_udf_experimental"
     if not experimental:
-        return {
-            "ok": False,
-            "action": action,
-            "error": "experimental_required",
-            "message": (
-                "DOCX -> UDF conversion requires experimental=True. "
-                "This operation is irreversible and may not produce fully UYAP-compatible files."
-            ),
-            "warning": DOCX_TO_UDF_EXPERIMENTAL_WARNING,
-        }
+        return build_error(
+            "EXPERIMENTAL_REQUIRED",
+            "DOCX -> UDF conversion requires experimental=True. "
+            "This operation is irreversible and may not produce fully UYAP-compatible files.",
+            action=action,
+            warning=DOCX_TO_UDF_EXPERIMENTAL_WARNING,
+        )
 
     status = get_udf_toolkit_status()
     if not status["ok"]:
@@ -355,7 +350,7 @@ def convert_docx_to_udf_experimental(
 
     src = Path(file_path)
     if not src.exists():
-        return {"ok": False, "action": action, "error": "file_not_found", "message": f"DOCX file not found: {src}"}
+        return build_error("FILE_NOT_FOUND", f"DOCX file not found: {src}", action=action)
 
     out = Path(out_path) if out_path else src.with_suffix(".udf")
     try:
@@ -373,12 +368,11 @@ def convert_docx_to_udf_experimental(
             text = ""
 
         if not text.strip():
-            return {
-                "ok": False,
-                "action": action,
-                "error": "empty_document",
-                "message": "Could not extract text from DOCX file or document is empty.",
-            }
+            return build_error(
+                "EMPTY_DOCUMENT",
+                "Could not extract text from DOCX file or document is empty.",
+                action=action,
+            )
 
         write_udf(text, out)
         return {
@@ -391,4 +385,4 @@ def convert_docx_to_udf_experimental(
             "text_length": len(text),
         }
     except Exception as e:
-        return {"ok": False, "action": action, "error": "exception", "message": str(e)}
+        return build_error("EXCEPTION", str(e), action=action)

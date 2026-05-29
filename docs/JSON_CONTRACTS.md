@@ -351,6 +351,218 @@ source_smoke(online=true)              # include online checks
 }
 ```
 
+## Citation Verification & Formatting (v0.6)
+
+### `verify_legal_citation`
+
+Returned by `verify_legal_citation()` and CLI `emsal-mcp cite verify --json`.
+Full pipeline: text/file → extract candidates → local cache search → live search → rank → fetch → format.
+
+```json
+{
+  "ok": true,
+  "candidates": [
+    {
+      "index": 1,
+      "raw_text": "Yargıtay 3. Hukuk Dairesi 2024-06-15 E.2023/12345 K.2024/5678",
+      "parsed": {
+        "court": "Yargıtay",
+        "chamber": "3. Hukuk Dairesi",
+        "date": "2024-06-15",
+        "esas_no": "2023/12345",
+        "karar_no": "2024/5678"
+      },
+      "confidence": "high",
+      "field_count": 5,
+      "warnings": []
+    }
+  ],
+  "search_attempts": [
+    {
+      "candidate_index": 1,
+      "source": "bedesten",
+      "query_method": "cache",
+      "matches_found": 2
+    }
+  ],
+  "matched_documents": [
+    {
+      "document_id": "abc-123",
+      "source": "bedesten",
+      "title": "Yargıtay 3. Hukuk Dairesi Kararı",
+      "match_score": 1.0
+    }
+  ],
+  "formatted_citations": [
+    {
+      "formatted_citation": "Yargıtay, 3. Hukuk Dairesi, E.2023/12345, K.2024/5678, Tarihi: 2024-06-15",
+      "style": "petition",
+      "court": "Yargıtay",
+      "chamber": "3. Hukuk Dairesi",
+      "date": "2024-06-15",
+      "esas_no": "2023/12345",
+      "karar_no": "2024/5678",
+      "document_id": "abc-123",
+      "source": "bedesten",
+      "source_url": "https://...",
+      "content_status": "full_text",
+      "quote_usable": true,
+      "draft_usable": true,
+      "confidence": "high",
+      "warnings": []
+    }
+  ],
+  "verification_findings": {
+    "total_candidates": 3,
+    "searched": 3,
+    "matched": 2,
+    "matched_via_cache": 2,
+    "matched_via_live": 0,
+    "unmatched": 1
+  },
+  "warnings": [],
+  "recommended_next_steps": ["2/3 citations verified with supporting documents."],
+  "timing": {"extraction_ms": 5, "search_ms": 120, "total_ms": 125}
+}
+```
+
+### `format_legal_citation`
+
+Returned by `format_legal_citation()` and CLI `emsal-mcp cite format --json`.
+Formats a citation from a Document model or dict using one of three styles:
+`petition`, `parenthetical`, or `short`.
+
+**Styles:**
+
+| Style | Example |
+|---|---|
+| `petition` | "Yargıtay, 3. Hukuk Dairesi, E.2023/12345, K.2024/5678, Tarihi: 2024-06-15" |
+| `parenthetical` | "(Yargıtay, 3. Hukuk Dairesi, 2024-06-15, E.2023/12345, K.2024/5678)" |
+| `short` | "Ygt. 2023/12345" |
+
+**No fabrication:** missing metadata fields produce warnings, never invented values.
+
+### Citation Extraction
+
+`extract_citation_candidates()` detects Turkish legal citation patterns:
+Yargıtay, Danıştay, AYM, Sayıştay, Rekabet Kurulu, Ticaret Mahkemesi, and more.
+Extracts court, chamber, date (DD.MM.YYYY / YYYY-MM-DD / Turkish month names),
+esas_no, karar_no, and document_id-like references.
+
+**Confidence scoring:** high (5+ fields), medium (3–4), low (<3).
+Missing fields produce warnings, never fabricated values.
+
+## Petition Pack v2 (v0.7)
+
+### `prepare_drafting_input_pack`
+
+Returned by `prepare_drafting_input_pack()` and CLI `emsal-mcp petition pack --json`.
+Classifies authorities and generates structured pack directory.
+
+```json
+{
+  "ok": true,
+  "pack_dir": "petition_pack/",
+  "matter": "Konut tahliye davası",
+  "issue": "Kira sözleşmesi feshi",
+  "pack_version": "0.8.0",
+  "classification": {
+    "petition_ready_count": 2,
+    "citation_only_count": 1,
+    "research_lead_only_count": 0,
+    "excluded_count": 1,
+    "total": 4
+  },
+  "created_at": "2026-05-29T12:00:00+00:00",
+  "files": [
+    "petition-brief.json",
+    "citation-bank.md",
+    "argument-map.md",
+    "petition-instructions.md",
+    "draft-skeleton.md",
+    "petition-pack.json",
+    "hash-manifest.json"
+  ],
+  "source_documents": 2,
+  "warnings": [],
+  "recommended_next_steps": [
+    "Pack ready for inspection: emsal-mcp petition inspect petition_pack/",
+    "Pack ready for draft: emsal-mcp petition draft petition_pack/"
+  ]
+}
+```
+
+**Authority Classification:**
+
+| Category | Criteria | Draft Usable |
+|---|---|---|
+| `petition_ready` | citation_check passes, full_text/html_markdown, text ≥ 50 chars, provenance present | Yes |
+| `citation_only` | citation_check passes on metadata, or PDF link only | No (reference only) |
+| `research_lead_only` | citation_check fails but has some metadata | No (research direction) |
+| `excluded` | safety check fails, hash mismatch, or unavailable | No |
+
+**Pack Directory Structure:**
+
+```
+petition_pack/
+├── petition-brief.json
+├── citation-bank.md
+├── argument-map.md
+├── petition-instructions.md
+├── draft-skeleton.md
+├── petition-pack.json
+├── hash-manifest.json
+└── source-documents/
+    ├── bedesten_docid.md
+    └── ...
+```
+
+### `inspect_petition_pack`
+
+Returned by `inspect_petition_pack()` and CLI `emsal-mcp petition inspect --json`.
+Validates pack directory with 8 checks.
+
+```json
+{
+  "ok": true,
+  "pack_dir": "petition_pack/",
+  "draft_safe": true,
+  "pack_version": "0.8.0",
+  "errors": [],
+  "warnings": [],
+  "counts": {
+    "total_documents": 4,
+    "petition_ready": 2,
+    "citation_only": 1,
+    "research_lead_only": 0,
+    "excluded": 1
+  },
+  "checks": {
+    "required_files_present": true,
+    "draft_safe_flag_correct": true,
+    "placeholders_in_draft_skeleton": true,
+    "legislation_verified_placeholder": true,
+    "petition_instructions_forbids_invention": true,
+    "citation_bank_only_safe_docs": true,
+    "hash_manifest_valid": true,
+    "metadata_only_draft_usable": true
+  }
+}
+```
+
+**Inspection checks:**
+
+| Check | Description |
+|---|---|
+| `required_files_present` | All 7 required files exist |
+| `draft_safe_flag_correct` | `draft_safe` flag matches authority classification |
+| `placeholders_in_draft_skeleton` | Placeholder count preserved |
+| `legislation_verified_placeholder` | No hardcoded unverified law refs |
+| `petition_instructions_forbids_invention` | No-invention rule present |
+| `citation_bank_only_safe_docs` | No excluded docs in citation bank |
+| `hash_manifest_valid` | Content hashes match source documents |
+| `metadata_only_draft_usable` | metadata_only never marked draft usable |
+
 ## Petition Outline (v0.8)
 
 Returned by `prepare_petition_outline` and CLI `emsal-mcp petition outline --json`.

@@ -411,3 +411,50 @@ def finalize_document(doc: Document, warnings: list[str] | None = None) -> Docum
         doc.metadata["_emsal_warnings"] = existing + w
 
     return doc
+
+
+def build_error(
+    error_code: str,
+    message: str,
+    *,
+    ok: bool = False,
+    source: str | None = None,
+    retryable: bool = False,
+    warnings: list[str] | None = None,
+    recommended_next_steps: list[str] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    """Build a canonical error dict for consistent error shapes.
+
+    All modules should use this helper for structured error responses
+    instead of ad-hoc dicts.  This ensures every error response has
+    `ok`, `errorCode`, `message`, and optional context fields.
+
+    Args:
+        error_code: Machine-readable error code (e.g. "TOOLKIT_UNAVAILABLE").
+        message: Human-readable error description.
+        ok: Always False for errors (kept as kwarg for clarity).
+        source: Optional source identifier that produced the error.
+        retryable: Whether the operation can be retried.
+        warnings: Optional list of non-fatal warning strings.
+        recommended_next_steps: Optional actionable next steps.
+        **extra: Additional fields attached to the error dict.
+
+    Returns:
+        Dict with canonical keys: ok, errorCode, message, and any extra fields.
+    """
+    result: dict[str, Any] = {
+        "ok": ok,
+        "errorCode": error_code,
+        "message": message,
+    }
+    if source is not None:
+        result["source"] = source
+    if retryable:
+        result["retryable"] = True
+    if warnings:
+        result["warnings"] = list(warnings)
+    if recommended_next_steps:
+        result["recommended_next_steps"] = list(recommended_next_steps)
+    result.update(extra)
+    return result
