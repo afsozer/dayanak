@@ -3,6 +3,15 @@ from __future__ import annotations
 import json
 
 from .cache import Cache
+from .server_utils import (
+    get_active_requests,
+    get_error_codes,
+    validate_is_dict_with_keys,
+    validate_non_empty,
+    validate_positive_int,
+    validate_range,
+    validate_tool_input,
+)
 from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
 from .document import controlled_draft, export_bundle as export_bundle_impl
 from .legislation import (
@@ -98,7 +107,19 @@ def main() -> None:
     mcp = FastMCP("emsal-mcp")
 
     @mcp.tool()
+    @validate_tool_input(query=validate_non_empty, limit=validate_positive_int)
     async def search_decisions(source: str, query: str, limit: int = 10, page: int = 1) -> list[dict]:
+        """Search court decisions from a given source.
+
+        Args:
+            source: Source identifier (e.g. 'bedesten', 'mevzuat').
+            query: Search query string (must not be empty).
+            limit: Max results (default 10, must be positive).
+            page: Page number for pagination (default 1).
+
+        Returns:
+            List of matching document dicts.
+        """
         results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page)]
         # Store search results in cache for later local search
         cache = Cache()
@@ -107,7 +128,17 @@ def main() -> None:
         return results
 
     @mcp.tool()
+    @validate_tool_input(document_id=validate_non_empty)
     async def get_document(source: str, document_id: str) -> dict:
+        """Fetch a single document by ID from the given source.
+
+        Args:
+            source: Source identifier.
+            document_id: Document ID (must not be empty).
+
+        Returns:
+            Document dict with all metadata and content fields.
+        """
         doc = await get_source(source).get_document(document_id)
         cache = Cache()
         cache.set(f"doc:{source}:{document_id}", doc.model_dump(mode="json"))
@@ -118,6 +149,7 @@ def main() -> None:
 
     @mcp.tool()
     def source_capabilities() -> list[dict]:
+        """Return capability matrix for all registered sources."""
         return capabilities()
 
     @mcp.tool()
@@ -132,11 +164,36 @@ def main() -> None:
         }
 
     @mcp.tool()
+    @validate_tool_input(document=validate_is_dict_with_keys("document_id", "source"))
     def citation_safety(document: dict) -> dict:
+        """Check citation safety of a document.
+
+        Verifies full text availability, content status, and minimum provenance
+        metadata. Returns ok=True only if the document is safe for quoting.
+
+        Args:
+            document: Document dict with document_id, source, and metadata fields.
+
+        Returns:
+            Dict with ok, quoteUsable, draftUsable, reasons, safety_state.
+        """
         return citation_check(Document.model_validate(document)).model_dump(mode="json")
 
     @mcp.tool()
+    @validate_tool_input(matter=validate_non_empty, issue=validate_non_empty)
     def build_input_pack(matter: str, issue: str, documents: list[dict]) -> dict:
+        """Build a citation-safe input pack for petition drafting.
+
+        Filters unsafe documents and builds an InputPack with stable pack_id.
+
+        Args:
+            matter: Legal matter description (must not be empty).
+            issue: Legal issue description (must not be empty).
+            documents: List of Document dicts to classify.
+
+        Returns:
+            Dict with matter, issue, documents, safe_citations, excluded, warnings.
+        """
         docs = [Document.model_validate(d) for d in documents]
         return build_input_pack_impl(matter, issue, docs).model_dump(mode="json")
 
@@ -1083,6 +1140,7 @@ def main() -> None:
         )
 
     @mcp.tool()
+    @validate_tool_input(limit=validate_positive_int, hybrid_weight=validate_range(0.0, 1.0))
     def hybrid_search(
         query: str,
         limit: int = 10,
@@ -1654,6 +1712,35 @@ def main() -> None:
         from .circuit import reset_circuit as reset_circuit_impl
 
         return reset_circuit_impl(source)
+
+    # ── Server Hardening MCP tools (M-22) ───────────────────────────
+
+    @mcp.tool()
+    def error_catalog() -> dict:
+        """Return all known error codes used in build_error() calls.
+
+        Useful for integration tests and error-code validation.
+
+        Returns:
+            Dict with ok, known_codes list, total count.
+        """
+        catalog = get_error_codes()
+        return {"ok": True, **catalog}
+
+    @mcp.tool()
+    def active_requests_count() -> dict:
+        """Return the number of currently active MCP tool requests.
+
+        Informational counter — single-user design assumption preserved.
+
+        Returns:
+            Dict with ok, active_requests, note.
+        """
+        return {
+            "ok": True,
+            "active_requests": get_active_requests(),
+            "note": "Informational counter. Single-user design: no concurrency locks.",
+        }
 
     mcp.run()
 
