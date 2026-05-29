@@ -434,3 +434,279 @@ def merge_cluster(cluster_id: str, cache: Any = None) -> dict[str, Any]:
     finally:
         if own_cache:
             cache.close()
+
+
+# ---------------------------------------------------------------------------
+# Fuzzy Dedup v2 (M-28) — embedding-based near-duplicate detection
+# ---------------------------------------------------------------------------
+
+
+def _cosine_similarity_dense(vec_a: list[float], vec_b: list[float]) -> float:
+    """Cosine similarity between two dense float vectors."""
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = (sum(a * a for a in vec_a)) ** 0.5
+    norm_b = (sum(b * b for b in vec_b)) ** 0.5
+    denom = norm_a * norm_b
+    return dot / denom if denom > 0 else 0.0
+
+
+def find_fuzzy_duplicates(
+    cache: Any = None,
+    *,
+    provider: str | None = None,
+    cosine_threshold: float = 0.85,
+    max_date_diff_days: int = 365,
+) -> dict[str, Any]:
+    """Find suspected fuzzy duplicates using dense embeddings.
+
+    Only uses embedding_vectors table (requires M-24 dense index).
+    Compares document pairs within same court.
+
+    CRITICAL INVARIANT: This function ONLY reports candidate pairs. It NEVER
+    auto-merges.  All merges require explicit user confirmation.
+
+    Args:
+        cache: Cache instance. If None, a new one is created.
+        provider: Embedding provider to use. Default: from config/env.
+        cosine_threshold: Cosine similarity threshold (0.0–1.0). Default 0.85.
+        max_date_diff_days: Maximum date difference in days to consider. Default 365.
+
+    Returns:
+        Dict with ok, suspected_duplicates, total_suspected, warnings.
+        Each suspected pair includes doc_a, doc_b, cosine_score, date_diff_days,
+        confidence, recommendation.
+    """
+    from .cache import Cache
+    from .embeddings import get_embedding_provider, unpack_vector
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+
+        # Check if embedding_vectors table exists
+        ev_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='embedding_vectors'"
+        ).fetchone()
+        if not ev_exists:
+            return {
+                "ok": True,
+                "suspected_duplicates": [],
+                "total_suspected": 0,
+                "warnings": [
+                    "No embedding vectors found. Run build_embedding_index() first."
+                ],
+            }
+
+        prov = get_embedding_provider(provider)
+        if prov is None:
+            return {
+                "ok": False,
+                "suspected_duplicates": [],
+                "total_suspected": 0,
+                "warnings": [
+                    "No embedding provider available. "
+                    "Build dense index first with build_embedding_index()."
+                ],
+            }
+
+        # Get all dense vectors joined with document metadata
+        rows = db.execute(
+            """
+            SELECT ev.document_id, ev.source, ev.vector, ev.norm, ev.dim,
+                   dv.court, dv.decision_date, dv.title, dv.esas_no, dv.karar_no
+            FROM embedding_vectors ev
+            JOIN documents_v2 dv ON ev.document_id = dv.document_id AND ev.source = dv.source
+            WHERE ev.provider_id = ?
+            """,
+            (prov.id,),
+        ).fetchall()
+
+        if len(rows) < 2:
+            return {
+                "ok": True,
+                "suspected_duplicates": [],
+                "total_suspected": 0,
+                "warnings": [
+                    "Need at least 2 indexed documents for fuzzy comparison."
+                ],
+            }
+
+        # Group by court
+        by_court: dict[str, list] = {}
+        for r in rows:
+            court = r["court"] or "unknown"
+            by_court.setdefault(court, []).append(r)
+
+        suspected: list[dict[str, Any]] = []
+
+        for court, docs in by_court.items():
+            for i in range(len(docs)):
+                for j in range(i + 1, len(docs)):
+                    a, b = docs[i], docs[j]
+
+                    # Skip same document (identical id + source)
+                    if a["document_id"] == b["document_id"] and a["source"] == b["source"]:
+                        continue
+
+                    # Skip if M-09 already detected them in the same cluster
+                    in_same_cluster = db.execute(
+                        """
+                        SELECT 1 FROM dedup_members dm1
+                        JOIN dedup_members dm2 ON dm1.cluster_id = dm2.cluster_id
+                        WHERE dm1.document_id = ? AND dm1.source = ?
+                          AND dm2.document_id = ? AND dm2.source = ?
+                        """,
+                        (a["document_id"], a["source"], b["document_id"], b["source"]),
+                    ).fetchone()
+
+                    if in_same_cluster:
+                        continue
+
+                    # Compute cosine similarity from stored vectors
+                    va = unpack_vector(a["vector"], a["dim"])
+                    vb = unpack_vector(b["vector"], b["dim"])
+                    dot = sum(va[k] * vb[k] for k in range(min(len(va), len(vb))))
+                    denom = a["norm"] * b["norm"]
+                    cosine = dot / denom if denom > 0 else 0.0
+
+                    if cosine < cosine_threshold:
+                        continue
+
+                    # Check date proximity
+                    date_diff: int | None = None
+                    try:
+                        da = a["decision_date"]
+                        db_date = b["decision_date"]
+                        if da and db_date:
+                            from datetime import datetime
+                            for fmt in ("%Y-%m-%d", "%d.%m.%Y"):
+                                try:
+                                    pa = datetime.strptime(da, fmt)
+                                    pb = datetime.strptime(db_date, fmt)
+                                    date_diff = abs((pa - pb).days)
+                                    break
+                                except ValueError:
+                                    continue
+                    except Exception:
+                        pass
+
+                    if date_diff is not None and date_diff > max_date_diff_days:
+                        continue
+
+                    # Confidence based on cosine score
+                    if cosine > 0.95:
+                        confidence = "high"
+                    elif cosine > 0.90:
+                        confidence = "medium"
+                    else:
+                        confidence = "low"
+
+                    suspected.append({
+                        "doc_a": {
+                            "document_id": a["document_id"],
+                            "source": a["source"],
+                            "title": a["title"],
+                        },
+                        "doc_b": {
+                            "document_id": b["document_id"],
+                            "source": b["source"],
+                            "title": b["title"],
+                        },
+                        "cosine_score": round(cosine, 6),
+                        "date_diff_days": date_diff,
+                        "confidence": confidence,
+                        "recommendation": "MANUAL_REVIEW_REQUIRED — do not auto-merge",
+                    })
+
+        # Sort by cosine score descending
+        suspected.sort(key=lambda x: x["cosine_score"], reverse=True)
+
+        return {
+            "ok": True,
+            "suspected_duplicates": suspected,
+            "total_suspected": len(suspected),
+            "warnings": [
+                "EMBEDDING-BASED SUGGESTIONS ONLY — merge requires explicit user confirmation."
+            ],
+        }
+    except Exception as exc:
+        return build_error("FUZZY_DEDUP_FAILED", str(exc))
+    finally:
+        if own_cache:
+            try:
+                c.close()
+            except Exception:
+                pass
+
+
+def _extract_year(date_str: str | None) -> int | None:
+    """Extract year from a datetime or date string."""
+    if not date_str:
+        return None
+    # Try ISO format: "2024-05-15" or "2024-05-15T..."
+    try:
+        return int(date_str[:4])
+    except (ValueError, TypeError):
+        pass
+    # Try other formats with regex
+    import re
+    m = re.search(r'(19|20)\d{2}', str(date_str))
+    return int(m.group()) if m else None
+
+
+def get_fuzzy_dedup_stats(cache: Any = None) -> dict[str, Any]:
+    """Report fuzzy dedup statistics.
+
+    Checks availability of embedding vectors required for fuzzy matching.
+
+    Returns:
+        Dict with ok, embedded_document_count, provider, threshold_default.
+    """
+    from .cache import Cache
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+
+        ev_exists = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='embedding_vectors'"
+        ).fetchone()
+
+        if ev_exists:
+            embedded_count = db.execute(
+                "SELECT COUNT(DISTINCT document_id || '|' || source) FROM embedding_vectors"
+            ).fetchone()[0]
+            providers = db.execute(
+                "SELECT provider_id, COUNT(*) as cnt FROM embedding_vectors "
+                "GROUP BY provider_id"
+            ).fetchall()
+        else:
+            embedded_count = 0
+            providers = []
+
+        total_docs = db.execute(
+            "SELECT COUNT(*) FROM documents_v2 "
+            "WHERE (full_text IS NOT NULL AND full_text != '') "
+            "OR (markdown IS NOT NULL AND markdown != '')"
+        ).fetchone()[0]
+
+        return {
+            "ok": True,
+            "total_documents": total_docs,
+            "embedded_documents": embedded_count,
+            "unembedded_documents": max(0, total_docs - embedded_count),
+            "providers": [dict(r) for r in providers],
+            "default_threshold": 0.85,
+            "requires_embeddings": embedded_count < 2,
+            "ready": embedded_count >= 2,
+        }
+    finally:
+        if own_cache:
+            try:
+                c.close()
+            except Exception:
+                pass

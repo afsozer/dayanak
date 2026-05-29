@@ -6,8 +6,10 @@ import json
 from emsal_mcp.cache import Cache
 from emsal_mcp.dedup import (
     find_duplicates,
+    find_fuzzy_duplicates,
     get_dedup_cluster,
     get_dedup_stats,
+    get_fuzzy_dedup_stats,
     merge_cluster,
 )
 from emsal_mcp.models import ContentStatus, Document
@@ -25,6 +27,7 @@ def _make_doc(
     markdown: str | None = None,
     source_url: str | None = None,
     retrieved_at: str | None = None,
+    decision_date: str | None = None,
 ) -> Document:
     """Helper to create a Document for testing."""
     doc = Document(
@@ -38,6 +41,7 @@ def _make_doc(
         full_text=full_text,
         markdown=markdown,
         source_url=source_url,
+        decision_date=decision_date,
     )
     if retrieved_at:
         doc.retrieved_at = retrieved_at
@@ -384,3 +388,139 @@ class TestImports:
         assert callable(get_dedup_cluster)
         assert callable(get_dedup_stats)
         assert callable(merge_cluster)
+
+
+# ===================================================================
+# Fuzzy Dedup v2 (M-28)
+# ===================================================================
+
+
+class TestFindFuzzyDuplicates:
+    """Tests for find_fuzzy_duplicates() — embedding-based near-duplicate detection."""
+
+    def test_no_embedding_vectors_graceful(self, tmp_path):
+        """When no embedding_vectors table exists, returns ok with empty suspected_duplicates."""
+        cache = Cache(tmp_path / "fz_no_ev.sqlite3")
+        try:
+            result = find_fuzzy_duplicates(cache=cache)
+            assert result["ok"] is True
+            assert result["suspected_duplicates"] == []
+            assert result["total_suspected"] == 0
+            assert len(result["warnings"]) > 0
+        finally:
+            cache.close()
+
+
+class TestFuzzyDedupStats:
+    """Tests for get_fuzzy_dedup_stats()."""
+
+    def test_fuzzy_stats_no_embeddings(self, tmp_path):
+        """When no embeddings exist, reports not ready."""
+        cache = Cache(tmp_path / "fzs_no_emb.sqlite3")
+        try:
+            result = get_fuzzy_dedup_stats(cache=cache)
+            assert result["ok"] is True
+            assert result["embedded_documents"] == 0
+            assert result["ready"] is False
+        finally:
+            cache.close()
+
+    def test_fuzzy_stats_expected_keys(self, tmp_path):
+        """Result dict has all expected keys."""
+        cache = Cache(tmp_path / "fzs_keys.sqlite3")
+        try:
+            result = get_fuzzy_dedup_stats(cache=cache)
+            expected = {
+                "ok", "total_documents", "embedded_documents",
+                "unembedded_documents", "providers", "default_threshold",
+                "requires_embeddings", "ready",
+            }
+            assert expected.issubset(set(result.keys()))
+        finally:
+            cache.close()
+
+    def test_fuzzy_stats_no_cache_creates_own(self):
+        """Calling without a cache parameter should still work."""
+        result = get_fuzzy_dedup_stats(cache=None)
+        assert result["ok"] is True
+
+
+class TestStrictDedupPreserved:
+    """M-09 strict dedup behavior must NOT be broken by M-28."""
+
+    def test_strict_dedup_still_works(self, tmp_path):
+        """Existing strict dedup (court+esas+karar) is unaffected."""
+        cache = Cache(tmp_path / "strict_ok.sqlite3")
+        try:
+            doc1 = _make_doc("yargitay", "doc1", full_text="Content A")
+            doc2 = _make_doc("bedesten", "doc2", full_text="Content B")
+            cache.store_document(doc1)
+            cache.store_document(doc2)
+
+            result = find_duplicates(cache=cache)
+            assert result["ok"] is True
+            assert result["clusters_found"] == 1
+            assert result["total_duplicates"] == 2
+        finally:
+            cache.close()
+
+    def test_strict_dedup_rejects_false_matches(self, tmp_path):
+        """Different esas_no documents are NOT merged — strict dedup invariant."""
+        cache = Cache(tmp_path / "strict_reject.sqlite3")
+        try:
+            doc1 = _make_doc("yargitay", "doc1", esas_no="2023/111")
+            doc2 = _make_doc("bedesten", "doc2", esas_no="2023/222")
+            cache.store_document(doc1)
+            cache.store_document(doc2)
+
+            result = find_duplicates(cache=cache)
+            assert result["ok"] is True
+            assert result["clusters_found"] == 0
+        finally:
+            cache.close()
+
+
+class TestFuzzyDedupImports:
+    """All new fuzzy dedup functions import cleanly."""
+
+    def test_fuzzy_imports(self):
+        from emsal_mcp.dedup import (
+            find_fuzzy_duplicates,
+            get_fuzzy_dedup_stats,
+            _cosine_similarity_dense,
+            _extract_year,
+        )
+        assert callable(find_fuzzy_duplicates)
+        assert callable(get_fuzzy_dedup_stats)
+        assert callable(_cosine_similarity_dense)
+        assert callable(_extract_year)
+
+    def test_cosine_similarity_math(self):
+        """_cosine_similarity_dense computes correct cosine."""
+        from emsal_mcp.dedup import _cosine_similarity_dense
+        # Identical vectors → 1.0
+        v = [1.0, 2.0, 3.0]
+        sim = _cosine_similarity_dense(v, v)
+        assert abs(sim - 1.0) < 0.0001
+        # Orthogonal vectors → 0.0
+        sim2 = _cosine_similarity_dense([1.0, 0.0], [0.0, 1.0])
+        assert abs(sim2 - 0.0) < 0.0001
+
+    def test_extract_year(self):
+        """_extract_year correctly extracts years from various formats."""
+        from emsal_mcp.dedup import _extract_year
+        assert _extract_year("2024-05-15") == 2024
+        assert _extract_year("2024-05-15T10:30:00+00:00") == 2024
+        assert _extract_year("15.05.2024") == 2024
+        assert _extract_year(None) is None
+        assert _extract_year("") is None
+
+    def test_cli_fuzzy_duplicates_importable(self):
+        """CLI fuzzy-duplicates command is importable."""
+        from emsal_mcp.cli import app
+        assert app is not None
+
+    def test_mcp_fuzzy_duplicates_importable(self):
+        """MCP server with find_fuzzy_duplicates tool is importable."""
+        from emsal_mcp.server import main
+        assert callable(main)

@@ -418,11 +418,11 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 7 | M-25 Cross-encoder reranking | [x] |
 | 7 | M-26 Incremental index | [x] |
 | 7 | M-27 PDF/OCR çıkarım | [x] |
-| 7 | M-28 Fuzzy dedup v2 | [ ] |
-| 8 | M-29 Async concurrency/pooling | [ ] |
-| 8 | M-30 Adaptive throttle/calibrate | [ ] |
-| 8 | M-31 Benchmark suite | [ ] |
-| 8 | M-32 Embedding cache | [ ] |
+| 7 | M-28 Fuzzy dedup v2 | [x] |
+| 8 | M-29 Async concurrency/pooling | [x] |
+| 8 | M-30 Adaptive throttle/calibrate | [x] |
+| 8 | M-31 Benchmark suite | [x] |
+| 8 | M-32 Embedding cache | [x] |
 | 9 | M-33 HTTP/REST API | [ ] |
 | 9 | M-34 Çok-makine cache sync | [ ] |
 | 9 | M-35 Adapter SDK/plugin | [ ] |

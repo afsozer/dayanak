@@ -88,8 +88,10 @@ from .citation_graph import (
 )
 from .dedup import (
     find_duplicates as find_duplicates_impl,
+    find_fuzzy_duplicates as find_fuzzy_duplicates_impl,
     get_dedup_cluster as get_dedup_cluster_impl,
     get_dedup_stats as get_dedup_stats_impl,
+    get_fuzzy_dedup_stats as get_fuzzy_dedup_stats_impl,
     merge_cluster as merge_cluster_impl,
 )
 from .exporter import (
@@ -115,15 +117,22 @@ from .circuit import (
     get_source_health,
     reset_circuit,
 )
-from .pdf_extract import (
-    extract_pdf_text,
-    get_pdf_toolkit_status,
-    promote_pdf_to_full_text,
-)
 from .router import (
     get_capable_sources as get_capable_sources_impl,
     route_get_document as route_get_document_impl,
     route_search as route_search_impl,
+)
+from .calibrate import (
+    calibrate_source as calibrate_source_impl,
+    calibrate_all as calibrate_all_impl,
+)
+from .benchmark import (
+    run_benchmarks as run_benchmarks_impl,
+)
+from .pdf_extractor import (
+    extract_pdf_text_from_file,
+    get_pdf_toolkit_status,
+    promote_pdf_to_full_text as promote_pdf_impl,
 )
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
@@ -145,6 +154,7 @@ export_app = typer.Typer(help="Export formats: plain text, DOCX, PDF, UDF")
 circuit_app = typer.Typer(help="Circuit breaker: status, health, reset")
 router_app = typer.Typer(help="Capability-based routing: capable sources, search routing, document routing")
 pdf_app = typer.Typer(help="PDF content extraction: text layer, toolkit status")
+calibrate_app = typer.Typer(help="Source calibration: measure safe request rates")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -163,6 +173,7 @@ app.add_typer(export_app, name="export")
 app.add_typer(circuit_app, name="circuit")
 app.add_typer(router_app, name="router")
 app.add_typer(pdf_app, name="pdf")
+app.add_typer(calibrate_app, name="calibrate")
 
 
 def _print(obj, json_out: bool):
@@ -485,6 +496,44 @@ def cache_merge_cluster(
     cache = Cache(cache_path)
     try:
         result = merge_cluster_impl(cluster_id=cluster_id, cache=cache)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@cache_app.command("fuzzy-duplicates")
+def cache_fuzzy_duplicates(
+    provider: Optional[str] = typer.Option(None, help="Embedding provider (default: from config)"),
+    threshold: float = typer.Option(0.85, help="Cosine similarity threshold (0.0–1.0)"),
+    max_date_diff_days: int = typer.Option(365, help="Max date difference in days"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Find fuzzy duplicate candidates using dense embeddings.
+
+    Reports suspected_duplicate pairs — NEVER auto-merges.
+    Uses embedding vectors (M-24). Requires build_embedding_index() first.
+    """
+    cache = Cache(cache_path)
+    try:
+        result = find_fuzzy_duplicates_impl(
+            cache=cache, provider=provider,
+            cosine_threshold=threshold, max_date_diff_days=max_date_diff_days,
+        )
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@cache_app.command("fuzzy-dedup-stats")
+def cache_fuzzy_dedup_stats(
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Report fuzzy dedup readiness and embedding availability."""
+    cache = Cache(cache_path)
+    try:
+        result = get_fuzzy_dedup_stats_impl(cache=cache)
         _print(result, json_out)
     finally:
         cache.close()
@@ -1543,7 +1592,7 @@ def pdf_extract(
     json_out: bool = typer.Option(False, "--json"),
 ):
     """Extract text layer from a PDF file."""
-    _print(extract_pdf_text(path, ocr_enabled=ocr), json_out)
+    _print(extract_pdf_text_from_file(str(path), ocr_enabled=ocr), json_out)
 
 
 @pdf_app.command("toolkit-status")
@@ -1563,7 +1612,41 @@ def pdf_promote(
     """Try to promote a pdf_only Document to full_text."""
     import json as json_mod
     doc = json_mod.loads(document_json)
-    _print(promote_pdf_to_full_text(doc, ocr_enabled=ocr), json_out)
+    _print(promote_pdf_impl(doc, ocr_enabled=ocr), json_out)
+
+
+# ── Calibrate subcommands (M-30) ──────────────────────────────────────────
+
+
+@calibrate_app.command("source")
+def calibrate_source_cmd(
+    source_id: str = typer.Argument(..., help="Source ID to calibrate"),
+    online: bool = typer.Option(False, "--online", help="Make actual HTTP calls"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Measure safe request rate for a source."""
+    _print(calibrate_source_impl(source_id, online=online), json_out)
+
+
+@calibrate_app.command("all")
+def calibrate_all_cmd(
+    online: bool = typer.Option(False, "--online", help="Make actual HTTP calls"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Calibrate all registered sources."""
+    _print(calibrate_all_impl(online=online), json_out)
+
+
+# ── Benchmark (M-31) ───────────────────────────────────────────────────────
+
+
+@app.command("benchmark")
+def benchmark_cmd(
+    corpus_size: int = typer.Option(50, help="Synthetic corpus size"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Run micro-benchmark suite (deterministic corpus)."""
+    _print(run_benchmarks_impl(corpus_size=corpus_size), json_out)
 
 
 if __name__ == "__main__":

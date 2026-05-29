@@ -1568,6 +1568,52 @@ def main() -> None:
         finally:
             cache.close()
 
+    @mcp.tool()
+    def find_fuzzy_duplicates(
+        provider: str | None = None,
+        threshold: float = 0.85,
+        max_date_diff_days: int = 365,
+    ) -> dict:
+        """Find near-duplicate documents using dense embedding similarity.
+
+        Reports suspected_duplicate pairs based on embedding cosine similarity
+        within the same court. Never auto-merges — all merges require explicit
+        confirmation. Requires embedding vectors from build_embedding_index().
+
+        Args:
+            provider: Embedding provider (default: from config).
+            threshold: Cosine similarity threshold (0.0-1.0, default 0.85).
+            max_date_diff_days: Max date difference in days (default 365).
+
+        Returns:
+            Dict with ok, suspected_duplicates, total_suspected, warnings.
+        """
+        from .dedup import find_fuzzy_duplicates as find_fuzzy_duplicates_impl
+        cache = Cache()
+        try:
+            return find_fuzzy_duplicates_impl(
+                cache=cache, provider=provider,
+                cosine_threshold=threshold, max_date_diff_days=max_date_diff_days,
+            )
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def fuzzy_dedup_stats() -> dict:
+        """Report fuzzy dedup readiness.
+
+        Shows embedding availability for near-duplicate detection.
+
+        Returns:
+            Dict with ok, embedded_documents, providers, ready flag.
+        """
+        from .dedup import get_fuzzy_dedup_stats as get_fuzzy_dedup_stats_impl
+        cache = Cache()
+        try:
+            return get_fuzzy_dedup_stats_impl(cache=cache)
+        finally:
+            cache.close()
+
     # ── Release v0.13 MCP tools ──────────────────────────────────────────
 
     @mcp.tool()

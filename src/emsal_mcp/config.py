@@ -288,6 +288,20 @@ class EmsalConfig:
         """
         return os.environ.get("EMSAL_OCR_LANGUAGE", "tur").strip()
 
+    # ── Concurrency control ───────────────────────────────────────────
+
+    @property
+    def max_concurrency(self) -> int:
+        """Maximum number of concurrent source requests.
+
+        Env: EMSAL_MAX_CONCURRENCY (default: 3)
+        Conservative default — single-user design preserved.
+        """
+        try:
+            return int(os.environ.get("EMSAL_MAX_CONCURRENCY", "3"))
+        except ValueError:
+            return 3
+
     # ── Doctor / diagnostic ───────────────────────────────────────────────
 
     def doctor(self) -> dict[str, Any]:
