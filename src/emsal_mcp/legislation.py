@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from .models import ContentStatus, Document, SearchResult
+from .models import ContentStatus, Document
 from .safety import citation_check
 from .sources.registry import capabilities as get_capabilities, smoke_all_sync
 
