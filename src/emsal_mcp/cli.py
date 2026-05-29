@@ -316,6 +316,42 @@ def cache_import(
     cache.close()
 
 
+@cache_app.command("compact")
+def cache_compact(
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Run VACUUM to reclaim space and defragment the cache database."""
+    cache = Cache(cache_path)
+    result = cache.vacuum_cache()
+    _print(result, json_out)
+    cache.close()
+
+
+@cache_app.command("cleanup-orphans")
+def cache_cleanup_orphans(
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Remove orphan rows from search_vectors and documents_v2_fts."""
+    cache = Cache(cache_path)
+    result = cache.cleanup_orphans()
+    _print(result, json_out)
+    cache.close()
+
+
+@cache_app.command("integrity-check")
+def cache_integrity_check(
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Run comprehensive integrity checks on the cache database."""
+    cache = Cache(cache_path)
+    result = cache.check_integrity_full()
+    _print(result, json_out)
+    cache.close()
+
+
 # ── Release subcommands ────────────────────────────────────────────────────
 
 

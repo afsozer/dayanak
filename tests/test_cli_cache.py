@@ -5,7 +5,7 @@ import json
 
 from typer.testing import CliRunner
 
-from emsal_mcp.cache import Cache
+from emsal_mcp.cache import Cache, CACHE_SCHEMA_VERSION
 from emsal_mcp.cli import app
 from emsal_mcp.models import ContentStatus, Document
 
@@ -109,7 +109,7 @@ class TestCliCacheSubcommands:
         assert result.exit_code == 0
         assert export.exists()
         data = json.loads(export.read_text(encoding="utf-8"))
-        assert data["schemaVersion"] == 2
+        assert data["schemaVersion"] == CACHE_SCHEMA_VERSION
         assert data["documentCount"] == 3
         assert len(data["documents"]) == 3
         assert "Exported 3 documents" in result.output

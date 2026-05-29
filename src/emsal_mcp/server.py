@@ -243,6 +243,48 @@ def main() -> None:
         finally:
             cache.close()
 
+    @mcp.tool()
+    def cache_vacuum() -> dict:
+        """Run VACUUM to reclaim space and defragment the cache database.
+
+        Returns dict with ok, size_before, size_after, freed_bytes.
+        """
+        cache = Cache()
+        try:
+            return cache.vacuum_cache()
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def cache_cleanup_orphans() -> dict:
+        """Remove orphan rows from search_vectors and documents_v2_fts.
+
+        An orphan is a row whose (document_id, source) pair doesn't exist
+        in documents_v2.
+
+        Returns dict with ok, orphans_removed, details.
+        """
+        cache = Cache()
+        try:
+            return cache.cleanup_orphans()
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def cache_integrity_check() -> dict:
+        """Run comprehensive integrity checks on the cache database.
+
+        Checks: SQLite PRAGMA integrity_check, orphan counts, schema version,
+        content hash consistency, and table row counts.
+
+        Returns dict with ok, checks (per-check results), warnings.
+        """
+        cache = Cache()
+        try:
+            return cache.check_integrity_full()
+        finally:
+            cache.close()
+
     # ── Research v0.5 MCP tools ────────────────────────────────────────
 
     @mcp.tool()

@@ -208,7 +208,7 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 1 | M-03 Kontrat tutarlılık | [x] |
 | 1 | M-04 Config/observability | [x] |
 | 1 | M-05 v1.0.0 release | [x] |
-| 2 | M-06 Cache bakım | [ ] |
+| 2 | M-06 Cache bakım | [x] |
 | 2 | M-07 Semantic v2 | [ ] |
 | 2 | M-08 Citation graph | [ ] |
 | 2 | M-09 Dedup/merge | [ ] |

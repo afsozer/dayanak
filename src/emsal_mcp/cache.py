@@ -7,18 +7,24 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .models import CachedDocument, Document, Draft, InputPack
+from .models import CachedDocument, Document, Draft, InputPack, build_error
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE = Path.home() / ".emsal-mcp" / "cache.sqlite3"
 
+# Schema version constant — bump when adding new migrations
+CACHE_SCHEMA_VERSION = 3
+
 
 class Cache:
+    # Legacy class attribute kept for backward compatibility; prefer CACHE_SCHEMA_VERSION.
     SCHEMA_VERSION = 2
 
     def __init__(self, path: Path | None = None):
@@ -28,6 +34,7 @@ class Cache:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self._init_tables()
+        self._ensure_schema_version()
 
     # ------------------------------------------------------------------
     # Schema (backward-compatible migration)
@@ -80,6 +87,13 @@ class Cache:
         self._ensure_documents_v2()
         # Explicit schema version tracking (idempotent)
         self._set_schema_version()
+        # schema_meta table for auto-migration tracking
+        self.db.execute("""
+            CREATE TABLE IF NOT EXISTS schema_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
         self.db.commit()
 
     def _ensure_documents_v2(self) -> None:
@@ -148,13 +162,70 @@ class Cache:
         self.db.commit()
 
     def _set_schema_version(self) -> None:
-        """Set PRAGMA user_version to SCHEMA_VERSION idempotently."""
-        self.db.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
+        """Set PRAGMA user_version to CACHE_SCHEMA_VERSION idempotently."""
+        self.db.execute(f"PRAGMA user_version = {CACHE_SCHEMA_VERSION}")
 
     @property
     def schema_version(self) -> int:
         """Return current schema version from PRAGMA user_version."""
         return self.db.execute("PRAGMA user_version").fetchone()[0]
+
+    def _ensure_schema_version(self) -> None:
+        """Check and auto-migrate schema to latest version.
+
+        Reads schema_version from a 'schema_meta' table.
+        If missing, assume version 2 (legacy).
+        Apply migrations sequentially (v2->v3: add indexes if needed).
+        Log each migration step.
+        """
+        try:
+            row = self.db.execute(
+                "SELECT value FROM schema_meta WHERE key='schema_version'"
+            ).fetchone()
+            if row is None:
+                # Legacy DB without schema_meta — assume v2
+                current = 2
+            else:
+                current = int(row[0])
+        except Exception:
+            # Table might not exist yet (first init), assume v2
+            current = 2
+
+        if current >= CACHE_SCHEMA_VERSION:
+            return
+
+        logger.info(
+            "Cache schema migration: v%d -> v%d", current, CACHE_SCHEMA_VERSION
+        )
+
+        if current < 3:
+            self._migrate_v2_to_v3()
+
+        # Record final version
+        self.db.execute(
+            "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('schema_version', ?)",
+            (str(CACHE_SCHEMA_VERSION),),
+        )
+        # Also update PRAGMA user_version to stay in sync
+        self.db.execute(f"PRAGMA user_version = {CACHE_SCHEMA_VERSION}")
+        self.db.commit()
+        logger.info("Cache schema migration complete: now at v%d", CACHE_SCHEMA_VERSION)
+
+    def _migrate_v2_to_v3(self) -> None:
+        """Migration v2 -> v3: add missing indexes on documents_v2 for maintenance queries."""
+        logger.info("Applying migration v2 -> v3: ensuring indexes exist")
+        # Each index is created independently so a missing column in a minimal
+        # v2 database does not block the entire migration.
+        for idx_sql in [
+            "CREATE INDEX IF NOT EXISTS idx_dv2_source ON documents_v2(source)",
+            "CREATE INDEX IF NOT EXISTS idx_dv2_court ON documents_v2(court)",
+            "CREATE INDEX IF NOT EXISTS idx_dv2_content_hash ON documents_v2(content_hash)",
+        ]:
+            try:
+                self.db.execute(idx_sql)
+            except Exception:
+                # Column may not exist in a minimal v2 database — skip gracefully
+                logger.debug("Migration index skipped (column may not exist): %s", idx_sql)
 
     # ------------------------------------------------------------------
     # Legacy key-value cache
@@ -530,6 +601,236 @@ class Cache:
         })
         return count
 
+    # ------------------------------------------------------------------
+    # Cache Vacuum & Compaction
+    # ------------------------------------------------------------------
+
+    def vacuum_cache(self) -> dict:
+        """Run VACUUM to reclaim space and defragment the database.
+
+        Returns dict with ok, size_before, size_after, freed_bytes.
+        """
+        try:
+            size_before = self.path.stat().st_size if self.path.exists() else 0
+            self.db.execute("VACUUM")
+            size_after = self.path.stat().st_size if self.path.exists() else 0
+            freed_bytes = size_before - size_after
+            self.log("vacuum_cache", {
+                "size_before": size_before,
+                "size_after": size_after,
+                "freed_bytes": freed_bytes,
+            })
+            return {
+                "ok": True,
+                "size_before": size_before,
+                "size_after": size_after,
+                "freed_bytes": freed_bytes,
+            }
+        except Exception as exc:
+            return build_error("VACUUM_FAILED", str(exc))
+
+    # ------------------------------------------------------------------
+    # Orphan Row Cleanup
+    # ------------------------------------------------------------------
+
+    def cleanup_orphans(self) -> dict:
+        """Remove orphan rows from search_vectors and documents_v2_fts
+        that reference deleted documents_v2 rows.
+
+        Returns dict with ok, orphans_removed, details.
+        """
+        orphans_removed = 0
+        details: dict[str, Any] = {}
+        try:
+            # Clean orphan search_vectors (only if table exists)
+            sv_exists = self.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='search_vectors'"
+            ).fetchone()
+            if sv_exists:
+                self.db.execute("""
+                    DELETE FROM search_vectors
+                    WHERE (document_id, source) NOT IN (
+                        SELECT document_id, source FROM documents_v2
+                    )
+                """)
+                sv_removed = self.db.execute("SELECT changes()").fetchone()[0]
+                details["search_vectors_removed"] = sv_removed
+                orphans_removed += sv_removed
+            else:
+                details["search_vectors_removed"] = 0
+
+            # Clean orphan FTS5 entries (via reindex)
+            fts_exists = self.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='documents_v2_fts'"
+            ).fetchone()
+            fts_removed = 0
+            if fts_exists:
+                fts_before = self.db.execute("SELECT COUNT(*) FROM documents_v2_fts").fetchone()[0]
+                # FTS5 content-sync triggers handle DELETE, but stale rows can remain
+                # after direct deletes. Use reindex to clean up.
+                self.db.execute("INSERT INTO documents_v2_fts(documents_v2_fts) VALUES('reindex')")
+                fts_after = self.db.execute("SELECT COUNT(*) FROM documents_v2_fts").fetchone()[0]
+                fts_removed = max(0, fts_before - fts_after)
+                details["documents_v2_fts_removed"] = fts_removed
+                orphans_removed += fts_removed
+            else:
+                details["documents_v2_fts_removed"] = 0
+
+            self.db.commit()
+            self.log("cleanup_orphans", {
+                "orphans_removed": orphans_removed,
+                "details": details,
+            })
+            return {
+                "ok": True,
+                "orphans_removed": orphans_removed,
+                "details": details,
+            }
+        except Exception as exc:
+            return build_error("ORPHAN_CLEANUP_FAILED", str(exc))
+
+    # ------------------------------------------------------------------
+    # Comprehensive Integrity Check
+    # ------------------------------------------------------------------
+
+    def check_integrity_full(self) -> dict:
+        """Run comprehensive integrity checks on the cache database.
+
+        Checks:
+        - SQLite PRAGMA integrity_check
+        - Orphan count in search_vectors
+        - Orphan count in documents_v2_fts
+        - Schema version check
+        - Content hash consistency (sample check)
+        - Table row counts
+
+        Returns dict with ok, checks (per-check results), warnings.
+        """
+        checks: dict[str, Any] = {}
+        warnings: list[str] = []
+        all_ok = True
+
+        try:
+            # 1. SQLite PRAGMA integrity_check
+            pragma_result = self.db.execute("PRAGMA integrity_check").fetchone()[0]
+            checks["sqlite_integrity"] = {
+                "ok": pragma_result == "ok",
+                "result": pragma_result,
+            }
+            if pragma_result != "ok":
+                all_ok = False
+                warnings.append(f"SQLite integrity_check: {pragma_result}")
+
+            # 2. Orphan count in search_vectors
+            sv_exists = self.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='search_vectors'"
+            ).fetchone()
+            if sv_exists:
+                sv_orphans = self.db.execute("""
+                    SELECT COUNT(*) FROM search_vectors
+                    WHERE (document_id, source) NOT IN (
+                        SELECT document_id, source FROM documents_v2
+                    )
+                """).fetchone()[0]
+                checks["search_vectors_orphans"] = {
+                    "ok": sv_orphans == 0,
+                    "count": sv_orphans,
+                }
+                if sv_orphans > 0:
+                    all_ok = False
+                    warnings.append(f"{sv_orphans} orphan rows in search_vectors")
+            else:
+                checks["search_vectors_orphans"] = {
+                    "ok": True,
+                    "count": 0,
+                    "note": "search_vectors table does not exist",
+                }
+
+            # 3. Orphan count in documents_v2_fts
+            fts_exists = self.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='documents_v2_fts'"
+            ).fetchone()
+            if fts_exists:
+                fts_orphans = self.db.execute("""
+                    SELECT COUNT(*) FROM documents_v2_fts
+                    WHERE (document_id, source) NOT IN (
+                        SELECT document_id, source FROM documents_v2
+                    )
+                """).fetchone()[0]
+                checks["documents_v2_fts_orphans"] = {
+                    "ok": fts_orphans == 0,
+                    "count": fts_orphans,
+                }
+                if fts_orphans > 0:
+                    all_ok = False
+                    warnings.append(f"{fts_orphans} orphan rows in documents_v2_fts")
+            else:
+                checks["documents_v2_fts_orphans"] = {
+                    "ok": True,
+                    "count": 0,
+                    "note": "FTS5 table does not exist",
+                }
+
+            # 4. Schema version check
+            sv = self.schema_version
+            checks["schema_version"] = {
+                "ok": sv == CACHE_SCHEMA_VERSION,
+                "current": sv,
+                "expected": CACHE_SCHEMA_VERSION,
+            }
+            if sv != CACHE_SCHEMA_VERSION:
+                all_ok = False
+                warnings.append(f"Schema version {sv} != expected {CACHE_SCHEMA_VERSION}")
+
+            # 5. Content hash consistency (sample check)
+            sample_rows = self.db.execute(
+                "SELECT document_id, source, content_hash, full_text, markdown "
+                "FROM documents_v2 "
+                "WHERE content_hash IS NOT NULL AND (full_text IS NOT NULL OR markdown IS NOT NULL) "
+                "LIMIT 20"
+            ).fetchall()
+            hash_mismatches = 0
+            for row in sample_rows:
+                text = row["full_text"] or row["markdown"] or ""
+                computed = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+                if computed != row["content_hash"]:
+                    hash_mismatches += 1
+            checks["content_hash_consistency"] = {
+                "ok": hash_mismatches == 0,
+                "sample_size": len(sample_rows),
+                "mismatches": hash_mismatches,
+            }
+            if hash_mismatches > 0:
+                all_ok = False
+                warnings.append(f"{hash_mismatches} content hash mismatches in sample of {len(sample_rows)}")
+
+            # 6. Table row counts
+            table_counts = {}
+            for table_name in ["documents_v2", "documents", "cache", "history", "packs", "drafts"]:
+                try:
+                    cnt = self.db.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                    table_counts[table_name] = cnt
+                except Exception:
+                    table_counts[table_name] = "N/A"
+            checks["table_row_counts"] = {
+                "ok": True,
+                "counts": table_counts,
+            }
+
+            self.log("check_integrity_full", {
+                "ok": all_ok,
+                "checks_run": len(checks),
+                "warnings_count": len(warnings),
+            })
+
+            return {
+                "ok": all_ok,
+                "checks": checks,
+                "warnings": warnings,
+            }
+        except Exception as exc:
+            return build_error("INTEGRITY_CHECK_FAILED", str(exc))
+
     def backup_cache(self, backup_path: str | Path) -> Path:
         """Create a backup of the cache database. Returns backup path."""
         dest = Path(backup_path)
@@ -568,7 +869,7 @@ class Cache:
         out = Path(export_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         export_payload = {
-            "schemaVersion": self.SCHEMA_VERSION,
+            "schemaVersion": CACHE_SCHEMA_VERSION,
             "exportedAt": datetime.now(timezone.utc).isoformat(),
             "includeMarkdown": include_markdown,
             "documents": documents,
@@ -586,14 +887,14 @@ class Cache:
         self.log("export_json", {
             "export_path": str(out),
             "document_count": len(documents),
-            "schema_version": self.SCHEMA_VERSION,
+            "schema_version": CACHE_SCHEMA_VERSION,
             "sha256": export_payload["sha256"],
         })
         return {
             "path": str(out),
             "document_count": len(documents),
             "sha256": export_payload["sha256"],
-            "schema_version": self.SCHEMA_VERSION,
+            "schema_version": CACHE_SCHEMA_VERSION,
         }
 
     def import_json(self, import_path: str | Path) -> dict[str, Any]:

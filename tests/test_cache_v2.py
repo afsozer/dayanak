@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 
-from emsal_mcp.cache import Cache
+from emsal_mcp.cache import Cache, CACHE_SCHEMA_VERSION
 from emsal_mcp.models import CachedDocument, ContentStatus, Document
 
 
@@ -357,7 +357,7 @@ class TestCacheMaintenance:
                        full_text="text", content_status=ContentStatus.FULL_TEXT)
         cache.store_document(doc)
         stats = cache.cache_stats()
-        assert stats["schema_version"] == 2
+        assert stats["schema_version"] == 3
         assert stats["documents_v2"] == 1
         assert stats["documents_legacy"] == 1
         assert stats["db_path"] == str(tmp_path / "test.sqlite3")
@@ -425,9 +425,9 @@ class TestCacheMaintenance:
         assert export_file.exists()
         assert result["document_count"] == 1
         assert result["sha256"]
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == CACHE_SCHEMA_VERSION
         data = json.loads(export_file.read_text(encoding="utf-8"))
-        assert data["schemaVersion"] == 2
+        assert data["schemaVersion"] == CACHE_SCHEMA_VERSION
         assert "exportedAt" in data
         assert data["documentCount"] == 1
         assert data["includeMarkdown"] is True
@@ -563,7 +563,7 @@ class TestCacheMaintenance:
         assert "backup_path" in result
         assert "sha256" in result
         assert len(result["sha256"]) == 64  # sha256 hex length
-        assert result["schema_version"] == 2
+        assert result["schema_version"] == CACHE_SCHEMA_VERSION
         assert result["documents_v2"] == 1
         assert result["db_size_bytes"] > 0
         # Verify the backup file exists and hash matches
@@ -577,9 +577,9 @@ class TestCacheMaintenance:
     def test_schema_version_idempotent(self, tmp_path):
         """Test that schema_version is set idempotently across reopens."""
         cache1 = Cache(tmp_path / "test.sqlite3")
-        assert cache1.schema_version == 2
+        assert cache1.schema_version == CACHE_SCHEMA_VERSION
         cache1.close()
         # Reopen same DB
         cache2 = Cache(tmp_path / "test.sqlite3")
-        assert cache2.schema_version == 2
+        assert cache2.schema_version == CACHE_SCHEMA_VERSION
         cache2.close()
