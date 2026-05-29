@@ -213,7 +213,7 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 2 | M-08 Citation graph | [x] |
 | 2 | M-09 Dedup/merge | [x] |
 | 2 | M-10 Arama analitik | [x] |
-| 3 | M-11 Template library | [ ] |
+| 3 | M-11 Template library | [x] |
 | 3 | M-12 Argument builder | [ ] |
 | 3 | M-13 Multi-issue pack | [ ] |
 | 3 | M-14 Draft diff | [ ] |

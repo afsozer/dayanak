@@ -40,6 +40,11 @@ from .petition import (
     prepare_drafting_input_pack as prepare_drafting_input_pack_impl,
     prepare_petition_outline as prepare_petition_outline_impl,
 )
+from .templates import (
+    get_template as get_template_impl,
+    list_templates as list_templates_impl,
+    render_template_to_skeleton as render_template_impl,
+)
 from .exporter import (
     prepare_docx_export as prepare_docx_export_impl,
     prepare_export_package_bundle as prepare_export_package_bundle_impl,
@@ -415,6 +420,7 @@ def main() -> None:
         research_bundle_dir: str | None = None,
         out_dir: str | None = None,
         strict: bool = True,
+        template_name: str | None = None,
     ) -> dict:
         """Prepare a petition drafting input pack.
 
@@ -431,6 +437,7 @@ def main() -> None:
             research_bundle_dir: Optional research bundle directory path.
             out_dir: Output directory for the pack.
             strict: If True, exclude hash-mismatch docs.
+            template_name: Optional template name for the draft skeleton.
 
         Returns:
             Dict with ok, out_dir, draft_safe, counts, classifications,
@@ -444,6 +451,7 @@ def main() -> None:
             research_bundle_dir=research_bundle_dir,
             out_dir=out_dir,
             strict=strict,
+            template_name=template_name,
         )
 
     @mcp.tool()
@@ -566,6 +574,45 @@ def main() -> None:
             pack_dir=pack_dir, draft_dir=draft_dir,
             docx_path=docx_path, out_dir=out_dir,
         )
+
+    # ── Petition Template Library MCP tools (M-11) ─────────────────────────
+
+    @mcp.tool()
+    def list_petition_templates() -> list[dict]:
+        """List all available petition templates.
+
+        Returns a list of template summaries with name, type, title,
+        section_count, and placeholder_count.
+        """
+        return list_templates_impl()
+
+    @mcp.tool()
+    def get_petition_template(name: str) -> dict:
+        """Get a specific petition template by name.
+
+        Returns the full template dict with name, type, title, and sections.
+        Returns error dict if template not found.
+
+        Args:
+            name: Template identifier (e.g. 'dava_dilekcesi').
+        """
+        return get_template_impl(name)
+
+    @mcp.tool()
+    def render_template_skeleton(name: str) -> dict:
+        """Render a petition template as a draft-skeleton.md compatible markdown.
+
+        Output includes DISCLAIMER_HEADER and uses the {{PLACEHOLDER}} convention.
+        Placeholders are preserved for manual filling.
+
+        Args:
+            name: Template identifier (e.g. 'dava_dilekcesi').
+        """
+        try:
+            md = render_template_impl(name)
+            return {"ok": True, "name": name, "markdown": md}
+        except KeyError as exc:
+            return {"ok": False, "error": str(exc)}
 
     # ── Legislation v0.10 MCP tools ──────────────────────────────────────
 

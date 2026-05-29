@@ -469,6 +469,7 @@ def prepare_drafting_input_pack(
     out_dir: str | Path | None = None,
     strict: bool = True,
     cache: Any | None = None,
+    template_name: str | None = None,
 ) -> dict[str, Any]:
     """Prepare a petition drafting input pack.
 
@@ -490,6 +491,9 @@ def prepare_drafting_input_pack(
             directory is created.
         strict: If True, exclude any document that fails hash verification.
         cache: Optional Cache instance for history logging.
+        template_name: Optional template name from the template library.
+            If provided, the draft-skeleton.md will be rendered from the
+            specified template instead of the default skeleton generator.
 
     Returns:
         Dict with pack metadata: ok, out_dir, draft_safe, counts,
@@ -567,7 +571,19 @@ def prepare_drafting_input_pack(
     citation_bank = _generate_citation_bank(documents, classifications)
     argument_map = _generate_argument_map(matter, issue, documents, classifications)
     instructions = _generate_petition_instructions()
-    skeleton = _generate_draft_skeleton(matter, issue, petition_ready_docs)
+
+    # Use template skeleton if template_name is provided
+    if template_name is not None:
+        try:
+            from .templates import render_template_to_skeleton
+            skeleton = render_template_to_skeleton(template_name)
+        except KeyError:
+            skeleton = _generate_draft_skeleton(matter, issue, petition_ready_docs)
+            warnings.append(
+                f"Template '{template_name}' not found; using default skeleton."
+            )
+    else:
+        skeleton = _generate_draft_skeleton(matter, issue, petition_ready_docs)
 
     # petition-pack.json (metadata)
     pack_meta = {

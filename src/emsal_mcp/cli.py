@@ -33,6 +33,11 @@ from .petition import (
     prepare_drafting_input_pack,
     prepare_petition_outline,
 )
+from .templates import (
+    get_template as get_template_impl,
+    list_templates as list_templates_impl,
+    render_template_to_skeleton as render_template_impl,
+)
 from .legislation import (
     format_legislation_citation as format_leg_citation_impl,
     get_legislation_article_tree as get_leg_article_tree_impl,
@@ -94,6 +99,7 @@ semantic_app = typer.Typer(help="Semantic search: FTS5 + TF-IDF hybrid, index y�
 chamber_app = typer.Typer(help="Chamber profiling: istatistik, timeline, benzer daire bulma")
 graph_app = typer.Typer(help="Citation graph: build, show, citing, cited, stats")
 analytics_app = typer.Typer(help="Search analytics: report, empty queries, top queries, source coverage")
+template_app = typer.Typer(help="Petition templates: list, show, render")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -105,6 +111,7 @@ app.add_typer(semantic_app, name="semantic")
 app.add_typer(chamber_app, name="chamber")
 app.add_typer(graph_app, name="graph")
 app.add_typer(analytics_app, name="analytics")
+app.add_typer(template_app, name="template")
 
 
 def _print(obj, json_out: bool):
@@ -676,6 +683,7 @@ def petition_pack(
     research_bundle: Optional[Path] = typer.Option(None, help="Research bundle directory"),
     out_dir: Optional[Path] = typer.Option(None, help="Output directory for petition pack"),
     strict: bool = typer.Option(True, help="Strict mode: exclude hash-mismatch docs"),
+    template: Optional[str] = typer.Option(None, help="Template name (e.g. dava_dilekcesi)"),
     json_out: bool = typer.Option(False, "--json"),
 ):
     """Prepare a petition drafting input pack."""
@@ -689,6 +697,7 @@ def petition_pack(
         research_bundle_dir=str(research_bundle) if research_bundle else None,
         out_dir=str(out_dir) if out_dir else None,
         strict=strict,
+        template_name=template,
     )
     _print(result, json_out)
 
@@ -1126,6 +1135,43 @@ def analytics_source_coverage(
         _print(result, json_out)
     finally:
         cache.close()
+
+
+# ── Template subcommands ────────────────────────────────────────────────────
+
+
+@template_app.command("list")
+def template_list(json_out: bool = typer.Option(False, "--json")):
+    """List all available petition templates."""
+    _print(list_templates_impl(), json_out)
+
+
+@template_app.command("show")
+def template_show(
+    name: str = typer.Argument(..., help="Template name (e.g. dava_dilekcesi)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Show details of a specific petition template."""
+    _print(get_template_impl(name), json_out)
+
+
+@template_app.command("render")
+def template_render(
+    name: str = typer.Argument(..., help="Template name (e.g. dava_dilekcesi)"),
+    out_path: Optional[Path] = typer.Option(None, help="Output file path (default: stdout)"),
+):
+    """Render a template as a draft-skeleton.md compatible markdown."""
+    try:
+        md = render_template_impl(name)
+    except KeyError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1)
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(md, encoding="utf-8")
+        typer.echo(str(out_path))
+    else:
+        sys.stdout.buffer.write((md + "\n").encode("utf-8"))
 
 
 if __name__ == "__main__":
