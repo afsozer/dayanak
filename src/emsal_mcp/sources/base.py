@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import re
+import time
 from abc import ABC, abstractmethod
-from typing import Any
+from collections import defaultdict
+from typing import Any, Callable, Coroutine, TypeVar
 
 import httpx
 from bs4 import BeautifulSoup
@@ -19,6 +22,55 @@ from emsal_mcp.models import (
     SourceStatus,
     build_error,
 )
+
+T = TypeVar("T")
+
+
+class RateLimitError(Exception):
+    """Raised when a rate limiter blocks a request."""
+
+    def __init__(self, message: str, *, source: str = "", wait_seconds: float = 0.0) -> None:
+        super().__init__(message)
+        self.source = source
+        self.wait_seconds = wait_seconds
+
+
+class RateLimiter:
+    """Token-bucket rate limiter. Disabled by default.
+
+    When disabled (default), all calls are allowed through — single-user
+    assumption preserved.  When enabled, callers must call `acquire()`
+    before each request; if it returns False the request should be
+    rejected or queued.
+    """
+
+    def __init__(self, enabled: bool = False, max_calls: int = 10, period: float = 60.0) -> None:
+        self.enabled = enabled
+        self.max_calls = max_calls
+        self.period = period
+        self._buckets: dict[str, list[float]] = defaultdict(list)
+
+    def acquire(self, source_id: str) -> bool:
+        """Try to acquire a token. Returns True if allowed."""
+        if not self.enabled:
+            return True
+        now = time.monotonic()
+        # Remove expired timestamps
+        self._buckets[source_id] = [
+            t for t in self._buckets[source_id] if now - t < self.period
+        ]
+        if len(self._buckets[source_id]) >= self.max_calls:
+            return False
+        self._buckets[source_id].append(now)
+        return True
+
+    def wait_time(self, source_id: str) -> float:
+        """Seconds until next available token."""
+        if not self.enabled or not self._buckets[source_id]:
+            return 0.0
+        now = time.monotonic()
+        oldest = min(self._buckets[source_id])
+        return max(0.0, self.period - (now - oldest))
 
 
 class SourceClient(ABC):
@@ -39,6 +91,16 @@ class SourceClient(ABC):
     _live_smoke_recommended: bool = True
     _known_limitations: list[str] = []
     _notes: str = ""
+
+    # Retry configuration — OPT-IN per source by setting attributes.
+    _retry_enabled: bool = False
+    _retry_max_attempts: int = 3
+    _retry_base_delay: float = 1.0  # seconds
+    _retry_max_delay: float = 30.0  # seconds
+    _retry_backoff_factor: float = 2.0
+
+    # Rate limiter — shared across sources. Default OFF (single-user assumption).
+    _rate_limiter: RateLimiter | None = None
 
     @abstractmethod
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]: ...
@@ -95,6 +157,62 @@ class SourceClient(ABC):
         except Exception:
             record_failure(self.source_id)
             raise
+
+    async def _with_retry(
+        self,
+        coro_factory: Callable[[], Coroutine[Any, Any, T]],
+        max_attempts: int | None = None,
+        base_delay: float | None = None,
+        max_delay: float | None = None,
+        backoff_factor: float | None = None,
+    ) -> T:
+        """Execute with exponential-backoff retry.
+
+        ``coro_factory`` is a zero-argument async callable that **returns**
+        the result (i.e. ``lambda: some_coro()``).  This avoids needing
+        to pass pre-created coroutines that may have already started.
+
+        Returns the result of the first successful invocation.
+        Raises the last exception if all attempts fail.
+
+        This is OPT-IN: callers must explicitly wrap their calls.
+        """
+        attempts = max_attempts if max_attempts is not None else self._retry_max_attempts
+        delay = base_delay if base_delay is not None else self._retry_base_delay
+        max_d = max_delay if max_delay is not None else self._retry_max_delay
+        factor = backoff_factor if backoff_factor is not None else self._retry_backoff_factor
+
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                return await coro_factory()
+            except Exception as exc:
+                last_error = exc
+                if attempt < attempts:
+                    wait = min(delay * (factor ** (attempt - 1)), max_d)
+                    await asyncio.sleep(wait)
+
+        raise last_error  # type: ignore[misc]
+
+    async def _with_rate_limit(self, source_id: str | None = None) -> None:
+        """Check rate-limit before a call.
+
+        Raises ``RateLimitError`` if the rate limiter is enabled and the
+        caller has exceeded the allowed calls within the period window.
+
+        This is OPT-IN: callers must explicitly wrap their calls.
+        """
+        limiter = self._rate_limiter
+        if limiter is None or not limiter.enabled:
+            return
+        sid = source_id or self.source_id
+        if not limiter.acquire(sid):
+            wait = limiter.wait_time(sid)
+            raise RateLimitError(
+                f"Rate limit exceeded for {sid}. Retry after {wait:.1f}s.",
+                source=sid,
+                wait_seconds=wait,
+            )
 
     async def smoke(self, online: bool = False) -> SourceSmokeResult:
         """Offline-safe smoke test. Override for online-specific checks.

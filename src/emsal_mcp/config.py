@@ -28,6 +28,9 @@ class EmsalConfig:
         self._http_timeout: float | None = None
         self._circuit_breaker_threshold: int | None = None
         self._circuit_recovery_timeout: int | None = None
+        self._retry_max_attempts: int | None = None
+        self._retry_base_delay: float | None = None
+        self._rate_limit_enabled: bool | None = None
 
     # ── Cache path ────────────────────────────────────────────────────────
 
@@ -107,6 +110,46 @@ class EmsalConfig:
             env_val = os.environ.get("EMSAL_CB_TIMEOUT", "").strip()
             self._circuit_recovery_timeout = int(env_val) if env_val else 300
         return self._circuit_recovery_timeout
+
+    # ── Retry max attempts ──────────────────────────────────────────────
+
+    @property
+    def retry_max_attempts(self) -> int:
+        """Maximum number of retry attempts for source adapter calls.
+
+        Env: EMSAL_RETRY_MAX (default: 3)
+        """
+        if self._retry_max_attempts is None:
+            env_val = os.environ.get("EMSAL_RETRY_MAX", "").strip()
+            self._retry_max_attempts = int(env_val) if env_val else 3
+        return self._retry_max_attempts
+
+    # ── Retry base delay ────────────────────────────────────────────────
+
+    @property
+    def retry_base_delay(self) -> float:
+        """Base delay in seconds between retry attempts.
+
+        Env: EMSAL_RETRY_DELAY (default: 1.0)
+        """
+        if self._retry_base_delay is None:
+            env_val = os.environ.get("EMSAL_RETRY_DELAY", "").strip()
+            self._retry_base_delay = float(env_val) if env_val else 1.0
+        return self._retry_base_delay
+
+    # ── Rate limit enabled ──────────────────────────────────────────────
+
+    @property
+    def rate_limit_enabled(self) -> bool:
+        """Whether the global rate limiter is enabled.
+
+        Env: EMSAL_RATE_LIMIT_ENABLED (default: false)
+        Accepts: 1, true, yes → enabled; anything else → disabled.
+        """
+        if self._rate_limit_enabled is None:
+            env_val = os.environ.get("EMSAL_RATE_LIMIT_ENABLED", "").strip().lower()
+            self._rate_limit_enabled = env_val in ("1", "true", "yes")
+        return self._rate_limit_enabled
 
     # ── UDF toolkit directory ─────────────────────────────────────────────
 
