@@ -471,6 +471,9 @@ class Cache:
         sql = f"SELECT * FROM documents_v2{where} ORDER BY {order} LIMIT ?"
         params.append(limit)
 
+        import time as _time
+
+        _start = _time.monotonic()
         rows = self.db.execute(sql, params).fetchall()
         results: list[dict[str, Any]] = []
         for row in rows:
@@ -495,6 +498,22 @@ class Cache:
                 "access_count": cached.access_count,
                 "snippet": snippet,
             })
+        # Auto-record search analytics (fire-and-forget, never breaks search)
+        try:
+            from .search_analytics import record_search
+
+            _elapsed_ms = (_time.monotonic() - _start) * 1000
+            record_search(
+                query=query,
+                source_filter=source,
+                result_count=len(results),
+                empty_result=len(results) == 0,
+                cache_hit=True,
+                duration_ms=round(_elapsed_ms, 2),
+                cache=self,
+            )
+        except Exception:
+            pass
         return results
 
     def _generate_snippet(self, cached: CachedDocument, query: str, max_length: int) -> str:

@@ -1135,6 +1135,81 @@ def main() -> None:
         """
         return generate_release_summary_impl()
 
+    # ── Search Analytics v0.16 MCP tools ────────────────────────────────
+
+    @mcp.tool()
+    def search_analytics(days: int = 30) -> dict:
+        """Comprehensive search analytics: success rate, empty queries, source distribution, cache hit ratio.
+
+        All metrics are deterministic and derived from cache data.
+
+        Args:
+            days: Number of days to include (default 30).
+
+        Returns:
+            Dict with ok, total_searches, empty_result_rate, avg_result_count,
+            cache_hit_rate, top_queries, empty_queries, source_distribution,
+            daily_activity.
+        """
+        from .search_analytics import get_search_analytics
+
+        cache = Cache()
+        try:
+            return get_search_analytics(cache=cache, days=days)
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def get_empty_queries(limit: int = 20) -> dict:
+        """List queries that returned 0 results.
+
+        Args:
+            limit: Max results (default 20).
+
+        Returns:
+            Dict with ok and empty_queries list.
+        """
+        from .search_analytics import get_empty_queries as get_empty_queries_impl
+
+        cache = Cache()
+        try:
+            return get_empty_queries_impl(cache=cache, limit=limit)
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def get_top_queries(limit: int = 20) -> dict:
+        """Most frequent queries.
+
+        Args:
+            limit: Max results (default 20).
+
+        Returns:
+            Dict with ok and top_queries list.
+        """
+        from .search_analytics import get_top_queries as get_top_queries_impl
+
+        cache = Cache()
+        try:
+            return get_top_queries_impl(cache=cache, limit=limit)
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def get_source_coverage() -> dict:
+        """Source coverage: doc counts and full_text percentage.
+
+        Returns:
+            Dict with ok and coverage list.
+        """
+        from .search_analytics import get_source_coverage as get_source_coverage_impl
+
+        cache = Cache()
+        try:
+            return get_source_coverage_impl(cache=cache)
+        finally:
+            cache.close()
+
     mcp.run()
 
 

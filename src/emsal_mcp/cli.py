@@ -93,6 +93,7 @@ legislation_app = typer.Typer(help="Mevzuat: ara, belge al, madde ara, gerekçe 
 semantic_app = typer.Typer(help="Semantic search: FTS5 + TF-IDF hybrid, index yönetimi")
 chamber_app = typer.Typer(help="Chamber profiling: istatistik, timeline, benzer daire bulma")
 graph_app = typer.Typer(help="Citation graph: build, show, citing, cited, stats")
+analytics_app = typer.Typer(help="Search analytics: report, empty queries, top queries, source coverage")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -103,6 +104,7 @@ app.add_typer(legislation_app, name="legislation")
 app.add_typer(semantic_app, name="semantic")
 app.add_typer(chamber_app, name="chamber")
 app.add_typer(graph_app, name="graph")
+app.add_typer(analytics_app, name="analytics")
 
 
 def _print(obj, json_out: bool):
@@ -1054,6 +1056,76 @@ def graph_stats(
     """Citation graph istatistikleri."""
     result = get_citation_graph_stats_impl()
     _print(result, json_out)
+
+
+# ── Analytics subcommands ────────────────────────────────────────────────
+
+
+@analytics_app.command("report")
+def analytics_report(
+    days: int = typer.Option(30, help="Number of days to include"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Comprehensive search analytics report."""
+    from .search_analytics import get_search_analytics
+
+    cache = Cache(cache_path)
+    try:
+        result = get_search_analytics(cache=cache, days=days)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@analytics_app.command("empty-queries")
+def analytics_empty_queries(
+    limit: int = typer.Option(20, help="Max results"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """List queries that returned 0 results."""
+    from .search_analytics import get_empty_queries
+
+    cache = Cache(cache_path)
+    try:
+        result = get_empty_queries(cache=cache, limit=limit)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@analytics_app.command("top-queries")
+def analytics_top_queries(
+    limit: int = typer.Option(20, help="Max results"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Most frequent queries."""
+    from .search_analytics import get_top_queries
+
+    cache = Cache(cache_path)
+    try:
+        result = get_top_queries(cache=cache, limit=limit)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@analytics_app.command("source-coverage")
+def analytics_source_coverage(
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Source coverage: doc counts and full_text percentage."""
+    from .search_analytics import get_source_coverage
+
+    cache = Cache(cache_path)
+    try:
+        result = get_source_coverage(cache=cache)
+        _print(result, json_out)
+    finally:
+        cache.close()
 
 
 if __name__ == "__main__":
