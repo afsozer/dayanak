@@ -81,10 +81,16 @@ from .chamber import (
 )
 from .citation_graph import (
     build_citation_graph as build_citation_graph_impl,
+    export_graph as export_graph_impl,
     find_cited_documents as find_cited_documents_impl,
     find_citing_documents as find_citing_documents_impl,
     get_citation_graph as get_citation_graph_impl,
     get_citation_graph_stats as get_citation_graph_stats_impl,
+)
+from .privacy import (
+    scan_pii as scan_pii_impl,
+    redact_pii as redact_pii_impl,
+    audit_privacy as audit_privacy_impl,
 )
 from .dedup import (
     find_duplicates as find_duplicates_impl,
@@ -163,6 +169,7 @@ router_app = typer.Typer(help="Capability-based routing: capable sources, search
 pdf_app = typer.Typer(help="PDF content extraction: text layer, toolkit status")
 calibrate_app = typer.Typer(help="Source calibration: measure safe request rates")
 watch_app = typer.Typer(help="Research watchlist: add, list, run, remove watches")
+privacy_app = typer.Typer(help="PII detection, redaction, and privacy audit")
 app.add_typer(api_app, name="api")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
@@ -184,6 +191,7 @@ app.add_typer(router_app, name="router")
 app.add_typer(pdf_app, name="pdf")
 app.add_typer(calibrate_app, name="calibrate")
 app.add_typer(watch_app, name="watch")
+app.add_typer(privacy_app, name="privacy")
 
 
 def _print(obj, json_out: bool):
@@ -1329,6 +1337,24 @@ def graph_stats(
     _print(result, json_out)
 
 
+@graph_app.command("export")
+def graph_export(
+    format: str = typer.Option("json", help="Export format: json, dot, mermaid"),
+    document_id: Optional[str] = typer.Option(None, help="Optional document_id for sub-graph export"),
+    source: Optional[str] = typer.Option(None, help="Source filter for sub-graph"),
+    max_depth: int = typer.Option(2, help="Max traversal depth for sub-graph"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Export citation graph in various formats (json, dot, mermaid)."""
+    result = export_graph_impl(
+        format=format,
+        document_id=document_id,
+        source=source,
+        max_depth=max_depth,
+    )
+    _print(result, json_out)
+
+
 # ── Analytics subcommands ────────────────────────────────────────────────
 
 
@@ -1734,6 +1760,36 @@ def watch_remove(
 ):
     """Remove a watch."""
     _print(remove_watch_impl(name), json_out)
+
+
+# ── Privacy / PII subcommands (M-37) ────────────────────────────────────
+
+
+@privacy_app.command("scan")
+def privacy_scan(
+    text: str = typer.Argument(..., help="Text to scan for PII"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Scan text for potential PII (TCKN, phone, email)."""
+    _print(scan_pii_impl(text), json_out)
+
+
+@privacy_app.command("redact")
+def privacy_redact(
+    text: str = typer.Argument(..., help="Text to redact PII from"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Redact PII from text. Returns copy — original unchanged."""
+    _print(redact_pii_impl(text), json_out)
+
+
+@privacy_app.command("audit")
+def privacy_audit(
+    path: Path = typer.Argument(..., help="File or directory to audit for PII"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Audit a file or directory for PII presence."""
+    _print(audit_privacy_impl(path), json_out)
 
 
 if __name__ == "__main__":

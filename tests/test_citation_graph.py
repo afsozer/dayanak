@@ -1,12 +1,14 @@
 """Tests for v0.14 Citation Graph module."""
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
 from emsal_mcp.cache import Cache
 from emsal_mcp.citation_graph import (
     build_citation_graph,
+    export_graph,
     find_cited_documents,
     find_citing_documents,
     get_citation_graph,
@@ -504,6 +506,7 @@ class TestImports:
     def test_citation_graph_importable(self):
         import emsal_mcp.citation_graph
         assert hasattr(emsal_mcp.citation_graph, "build_citation_graph")
+        assert hasattr(emsal_mcp.citation_graph, "export_graph")
         assert hasattr(emsal_mcp.citation_graph, "get_citation_graph")
         assert hasattr(emsal_mcp.citation_graph, "find_citing_documents")
         assert hasattr(emsal_mcp.citation_graph, "find_cited_documents")
@@ -567,6 +570,127 @@ class TestEdgeTable:
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='citation_edges'"
             ).fetchone()
             assert exists is not None
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Export graph tests (M-39)
+# ---------------------------------------------------------------------------
+
+class TestExportGraph:
+    def _setup_graph(self) -> tuple[Cache, Path]:
+        cache, path = _temp_cache()
+        doc_a = _make_doc(
+            document_id="DOC-A",
+            source="source_a",
+            title="Dava Dilekçesi",
+            court="Yargıtay",
+            chamber="3. Hukuk Dairesi",
+            decision_date="2025-01-01",
+            esas_no="2025/100",
+            karar_no="2025/200",
+            full_text=(
+                "Yargıtay 3. Hukuk Dairesi Esas No: 2023/12345, "
+                "Karar No: 2024/5678 tarihli kararına atıfta bulunulmuştur."
+            ),
+        )
+        doc_b = _make_doc(
+            document_id="DOC-B",
+            source="source_b",
+            title="Yargıtay Kararı",
+            court="Yargıtay",
+            chamber="3. Hukuk Dairesi",
+            decision_date="2024-06-15",
+            esas_no="2023/12345",
+            karar_no="2024/5678",
+            full_text="Yargıtay 3. Hukuk Dairesi Esas No: 2023/12345 Karar No: 2024/5678",
+        )
+        _seed_cache_with_docs(cache, [doc_a, doc_b])
+        build_citation_graph(cache=cache)
+        return cache, path
+
+    def test_export_json_valid_structure(self):
+        """Export as JSON should produce valid node-link structure."""
+        cache, path = self._setup_graph()
+        try:
+            result = export_graph(format="json", cache=cache)
+            assert result["ok"] is True
+            assert result["format"] == "json"
+            data = json.loads(result["export_text"])
+            assert "nodes" in data
+            assert "edges" in data
+            assert isinstance(data["nodes"], list)
+            assert isinstance(data["edges"], list)
+            assert result["node_count"] >= 2
+            assert result["edge_count"] >= 1
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_export_dot_produces_graph_syntax(self):
+        """Export as DOT should produce valid Graphviz syntax."""
+        cache, path = self._setup_graph()
+        try:
+            result = export_graph(format="dot", cache=cache)
+            assert result["ok"] is True
+            assert result["format"] == "dot"
+            assert "digraph citations" in result["export_text"]
+            assert "->" in result["export_text"]
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_export_mermaid_produces_mermaid_syntax(self):
+        """Export as Mermaid should produce valid mermaid syntax."""
+        cache, path = self._setup_graph()
+        try:
+            result = export_graph(format="mermaid", cache=cache)
+            assert result["ok"] is True
+            assert result["format"] == "mermaid"
+            assert "graph LR" in result["export_text"]
+            assert "-->" in result["export_text"]
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_export_with_document_id_subgraph(self):
+        """Export with document_id should produce sub-graph."""
+        cache, path = self._setup_graph()
+        try:
+            result = export_graph(
+                format="json", cache=cache,
+                document_id="DOC-A", source="source_a", max_depth=1,
+            )
+            assert result["ok"] is True
+            assert result["sub_graph"] is True
+            data = json.loads(result["export_text"])
+            doc_ids = {n["document_id"] for n in data["nodes"]}
+            assert "DOC-A" in doc_ids
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_export_invalid_format(self):
+        """Invalid format should return error."""
+        cache, path = _temp_cache()
+        try:
+            result = export_graph(format="csv", cache=cache)
+            assert result["ok"] is False
+            assert "errorCode" in result
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_export_empty_graph(self):
+        """Export of empty graph should return ok with 0 nodes/edges."""
+        cache, path = _temp_cache()
+        try:
+            result = export_graph(format="json", cache=cache)
+            assert result["ok"] is True
+            assert result["node_count"] == 0
+            assert result["edge_count"] == 0
         finally:
             cache.close()
             path.unlink(missing_ok=True)

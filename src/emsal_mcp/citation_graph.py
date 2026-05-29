@@ -7,6 +7,7 @@ references are graphed.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any
@@ -633,6 +634,178 @@ def get_citation_graph_stats(cache: Cache | None = None) -> dict[str, Any]:
         }
     except Exception as exc:
         return build_error("GRAPH_STATS_FAILED", f"İstatistik alınamadı: {exc}")
+    finally:
+        if own_cache:
+            c.close()
+
+
+# ---------------------------------------------------------------------------
+# Export (M-39)
+# ---------------------------------------------------------------------------
+
+def export_graph(
+    format: str = "json",
+    cache: Cache | None = None,
+    document_id: str | None = None,
+    source: str | None = None,
+    max_depth: int = 2,
+) -> dict[str, Any]:
+    """Export citation graph in various formats.
+
+    Args:
+        format: 'json' (node-link), 'dot' (Graphviz), 'mermaid'.
+        cache: Optional Cache instance.
+        document_id: Optional — if provided, export sub-graph centered on this doc.
+        source: Optional source filter for sub-graph.
+        max_depth: For sub-graph, how many hops.
+
+    Returns:
+        Dict with ok, format, export_text, node_count, edge_count.
+    """
+    c = cache or Cache()
+    own_cache = cache is None
+
+    try:
+        _ensure_edge_table(c)
+
+        # Collect nodes and edges
+        node_ids: set[tuple[str, str]] = set()
+        edges: list[dict[str, Any]] = []
+
+        if document_id:
+            # Sub-graph: BFS from document_id up to max_depth
+            visited: set[tuple[str, str]] = set()
+            frontier: list[tuple[str, str, int]] = []
+
+            start_source = source or ""
+            frontier.append((document_id, start_source, 0))
+            while frontier:
+                doc_id, doc_src, depth = frontier.pop(0)
+                key = (doc_id, doc_src)
+                if key in visited or depth > max_depth:
+                    continue
+                visited.add(key)
+                node_ids.add(key)
+
+                # Outgoing edges (this doc cites others)
+                rows = c.db.execute(
+                    """SELECT cited_doc_id, cited_source, confidence, match_type
+                       FROM citation_edges
+                       WHERE citing_doc_id=? AND citing_source=?""",
+                    (doc_id, doc_src),
+                ).fetchall()
+                for row in rows:
+                    target = (row["cited_doc_id"], row["cited_source"])
+                    node_ids.add(target)
+                    edges.append({
+                        "source": f"{doc_src}:{doc_id}",
+                        "target": f"{row['cited_source']}:{row['cited_doc_id']}",
+                        "confidence": row["confidence"],
+                        "match_type": row["match_type"],
+                    })
+                    if target not in visited:
+                        frontier.append((target[0], target[1], depth + 1))
+
+                # Incoming edges (others cite this doc)
+                rows = c.db.execute(
+                    """SELECT citing_doc_id, citing_source, confidence, match_type
+                       FROM citation_edges
+                       WHERE cited_doc_id=? AND cited_source=?""",
+                    (doc_id, doc_src),
+                ).fetchall()
+                for row in rows:
+                    source_key = (row["citing_doc_id"], row["citing_source"])
+                    node_ids.add(source_key)
+                    edges.append({
+                        "source": f"{row['citing_source']}:{row['citing_doc_id']}",
+                        "target": f"{doc_src}:{doc_id}",
+                        "confidence": row["confidence"],
+                        "match_type": row["match_type"],
+                    })
+                    if source_key not in visited:
+                        frontier.append((source_key[0], source_key[1], depth + 1))
+        else:
+            # Full graph export
+            rows = c.db.execute("SELECT * FROM citation_edges").fetchall()
+            for row in rows:
+                src = (row["citing_doc_id"], row["citing_source"])
+                tgt = (row["cited_doc_id"], row["cited_source"])
+                node_ids.add(src)
+                node_ids.add(tgt)
+                edges.append({
+                    "source": f"{row['citing_source']}:{row['citing_doc_id']}",
+                    "target": f"{row['cited_source']}:{row['cited_doc_id']}",
+                    "confidence": row["confidence"],
+                    "match_type": row["match_type"],
+                })
+
+        # Enrich node labels from documents_v2
+        nodes: list[dict[str, Any]] = []
+        for nid, nsrc in node_ids:
+            label_row = c.db.execute(
+                "SELECT title, court, chamber FROM documents_v2 WHERE document_id=? AND source=?",
+                (nid, nsrc),
+            ).fetchone()
+            label = nid
+            if label_row:
+                title = label_row["title"] or ""
+                court = label_row["court"] or ""
+                label = f"{court} — {title}" if court else (title or nid)
+            nodes.append({
+                "id": f"{nsrc}:{nid}",
+                "label": label,
+                "document_id": nid,
+                "source": nsrc,
+            })
+
+        # Format export
+        if format == "json":
+            export_text = json.dumps(
+                {"nodes": nodes, "edges": edges},
+                ensure_ascii=False,
+                indent=2,
+            )
+        elif format == "dot":
+            lines = ["digraph citations {"]
+            lines.append("  rankdir=LR;")
+            lines.append("  node [shape=box, fontsize=10];")
+            for node in nodes:
+                escaped_label = node["label"].replace('"', '\\"')
+                lines.append(f'  "{node["id"]}" [label="{escaped_label}"];')
+            for edge in edges:
+                style = "solid" if edge["confidence"] == "high" else "dashed"
+                lines.append(
+                    f'  "{edge["source"]}" -> "{edge["target"]}" '
+                    f'[style={style}, label="{edge["match_type"]}"];'
+                )
+            lines.append("}")
+            export_text = "\n".join(lines)
+        elif format == "mermaid":
+            lines = ["graph LR"]
+            id_map: dict[str, str] = {}
+            for i, node in enumerate(nodes):
+                short_id = f"N{i}"
+                id_map[node["id"]] = short_id
+                escaped_label = node["label"].replace('"', "'")
+                lines.append(f'    {short_id}["{escaped_label}"]')
+            for edge in edges:
+                src_id = id_map.get(edge["source"], edge["source"])
+                tgt_id = id_map.get(edge["target"], edge["target"])
+                lines.append(f"    {src_id} -->|{edge['match_type']}| {tgt_id}")
+            export_text = "\n".join(lines)
+        else:
+            return build_error("INVALID_FORMAT", f"Unknown format: {format}. Supported: json, dot, mermaid")
+
+        return {
+            "ok": True,
+            "format": format,
+            "export_text": export_text,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "sub_graph": document_id is not None,
+        }
+    except Exception as exc:
+        return build_error("GRAPH_EXPORT_FAILED", f"Graf dışa aktarılamadı: {exc}")
     finally:
         if own_cache:
             c.close()

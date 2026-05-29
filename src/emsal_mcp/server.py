@@ -32,10 +32,16 @@ from .chamber import (
 )
 from .citation_graph import (
     build_citation_graph as build_citation_graph_impl,
+    export_graph as export_graph_impl,
     find_cited_documents as find_cited_documents_impl,
     find_citing_documents as find_citing_documents_impl,
     get_citation_graph as get_citation_graph_impl,
     get_citation_graph_stats as get_citation_graph_stats_impl,
+)
+from .privacy import (
+    scan_pii as scan_pii_impl,
+    redact_pii as redact_pii_impl,
+    audit_privacy as audit_privacy_impl,
 )
 from .pdf_extractor import (
     extract_pdf_text_from_file as extract_pdf_text_impl,
@@ -1513,6 +1519,32 @@ def main() -> None:
         """
         return get_citation_graph_stats_impl()
 
+    @mcp.tool()
+    def export_citation_graph(
+        format: str = "json",
+        document_id: str | None = None,
+        source: str | None = None,
+        max_depth: int = 2,
+    ) -> dict:
+        """Export citation graph in various formats.
+
+        Args:
+            format: Export format — 'json' (node-link), 'dot' (Graphviz),
+                    or 'mermaid' (Mermaid diagram).
+            document_id: Optional document_id to export sub-graph centered on this doc.
+            source: Optional source filter for sub-graph.
+            max_depth: For sub-graph, max traversal hops (default 2).
+
+        Returns:
+            Dict with ok, format, export_text, node_count, edge_count.
+        """
+        return export_graph_impl(
+            format=format,
+            document_id=document_id,
+            source=source,
+            max_depth=max_depth,
+        )
+
     # ── Dedup v0.15 MCP tools ─────────────────────────────────────────────
 
     @mcp.tool()
@@ -2033,6 +2065,53 @@ def main() -> None:
         """
         from .research_watch import remove_watch as remove_watch_impl
         return remove_watch_impl(name)
+
+    # ── Privacy / PII MCP tools (M-37) ────────────────────────────────
+
+    @mcp.tool()
+    def privacy_scan(text: str) -> dict:
+        """Scan text for potential PII (TCKN, phone, email).
+
+        Detects Turkish national ID numbers (TCKN), phone numbers, and
+        email addresses. Returns findings with confidence levels.
+
+        Args:
+            text: Input text to scan for PII.
+
+        Returns:
+            Dict with ok, findings_count, findings list, risk_level.
+        """
+        return scan_pii_impl(text)
+
+    @mcp.tool()
+    def privacy_redact(text: str) -> dict:
+        """Redact PII from text. Returns a copy — original is unchanged.
+
+        Replaces detected TCKN, phone, and email patterns with
+        [TCKN_REDACTED], [PHONE_REDACTED], [EMAIL_REDACTED] tokens.
+
+        Args:
+            text: Input text to redact PII from.
+
+        Returns:
+            Dict with ok, redacted_text, original_length, redactions_applied.
+        """
+        return redact_pii_impl(text)
+
+    @mcp.tool()
+    def privacy_audit(path: str) -> dict:
+        """Audit a file or directory for PII presence.
+
+        Scans .md, .txt, .json, .docx files for potential PII.
+        Returns per-file findings and overall risk assessment.
+
+        Args:
+            path: File or directory path to audit.
+
+        Returns:
+            Dict with ok, files_scanned, files_with_pii, findings, warning.
+        """
+        return audit_privacy_impl(path)
 
     mcp.run()
 

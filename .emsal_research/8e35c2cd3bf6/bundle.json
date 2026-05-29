@@ -1,0 +1,32 @@
+{
+  "version": "0.5.0",
+  "query": "q",
+  "sources": [
+    "fake_source"
+  ],
+  "filters": {},
+  "fetch_count": 5,
+  "result_count": 3,
+  "fetched_count": 3,
+  "content_status_summary": {
+    "full_text": 3
+  },
+  "citation_safe_count": 3,
+  "metadata_only_count": 0,
+  "generated_files": [
+    "documents/fake_source_fake-doc-1.md",
+    "documents/fake_source_fake-doc-2.md",
+    "documents/fake_source_fake-doc-3.md",
+    "results.json",
+    "manifests/hash-manifest.json",
+    "warnings.json",
+    "bundle.json",
+    "index.md"
+  ],
+  "warnings": [],
+  "hash": "35818a26d5041c40e73837b21ba1241220509cbf7112a6d11b8c77eb40939e17",
+  "created_at": "2026-05-29T21:56:22.789582+00:00",
+  "recommended_next_steps": [
+    "Bundle is complete with citation-safe documents."
+  ]
+}
