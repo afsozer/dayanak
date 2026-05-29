@@ -115,6 +115,11 @@ from .circuit import (
     get_source_health,
     reset_circuit,
 )
+from .pdf_extract import (
+    extract_pdf_text,
+    get_pdf_toolkit_status,
+    promote_pdf_to_full_text,
+)
 from .router import (
     get_capable_sources as get_capable_sources_impl,
     route_get_document as route_get_document_impl,
@@ -139,6 +144,7 @@ draft_app = typer.Typer(help="Draft diffing, placeholder tracking, versioning")
 export_app = typer.Typer(help="Export formats: plain text, DOCX, PDF, UDF")
 circuit_app = typer.Typer(help="Circuit breaker: status, health, reset")
 router_app = typer.Typer(help="Capability-based routing: capable sources, search routing, document routing")
+pdf_app = typer.Typer(help="PDF content extraction: text layer, toolkit status")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -156,6 +162,7 @@ app.add_typer(draft_app, name="draft")
 app.add_typer(export_app, name="export")
 app.add_typer(circuit_app, name="circuit")
 app.add_typer(router_app, name="router")
+app.add_typer(pdf_app, name="pdf")
 
 
 def _print(obj, json_out: bool):
@@ -1524,6 +1531,39 @@ def router_get_document_cmd(
     """Route a get_document request to capable sources."""
     required = [c.strip() for c in require.split(",")] if require else None
     _print(route_get_document_impl(document_id, required_capabilities=required, preferred_source=preferred_source), json_out)
+
+
+# ── PDF extraction subcommands (M-27) ──────────────────────────────────────
+
+
+@pdf_app.command("extract")
+def pdf_extract(
+    path: Path = typer.Argument(..., help="Path to PDF file"),
+    ocr: bool = typer.Option(False, "--ocr", help="Enable OCR (opt-in, low confidence)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Extract text layer from a PDF file."""
+    _print(extract_pdf_text(path, ocr_enabled=ocr), json_out)
+
+
+@pdf_app.command("toolkit-status")
+def pdf_toolkit(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Check PDF extraction toolkit availability."""
+    _print(get_pdf_toolkit_status(), json_out)
+
+
+@pdf_app.command("promote")
+def pdf_promote(
+    document_json: str = typer.Argument(..., help="Document JSON string"),
+    ocr: bool = typer.Option(False, "--ocr", help="Enable OCR"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Try to promote a pdf_only Document to full_text."""
+    import json as json_mod
+    doc = json_mod.loads(document_json)
+    _print(promote_pdf_to_full_text(doc, ocr_enabled=ocr), json_out)
 
 
 if __name__ == "__main__":

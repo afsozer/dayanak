@@ -257,6 +257,37 @@ class EmsalConfig:
         """
         return os.environ.get("KIK_API_TOKEN") or os.environ.get("EKAP_API_TOKEN")
 
+    # ── PDF / OCR extraction ──────────────────────────────────────────
+
+    @property
+    def pdf_extraction_enabled(self) -> bool:
+        """Whether to attempt PDF text extraction.
+
+        Env: EMSAL_PDF_EXTRACTION (default: true)
+        Accepts: 0, false, no → disabled; anything else → enabled.
+        """
+        env_val = os.environ.get("EMSAL_PDF_EXTRACTION", "true").strip().lower()
+        return env_val not in ("0", "false", "no")
+
+    @property
+    def ocr_enabled(self) -> bool:
+        """Whether to enable OCR for scanned/image PDFs.
+
+        Env: EMSAL_OCR_ENABLED (default: false)
+        OCR is opt-in because it is slow and confidence is low.
+        Accepts: 1, true, yes → enabled; anything else → disabled.
+        """
+        env_val = os.environ.get("EMSAL_OCR_ENABLED", "false").strip().lower()
+        return env_val in ("1", "true", "yes")
+
+    @property
+    def ocr_language(self) -> str:
+        """Tesseract OCR language code.
+
+        Env: EMSAL_OCR_LANGUAGE (default: tur)
+        """
+        return os.environ.get("EMSAL_OCR_LANGUAGE", "tur").strip()
+
     # ── Doctor / diagnostic ───────────────────────────────────────────────
 
     def doctor(self) -> dict[str, Any]:

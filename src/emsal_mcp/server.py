@@ -37,6 +37,11 @@ from .citation_graph import (
     get_citation_graph as get_citation_graph_impl,
     get_citation_graph_stats as get_citation_graph_stats_impl,
 )
+from .pdf_extractor import (
+    extract_pdf_text_from_file as extract_pdf_text_impl,
+    get_pdf_toolkit_status as get_pdf_toolkit_status_impl,
+    promote_pdf_to_full_text as promote_pdf_to_full_text_impl,
+)
 from .semantic import (
     build_semantic_index as build_semantic_index_impl,
     get_index_status as get_index_status_impl,
@@ -1848,6 +1853,55 @@ def main() -> None:
             "active_requests": get_active_requests(),
             "note": "Informational counter. Single-user design: no concurrency locks.",
         }
+
+    # ── PDF Extraction MCP tools (M-27) ──────────────────────────────────
+
+    @mcp.tool()
+    def extract_pdf_text(file_path: str, ocr_enabled: bool = False) -> dict:
+        """Extract text layer from a PDF file.
+
+        Uses pypdf for text-layer extraction. OCR is opt-in only.
+        Never modifies the original file.
+
+        Args:
+            file_path: Path to the PDF file.
+            ocr_enabled: Enable OCR extraction (opt-in, produces low confidence warning).
+
+        Returns:
+            Dict with ok, text, text_length, method, warnings.
+        """
+        return extract_pdf_text_impl(file_path, ocr_enabled=ocr_enabled)
+
+    @mcp.tool()
+    def pdf_toolkit_status() -> dict:
+        """Check PDF extraction toolkit availability.
+
+        Reports which PDF tools (pypdf, pytesseract, pdf2image, pillow)
+        are installed and available.
+
+        Returns:
+            Dict with ok, available_tools, unavailable_tools.
+        """
+        return get_pdf_toolkit_status_impl()
+
+    @mcp.tool()
+    def promote_pdf_to_full_text(
+        document: dict,
+        ocr_enabled: bool = False,
+    ) -> dict:
+        """Try to promote a pdf_only Document to full_text.
+
+        For local files, use extract_pdf_text directly. This tool
+        handles the promotion workflow for documents with source_url.
+
+        Args:
+            document: Document dict with content_status, source_url, etc.
+            ocr_enabled: Enable OCR extraction (opt-in).
+
+        Returns:
+            Dict with ok, promoted, method, warnings, document.
+        """
+        return promote_pdf_to_full_text_impl(document, ocr_enabled=ocr_enabled)
 
     mcp.run()
 
