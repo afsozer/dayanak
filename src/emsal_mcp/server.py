@@ -19,6 +19,13 @@ from .chamber import (
     get_chamber_overview as get_chamber_overview_impl,
     profile_chamber as profile_chamber_impl,
 )
+from .citation_graph import (
+    build_citation_graph as build_citation_graph_impl,
+    find_cited_documents as find_cited_documents_impl,
+    find_citing_documents as find_citing_documents_impl,
+    get_citation_graph as get_citation_graph_impl,
+    get_citation_graph_stats as get_citation_graph_stats_impl,
+)
 from .semantic import (
     build_semantic_index as build_semantic_index_impl,
     get_index_status as get_index_status_impl,
@@ -894,6 +901,105 @@ def main() -> None:
         return find_similar_chambers_impl(
             chamber=chamber, court=court, limit=limit,
         )
+
+    # ── Citation Graph v0.14 MCP tools ────────────────────────────────────
+
+    @mcp.tool()
+    def build_citation_graph(limit_docs: int = 100) -> dict:
+        """Build citation graph from cached documents.
+
+        Extracts court decision references, matches against cached documents,
+        and stores verified edges.  Never fabricates — only detectable,
+        verifiable references are graphed.
+
+        Args:
+            limit_docs: Maximum documents to process.
+
+        Returns:
+            Dict with ok, edges_created, docs_processed, citations_found,
+            matches_found, confidence_distribution, warnings.
+        """
+        return build_citation_graph_impl(limit_docs=limit_docs)
+
+    @mcp.tool()
+    def get_citation_graph(
+        document_id: str,
+        source: str,
+        direction: str = "both",
+        max_depth: int = 1,
+    ) -> dict:
+        """Get citation relationships for a document.
+
+        Args:
+            document_id: The document ID.
+            source: The source identifier.
+            direction: 'citing' (docs that cite this), 'cited' (docs this cites),
+                       or 'both'.
+            max_depth: Traversal depth (1 = direct only).
+
+        Returns:
+            Dict with ok, document, citing, cited_by, total_edges.
+        """
+        return get_citation_graph_impl(
+            document_id=document_id,
+            source=source,
+            direction=direction,
+            max_depth=max_depth,
+        )
+
+    @mcp.tool()
+    def find_citing_documents(
+        document_id: str,
+        source: str,
+        limit: int = 20,
+    ) -> dict:
+        """Find documents that cite the given document.
+
+        Args:
+            document_id: The cited document ID.
+            source: The cited document source.
+            limit: Maximum results.
+
+        Returns:
+            Dict with ok, document, citing_documents list.
+        """
+        return find_citing_documents_impl(
+            document_id=document_id,
+            source=source,
+            limit=limit,
+        )
+
+    @mcp.tool()
+    def find_cited_documents(
+        document_id: str,
+        source: str,
+        limit: int = 20,
+    ) -> dict:
+        """Find documents that the given document cites.
+
+        Args:
+            document_id: The citing document ID.
+            source: The citing document source.
+            limit: Maximum results.
+
+        Returns:
+            Dict with ok, document, cited_documents list.
+        """
+        return find_cited_documents_impl(
+            document_id=document_id,
+            source=source,
+            limit=limit,
+        )
+
+    @mcp.tool()
+    def citation_graph_stats() -> dict:
+        """Get citation graph statistics.
+
+        Returns:
+            Dict with ok, total_edges, total_docs_with_citations,
+            most_cited_docs, avg_citations_per_doc, confidence_distribution.
+        """
+        return get_citation_graph_stats_impl()
 
     # ── Release v0.13 MCP tools ──────────────────────────────────────────
 

@@ -56,6 +56,13 @@ from .chamber import (
     get_chamber_overview as chamber_overview_impl,
     profile_chamber as profile_chamber_impl,
 )
+from .citation_graph import (
+    build_citation_graph as build_citation_graph_impl,
+    find_cited_documents as find_cited_documents_impl,
+    find_citing_documents as find_citing_documents_impl,
+    get_citation_graph as get_citation_graph_impl,
+    get_citation_graph_stats as get_citation_graph_stats_impl,
+)
 from .exporter import prepare_docx_export, prepare_export_package_bundle
 from .udf import (
     convert_docx_to_udf_experimental,
@@ -79,6 +86,7 @@ petition_app = typer.Typer(help="Petition pack: prepare drafting input, inspect 
 legislation_app = typer.Typer(help="Mevzuat: ara, belge al, madde ara, gerekçe çıkar")
 semantic_app = typer.Typer(help="Semantic search: FTS5 + TF-IDF hybrid, index yönetimi")
 chamber_app = typer.Typer(help="Chamber profiling: istatistik, timeline, benzer daire bulma")
+graph_app = typer.Typer(help="Citation graph: build, show, citing, cited, stats")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -88,6 +96,7 @@ app.add_typer(petition_app, name="petition")
 app.add_typer(legislation_app, name="legislation")
 app.add_typer(semantic_app, name="semantic")
 app.add_typer(chamber_app, name="chamber")
+app.add_typer(graph_app, name="graph")
 
 
 def _print(obj, json_out: bool):
@@ -917,6 +926,64 @@ def chamber_similar(
 ):
     """Find chambers with similar topic profiles."""
     result = find_similar_impl(chamber=chamber, court=court, limit=limit)
+    _print(result, json_out)
+
+
+# ── Citation graph subcommands ──────────────────────────────────────────────
+
+
+@graph_app.command("build")
+def graph_build(
+    limit_docs: int = typer.Option(100, help="Maksimum işlenecek belge sayısı"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Build citation graph from cached documents."""
+    result = build_citation_graph_impl(limit_docs=limit_docs)
+    _print(result, json_out)
+
+
+@graph_app.command("show")
+def graph_show(
+    document_id: str = typer.Argument(..., help="Belge ID"),
+    source: str = typer.Option("bedesten", help="Kaynak"),
+    direction: str = typer.Option("both", help="Yön: both, citing, cited"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Show citation relationships for a document."""
+    result = get_citation_graph_impl(document_id=document_id, source=source, direction=direction)
+    _print(result, json_out)
+
+
+@graph_app.command("citing")
+def graph_citing(
+    document_id: str = typer.Argument(..., help="Atıf alan belge ID"),
+    source: str = typer.Option("bedesten", help="Kaynak"),
+    limit: int = typer.Option(20, help="Maksimum sonuç"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Find documents that cite the given document."""
+    result = find_citing_documents_impl(document_id=document_id, source=source, limit=limit)
+    _print(result, json_out)
+
+
+@graph_app.command("cited")
+def graph_cited(
+    document_id: str = typer.Argument(..., help="Atıf yapan belge ID"),
+    source: str = typer.Option("bedesten", help="Kaynak"),
+    limit: int = typer.Option(20, help="Maksimum sonuç"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Find documents that the given document cites."""
+    result = find_cited_documents_impl(document_id=document_id, source=source, limit=limit)
+    _print(result, json_out)
+
+
+@graph_app.command("stats")
+def graph_stats(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Citation graph istatistikleri."""
+    result = get_citation_graph_stats_impl()
     _print(result, json_out)
 
 

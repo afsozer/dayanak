@@ -210,7 +210,7 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 1 | M-05 v1.0.0 release | [x] |
 | 2 | M-06 Cache bakım | [x] |
 | 2 | M-07 Semantic v2 | [x] |
-| 2 | M-08 Citation graph | [ ] |
+| 2 | M-08 Citation graph | [x] |
 | 2 | M-09 Dedup/merge | [ ] |
 | 2 | M-10 Arama analitik | [ ] |
 | 3 | M-11 Template library | [ ] |
