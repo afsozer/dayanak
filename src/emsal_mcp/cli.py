@@ -67,6 +67,9 @@ from .semantic import (
     hybrid_search as hybrid_search_impl,
     rebuild_index as rebuild_impl,
     semantic_search as semantic_search_cli_impl,
+    build_embedding_index as build_embedding_impl,
+    embedding_search as embedding_search_impl,
+    get_embedding_index_status as embedding_status_impl,
 )
 from .chamber import (
     chamber_timeline as chamber_timeline_impl,
@@ -1030,12 +1033,13 @@ def semantic_hybrid(
     query: str = typer.Argument(..., help="Arama sorgusu"),
     limit: int = typer.Option(10, help="Maksimum sonuç"),
     weight: float = typer.Option(0.6, help="Hybrid ağırlık (0.0=sadece semantic, 1.0=sadece BM25)"),
+    w_dense: float = typer.Option(0.0, "--w-dense", help="Dense embedding ağırlık (0.0=devre dışı)"),
     source: Optional[str] = typer.Option(None, help="Kaynak filtresi (örn: yargitay)"),
     court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
     chamber: Optional[str] = typer.Option(None, help="Daire filtresi"),
     json_out: bool = typer.Option(False, "--json"),
 ):
-    """FTS5 BM25 + TF-IDF cosine hybrid search. Supports --source, --court, --chamber filters."""
+    """FTS5 BM25 + TF-IDF cosine hybrid search with optional dense embeddings."""
     filters = {}
     if source:
         filters["source"] = source
@@ -1043,7 +1047,11 @@ def semantic_hybrid(
         filters["court"] = court
     if chamber:
         filters["chamber"] = chamber
-    result = hybrid_search_impl(query=query, limit=limit, hybrid_weight=weight, filters=filters or None)
+    result = hybrid_search_impl(
+        query=query, limit=limit, hybrid_weight=weight,
+        dense_weight=w_dense if w_dense > 0 else None,
+        filters=filters or None,
+    )
     _print(result, json_out)
 
 
@@ -1062,6 +1070,48 @@ def semantic_rebuild(
 ):
     """Force rebuild all search indices."""
     result = rebuild_impl()
+    _print(result, json_out)
+
+
+@semantic_app.command("embed-index")
+def semantic_embed_index(
+    provider: Optional[str] = typer.Option(None, help="Provider: local-hash-v1 or fastembed-minilm-l6-v2"),
+    force_rebuild: bool = typer.Option(False, "--force-rebuild"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Build dense embedding index."""
+    result = build_embedding_impl(provider=provider, force_rebuild=force_rebuild)
+    _print(result, json_out)
+
+
+@semantic_app.command("embed-search")
+def semantic_embed_search(
+    query: str = typer.Argument(..., help="Arama sorgusu"),
+    provider: Optional[str] = typer.Option(None),
+    limit: int = typer.Option(10),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Dense embedding similarity search."""
+    result = embedding_search_impl(query=query, limit=limit, provider=provider)
+    _print(result, json_out)
+
+
+@semantic_app.command("providers")
+def semantic_providers(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """List available embedding providers."""
+    from .embeddings import list_embedding_providers
+
+    _print(list_embedding_providers(), json_out)
+
+
+@semantic_app.command("embedding-status")
+def semantic_embedding_status(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Check dense embedding index status."""
+    result = embedding_status_impl()
     _print(result, json_out)
 
 

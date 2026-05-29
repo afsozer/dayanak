@@ -1197,6 +1197,79 @@ def main() -> None:
         """
         return rebuild_index_impl()
 
+    # ── Dense Embedding v2.1 MCP tools (M-24) ──────────────────────────
+
+    @mcp.tool()
+    def build_embedding_index(
+        provider: str | None = None,
+        force_rebuild: bool = False,
+    ) -> dict:
+        """Build dense embedding index from cached documents.
+
+        Uses the configured embedding provider (default: local-hash-v1).
+        Skips documents whose content_hash hasn't changed unless
+        force_rebuild=True.
+
+        Args:
+            provider: Optional provider ID (local-hash-v1, fastembed-minilm-l6-v2).
+            force_rebuild: If True, re-embed all documents.
+
+        Returns:
+            Dict with ok, documents_indexed, skipped, provider, dimensions.
+        """
+        from .semantic import build_embedding_index as _build_emb
+
+        return _build_emb(provider=provider, force_rebuild=force_rebuild)
+
+    @mcp.tool()
+    def embedding_search(
+        query: str,
+        limit: int = 10,
+        provider: str | None = None,
+    ) -> dict:
+        """Dense embedding similarity search.
+
+        Uses brute-force cosine similarity over all indexed embeddings.
+        No approximate nearest-neighbor (ANN) — exact but slower for large
+        corpora.
+
+        Args:
+            query: Search query string.
+            limit: Max results (default 10).
+            provider: Optional provider ID.
+
+        Returns:
+            Dict with ok, results (scored), total_matches, method, provider.
+        """
+        from .semantic import embedding_search as _emb_search
+
+        return _emb_search(query=query, limit=limit, provider=provider)
+
+    @mcp.tool()
+    def embedding_index_status() -> dict:
+        """Check dense embedding index status.
+
+        Returns per-provider vector counts and dimensions.
+
+        Returns:
+            Dict with ok, providers list, version.
+        """
+        from .semantic import get_embedding_index_status as _emb_status
+
+        return _emb_status()
+
+    @mcp.tool()
+    def list_embedding_providers() -> list[dict]:
+        """List available embedding providers and their status.
+
+        Returns:
+            List of provider metadata dicts with id, dimensions, label,
+            status, is_default, needs_download.
+        """
+        from .embeddings import list_embedding_providers as _list_emb
+
+        return _list_emb()
+
     # ── Chamber Profiling v0.12 MCP tools ──────────────────────────────────
 
     @mcp.tool()

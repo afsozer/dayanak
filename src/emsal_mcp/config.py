@@ -153,6 +153,61 @@ class EmsalConfig:
 
     # ── UDF toolkit directory ─────────────────────────────────────────────
 
+    # ── Embedding provider ─────────────────────────────────────────────
+
+    @property
+    def embedding_provider(self) -> str:
+        """Embedding provider ID.
+
+        Env: EMSAL_EMBEDDING_PROVIDER (default: local-hash-v1)
+        """
+        return os.environ.get("EMSAL_EMBEDDING_PROVIDER", "local-hash-v1")
+
+    @property
+    def embedding_cache_dir(self) -> Path:
+        """Cache directory for downloaded embedding models.
+
+        Env: EMSAL_EMBEDDING_CACHE_DIR (default: ~/.emsal_mcp/models/fastembed)
+        """
+        env = os.environ.get("EMSAL_EMBEDDING_CACHE_DIR", "")
+        if env:
+            return Path(env)
+        return Path.home() / ".emsal_mcp" / "models" / "fastembed"
+
+    @property
+    def embedding_batch_size(self) -> int:
+        """Batch size for embedding operations.
+
+        Env: EMSAL_EMBEDDING_BATCH_SIZE (default: 16)
+        """
+        return int(os.environ.get("EMSAL_EMBEDDING_BATCH_SIZE", "16"))
+
+    # ── Hybrid search weights ──────────────────────────────────────────
+
+    @property
+    def hybrid_w_bm25(self) -> float:
+        """Weight for BM25 component in hybrid search.
+
+        Env: EMSAL_HYBRID_W_BM25 (default: 0.4)
+        """
+        return float(os.environ.get("EMSAL_HYBRID_W_BM25", "0.4"))
+
+    @property
+    def hybrid_w_tfidf(self) -> float:
+        """Weight for TF-IDF cosine component in hybrid search.
+
+        Env: EMSAL_HYBRID_W_TFIDF (default: 0.6)
+        """
+        return float(os.environ.get("EMSAL_HYBRID_W_TFIDF", "0.6"))
+
+    @property
+    def hybrid_w_dense(self) -> float:
+        """Weight for dense embedding component in hybrid search.
+
+        Env: EMSAL_HYBRID_W_DENSE (default: 0.0)
+        """
+        return float(os.environ.get("EMSAL_HYBRID_W_DENSE", "0.0"))
+
     @property
     def udf_toolkit_dir(self) -> Path | None:
         """UDF toolkit directory for LibreOffice/unoconv.

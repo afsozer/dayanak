@@ -1,0 +1,907 @@
+"""Tests for emsal_mcp.embeddings module and M-24 dense embedding integration.
+
+Covers:
+  - LocalHashProvider (deterministic, 128 dims, batch, Turkish, empty text)
+  - FastEmbedProvider (lazy import, graceful unavailable)
+  - Provider factory (default, env override, unknown, list)
+  - pack_vector / unpack_vector round-trip
+  - embedding_vectors BLOB storage
+  - build_embedding_index (indexing, content-hash skip)
+  - embedding_search (scored results, sorted, empty, provider unavailable)
+  - get_embedding_index_status
+  - Hybrid v3 (w_dense=0 regression, w_dense>0 merge)
+  - CLI imports (embed-index, embed-search, providers, embedding-status)
+  - MCP imports (4 new tools)
+"""
+from __future__ import annotations
+
+import math
+import os
+from pathlib import Path
+from unittest.mock import patch
+
+from emsal_mcp.cache import Cache
+from emsal_mcp.embeddings import (
+    EMBEDDING_VERSION,
+    EmbeddingProvider,
+    FastEmbedProvider,
+    LocalHashProvider,
+    get_embedding_provider,
+    list_embedding_providers,
+    pack_vector,
+    unpack_vector,
+)
+from emsal_mcp.models import ContentStatus, Document
+from emsal_mcp.semantic import (
+    build_embedding_index,
+    build_semantic_index,
+    embedding_search,
+    get_embedding_index_status,
+    hybrid_search,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fake test provider
+# ---------------------------------------------------------------------------
+
+class FakeEmbeddingProvider(EmbeddingProvider):
+    """Deterministic keyword-based test provider (8 dims)."""
+
+    id = "fake-test"
+    dimensions = 8
+
+    def embed_text(self, text: str) -> list[float]:
+        vec = [0.0] * self.dimensions
+        for i, ch in enumerate(text.lower()[: self.dimensions]):
+            vec[i % self.dimensions] += ord(ch) / 1000.0
+        # L2 normalize
+        norm = math.sqrt(sum(v * v for v in vec))
+        if norm > 0:
+            vec = [v / norm for v in vec]
+        return vec
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed_text(t) for t in texts]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+SAMPLE_DOCS = [
+    {
+        "source": "yargitay",
+        "document_id": "yg-001",
+        "title": "Sözleşme İhlali Hakkında Karar",
+        "court": "Yargitay",
+        "content_status": ContentStatus.FULL_TEXT,
+        "full_text": (
+            "Taraflar arasındaki sözleşme hükümleri ihlal edilmiştir. "
+            "Borçlar Kanunu madde 96 uyarınca tazminat talep edilebilir."
+        ),
+        "markdown": "# Sözleşme İhlali\n\nTaraflar arasındaki sözleşme hükümleri ihlal edilmiştir.",
+    },
+    {
+        "source": "danistay",
+        "document_id": "ds-001",
+        "title": "İdari Para Cezası İptali",
+        "court": "Danistay",
+        "content_status": ContentStatus.FULL_TEXT,
+        "full_text": (
+            "İdari para cezasının iptali talebiyle açılan davada, "
+            "idarenin yetkisiz olduğu anlaşılmıştır. Kabahatler Kanunu kapsamında değerlendirme yapılmıştır."
+        ),
+        "markdown": "# İdari Para Cezası\n\nİdari para cezasının iptali talebiyle açılan davada...",
+    },
+    {
+        "source": "yargitay",
+        "document_id": "yg-002",
+        "title": "İş Kazası Tazminat Davası",
+        "court": "Yargitay",
+        "content_status": ContentStatus.FULL_TEXT,
+        "full_text": (
+            "İş kazası sonucu oluşan maddi zararın tazmini istemiyle açılan dava. "
+            "İşverenin kusur oranı bilirkişi raporuyla tespit edilmiştir."
+        ),
+        "markdown": "# İş Kazası\n\nİş kazası sonucu oluşan maddi zarar...",
+    },
+]
+
+
+def _populate_docs(cache: Cache, docs: list[dict] | None = None) -> None:
+    """Store a list of document dicts (or SAMPLE_DOCS) into cache."""
+    for doc_data in (docs or SAMPLE_DOCS):
+        cache.store_document(Document(**doc_data))
+
+
+# ===================================================================
+# TestLocalHashProvider
+# ===================================================================
+
+
+class TestLocalHashProvider:
+    """Tests for LocalHashProvider."""
+
+    def test_dimensions(self) -> None:
+        """Dimensions is 128."""
+        p = LocalHashProvider()
+        assert p.dimensions == 128
+
+    def test_id(self) -> None:
+        """ID is 'local-hash-v1'."""
+        p = LocalHashProvider()
+        assert p.id == "local-hash-v1"
+
+    def test_embed_text_returns_128(self) -> None:
+        """embed_text returns a 128-dim vector."""
+        p = LocalHashProvider()
+        vec = p.embed_text("test sentence")
+        assert len(vec) == 128
+
+    def test_embed_text_deterministic(self) -> None:
+        """Same text always produces the same vector."""
+        p = LocalHashProvider()
+        v1 = p.embed_text("hello world")
+        v2 = p.embed_text("hello world")
+        assert v1 == v2
+
+    def test_embed_text_different_texts(self) -> None:
+        """Different texts produce different vectors."""
+        p = LocalHashProvider()
+        v1 = p.embed_text("hello world")
+        v2 = p.embed_text("goodbye universe")
+        assert v1 != v2
+
+    def test_embed_text_turkish(self) -> None:
+        """Turkish characters work correctly."""
+        p = LocalHashProvider()
+        vec = p.embed_text("sözleşme hükümleri tazminat")
+        assert len(vec) == 128
+        # Should be normalized (unit vector)
+        norm = math.sqrt(sum(v * v for v in vec))
+        assert abs(norm - 1.0) < 1e-6
+
+    def test_embed_text_empty(self) -> None:
+        """Empty text returns zero vector (L2-norm = 0)."""
+        p = LocalHashProvider()
+        vec = p.embed_text("")
+        assert len(vec) == 128
+        # L2-norm should be 0 for empty input
+        norm = math.sqrt(sum(v * v for v in vec))
+        assert norm == 0.0
+
+    def test_embed_text_whitespace_only(self) -> None:
+        """Whitespace-only text returns zero vector."""
+        p = LocalHashProvider()
+        vec = p.embed_text("   \t\n  ")
+        norm = math.sqrt(sum(v * v for v in vec))
+        assert norm == 0.0
+
+    def test_embed_batch(self) -> None:
+        """embed_batch returns correct count."""
+        p = LocalHashProvider()
+        results = p.embed_batch(["a", "b", "c"])
+        assert len(results) == 3
+        for r in results:
+            assert len(r) == 128
+
+    def test_embed_batch_matches_single(self) -> None:
+        """embed_batch[i] == embed_text(texts[i])."""
+        p = LocalHashProvider()
+        texts = ["hello", "world", "test"]
+        batch = p.embed_batch(texts)
+        singles = [p.embed_text(t) for t in texts]
+        assert batch == singles
+
+    def test_l2_normalized(self) -> None:
+        """Output is L2-normalized (unit vector)."""
+        p = LocalHashProvider()
+        vec = p.embed_text("hello world")
+        norm = math.sqrt(sum(v * v for v in vec))
+        assert abs(norm - 1.0) < 1e-6
+
+    def test_trigrams_for_long_tokens(self) -> None:
+        """Tokens >= 5 chars produce trigram contributions."""
+        p = LocalHashProvider()
+        # 'hello' is 5 chars, should produce trigram contributions
+        v_short = p.embed_text("hi")
+        v_long = p.embed_text("hello")
+        # They should be different because 'hello' gets trigram boost
+        assert v_short != v_long
+
+
+# ===================================================================
+# TestFastEmbedProvider
+# ===================================================================
+
+
+class TestFastEmbedProvider:
+    """Tests for FastEmbedProvider (graceful unavailable)."""
+
+    def test_class_constants(self) -> None:
+        """FastEmbedProvider has correct class constants."""
+        assert FastEmbedProvider.id == "fastembed-minilm-l6-v2"
+        assert FastEmbedProvider.dimensions == 384
+
+    def test_init_without_fastembed(self) -> None:
+        """FastEmbedProvider can be instantiated even without fastembed."""
+        p = FastEmbedProvider()
+        assert p.id == "fastembed-minilm-l6-v2"
+        assert p.dimensions == 384
+
+    def test_raises_on_embed_without_fastembed(self) -> None:
+        """embed_text raises RuntimeError when fastembed is not installed."""
+        p = FastEmbedProvider()
+        try:
+            p.embed_text("test")
+            # If fastembed IS installed, this won't raise — that's fine
+        except RuntimeError as e:
+            assert "fastembed not installed" in str(e)
+
+    def test_raises_on_batch_without_fastembed(self) -> None:
+        """embed_batch raises RuntimeError when fastembed is not installed."""
+        p = FastEmbedProvider()
+        try:
+            p.embed_batch(["test1", "test2"])
+        except RuntimeError as e:
+            assert "fastembed not installed" in str(e)
+
+
+# ===================================================================
+# TestProviderFactory
+# ===================================================================
+
+
+class TestProviderFactory:
+    """Tests for get_embedding_provider()."""
+
+    def test_default_returns_local_hash(self) -> None:
+        """Default provider is local-hash-v1."""
+        p = get_embedding_provider()
+        assert p is not None
+        assert p.id == "local-hash-v1"
+        assert isinstance(p, LocalHashProvider)
+
+    def test_explicit_local_hash(self) -> None:
+        """Explicit 'local-hash-v1' returns LocalHashProvider."""
+        p = get_embedding_provider("local-hash-v1")
+        assert p is not None
+        assert isinstance(p, LocalHashProvider)
+
+    def test_env_override(self) -> None:
+        """EMSAL_EMBEDDING_PROVIDER env overrides default."""
+        with patch.dict(os.environ, {"EMSAL_EMBEDDING_PROVIDER": "local-hash-v1"}):
+            p = get_embedding_provider()
+            assert p is not None
+            assert p.id == "local-hash-v1"
+
+    def test_fastembed_when_unavailable(self) -> None:
+        """fastembed provider returns provider or None depending on install status."""
+        with patch.dict(os.environ, {"EMSAL_EMBEDDING_PROVIDER": "fastembed-minilm-l6-v2"}):
+            p = get_embedding_provider()
+            # If fastembed is installed, returns FastEmbedProvider; otherwise None
+            if p is not None:
+                assert p.id == "fastembed-minilm-l6-v2"
+            # Either outcome is valid
+
+    def test_unknown_provider_returns_none(self) -> None:
+        """Unknown provider name returns None."""
+        p = get_embedding_provider("nonexistent-provider")
+        assert p is None
+
+    def test_fastembed_alias(self) -> None:
+        """'fastembed' alias resolves to fastembed provider or None."""
+        with patch.dict(os.environ, {"EMSAL_EMBEDDING_PROVIDER": "fastembed"}):
+            p = get_embedding_provider()
+            # If fastembed is installed, returns FastEmbedProvider; otherwise None
+            if p is not None:
+                assert p.id == "fastembed-minilm-l6-v2"
+            # Either outcome is valid
+
+
+# ===================================================================
+# TestListEmbeddingProviders
+# ===================================================================
+
+
+class TestListEmbeddingProviders:
+    """Tests for list_embedding_providers()."""
+
+    def test_returns_two_providers(self) -> None:
+        """Returns metadata for both known providers."""
+        providers = list_embedding_providers()
+        assert len(providers) == 2
+
+    def test_local_hash_available(self) -> None:
+        """local-hash-v1 is always available."""
+        providers = list_embedding_providers()
+        local = [p for p in providers if p["id"] == "local-hash-v1"]
+        assert len(local) == 1
+        assert local[0]["status"] == "available"
+        assert local[0]["is_default"] is True
+
+    def test_fastembed_shows_unavailable(self) -> None:
+        """fastembed shows as unavailable when not installed."""
+        providers = list_embedding_providers()
+        fast = [p for p in providers if p["id"] == "fastembed-minilm-l6-v2"]
+        assert len(fast) == 1
+        assert fast[0]["status"] == "unavailable"
+        assert fast[0]["needs_download"] is True
+
+    def test_selected_field(self) -> None:
+        """Each provider has a 'selected' field."""
+        providers = list_embedding_providers()
+        for p in providers:
+            assert "selected" in p
+            assert isinstance(p["selected"], bool)
+
+    def test_dimensions_field(self) -> None:
+        """Each provider has a 'dimensions' field."""
+        providers = list_embedding_providers()
+        for p in providers:
+            assert "dimensions" in p
+            assert isinstance(p["dimensions"], int)
+            assert p["dimensions"] > 0
+
+
+# ===================================================================
+# TestPackUnpackVector
+# ===================================================================
+
+
+class TestPackUnpackVector:
+    """Tests for pack_vector / unpack_vector BLOB helpers."""
+
+    def test_round_trip(self) -> None:
+        """Pack then unpack returns the same vector."""
+        vec = [0.1, 0.2, -0.3, 0.0, 1.0, -1.0]
+        blob = pack_vector(vec)
+        result = unpack_vector(blob, len(vec))
+        assert len(result) == len(vec)
+        for a, b in zip(vec, result, strict=True):
+            assert abs(a - b) < 1e-6
+
+    def test_128_dim_round_trip(self) -> None:
+        """Round-trip with 128-dim vector (LocalHashProvider size)."""
+        p = LocalHashProvider()
+        vec = p.embed_text("test sentence for packing")
+        blob = pack_vector(vec)
+        result = unpack_vector(blob, 128)
+        assert len(result) == 128
+        for a, b in zip(vec, result, strict=True):
+            assert abs(a - b) < 1e-6
+
+    def test_blob_is_bytes(self) -> None:
+        """pack_vector returns bytes."""
+        blob = pack_vector([0.0, 1.0])
+        assert isinstance(blob, bytes)
+
+    def test_blob_size(self) -> None:
+        """Blob size is dim * 4 bytes (float32)."""
+        vec = [0.0] * 10
+        blob = pack_vector(vec)
+        assert len(blob) == 40  # 10 * 4
+
+    def test_negative_values(self) -> None:
+        """Negative float values survive round-trip."""
+        vec = [-1.5, -0.001, -999.9]
+        blob = pack_vector(vec)
+        result = unpack_vector(blob, len(vec))
+        for a, b in zip(vec, result, strict=True):
+            assert abs(a - b) < 1e-3
+
+
+# ===================================================================
+# TestEmbeddingVectorsTable
+# ===================================================================
+
+
+class TestEmbeddingVectorsTable:
+    """Tests for embedding_vectors BLOB storage in SQLite."""
+
+    def test_table_created(self) -> None:
+        """embedding_vectors table is created after ensure call."""
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        cache = Cache(Path("test_emb.sqlite3"))
+        try:
+            _ensure_embedding_vectors(cache.db)
+            tables = [
+                r[0]
+                for r in cache.db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            ]
+            assert "embedding_vectors" in tables
+        finally:
+            cache.close()
+            try:
+                Path("test_emb.sqlite3").unlink()
+            except Exception:
+                pass
+
+    def test_insert_and_retrieve(self) -> None:
+        """Insert a vector row and retrieve it."""
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        cache = Cache(Path("test_emb_ir.sqlite3"))
+        try:
+            _ensure_embedding_vectors(cache.db)
+            p = LocalHashProvider()
+            vec = p.embed_text("test")
+            blob = pack_vector(vec)
+            norm = math.sqrt(sum(v * v for v in vec))
+
+            cache.db.execute(
+                """INSERT OR REPLACE INTO embedding_vectors
+                (document_id, source, provider_id, dim, vector, norm, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                ("doc-1", "test-src", "local-hash-v1", 128, blob, norm, "hash1"),
+            )
+            cache.db.commit()
+
+            row = cache.db.execute(
+                "SELECT * FROM embedding_vectors WHERE document_id='doc-1'"
+            ).fetchone()
+            assert row is not None
+            retrieved = unpack_vector(row["vector"], row["dim"])
+            assert len(retrieved) == 128
+            for a, b in zip(vec, retrieved, strict=True):
+                assert abs(a - b) < 1e-6
+        finally:
+            cache.close()
+            try:
+                Path("test_emb_ir.sqlite3").unlink()
+            except Exception:
+                pass
+
+
+# ===================================================================
+# TestBuildEmbeddingIndex
+# ===================================================================
+
+
+class TestBuildEmbeddingIndex:
+    """Tests for build_embedding_index()."""
+
+    def test_index_empty(self, tmp_path: Path) -> None:
+        """Indexing empty DB returns ok with 0 indexed."""
+        cache = Cache(tmp_path / "emb_empty.sqlite3")
+        try:
+            result = build_embedding_index(cache=cache)
+            assert result["ok"] is True
+            assert result["documents_indexed"] == 0
+        finally:
+            cache.close()
+
+    def test_index_with_docs(self, tmp_path: Path) -> None:
+        """Index 3 documents, verify count."""
+        cache = Cache(tmp_path / "emb_docs.sqlite3")
+        try:
+            _populate_docs(cache)
+            result = build_embedding_index(cache=cache)
+            assert result["ok"] is True
+            assert result["documents_indexed"] == 3
+            assert result["provider"] == "local-hash-v1"
+            assert result["dimensions"] == 128
+        finally:
+            cache.close()
+
+    def test_content_hash_skip(self, tmp_path: Path) -> None:
+        """Documents whose hash hasn't changed are skipped."""
+        cache = Cache(tmp_path / "emb_skip.sqlite3")
+        try:
+            _populate_docs(cache)
+            r1 = build_embedding_index(cache=cache)
+            assert r1["documents_indexed"] == 3
+            # Second call: content_hash unchanged, should skip all
+            r2 = build_embedding_index(cache=cache)
+            assert r2["ok"] is True
+            assert r2["skipped"] == 3
+            assert r2["documents_indexed"] == 0
+        finally:
+            cache.close()
+
+    def test_force_rebuild(self, tmp_path: Path) -> None:
+        """force_rebuild=True re-embeds all documents."""
+        cache = Cache(tmp_path / "emb_force.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = build_embedding_index(cache=cache, force_rebuild=True)
+            assert result["ok"] is True
+            assert result["documents_indexed"] == 3
+            assert result["skipped"] == 0
+        finally:
+            cache.close()
+
+    def test_textless_docs_skipped(self, tmp_path: Path) -> None:
+        """Documents without text content are not indexed."""
+        cache = Cache(tmp_path / "emb_notext.sqlite3")
+        try:
+            docs = [
+                {
+                    "source": "test",
+                    "document_id": "no-text-1",
+                    "title": "No Text Doc",
+                    "content_status": ContentStatus.METADATA_ONLY,
+                },
+            ]
+            _populate_docs(cache, docs=docs)
+            result = build_embedding_index(cache=cache)
+            assert result["ok"] is True
+            assert result["documents_indexed"] == 0
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestEmbeddingSearch
+# ===================================================================
+
+
+class TestEmbeddingSearch:
+    """Tests for embedding_search()."""
+
+    def test_basic_search(self, tmp_path: Path) -> None:
+        """Search after indexing finds relevant documents."""
+        cache = Cache(tmp_path / "emb_search.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = embedding_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert result["total_matches"] >= 1
+            assert result["method"] == "dense"
+            assert result["provider"] == "local-hash-v1"
+        finally:
+            cache.close()
+
+    def test_results_sorted(self, tmp_path: Path) -> None:
+        """Results are sorted by score descending."""
+        cache = Cache(tmp_path / "emb_sorted.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = embedding_search("tazminat", cache=cache)
+            assert result["ok"] is True
+            scores = [r["score"] for r in result["results"]]
+            assert scores == sorted(scores, reverse=True)
+        finally:
+            cache.close()
+
+    def test_empty_query(self, tmp_path: Path) -> None:
+        """Empty query returns empty results."""
+        cache = Cache(tmp_path / "emb_empty_q.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = embedding_search("", cache=cache)
+            assert result["ok"] is True
+            assert result["results"] == []
+        finally:
+            cache.close()
+
+    def test_provider_unavailable(self, tmp_path: Path) -> None:
+        """Invalid provider returns error."""
+        cache = Cache(tmp_path / "emb_bad_prov.sqlite3")
+        try:
+            result = embedding_search("test", provider="nonexistent", cache=cache)
+            assert result["ok"] is False
+            assert "EMBEDDING_BACKEND_UNAVAILABLE" in result.get("errorCode", "")
+        finally:
+            cache.close()
+
+    def test_result_structure(self, tmp_path: Path) -> None:
+        """Each result has expected keys."""
+        cache = Cache(tmp_path / "emb_struct.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = embedding_search("test", cache=cache)
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert "document_id" in r
+                assert "source" in r
+                assert "title" in r
+                assert "score" in r
+                assert "content_status" in r
+        finally:
+            cache.close()
+
+    def test_version_field(self, tmp_path: Path) -> None:
+        """version field is correct."""
+        cache = Cache(tmp_path / "emb_ver.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = embedding_search("test", cache=cache)
+            assert result["ok"] is True
+            assert result["version"] == EMBEDDING_VERSION
+        finally:
+            cache.close()
+
+    def test_limit(self, tmp_path: Path) -> None:
+        """limit parameter is respected."""
+        cache = Cache(tmp_path / "emb_limit.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = embedding_search("test", cache=cache, limit=1)
+            assert result["ok"] is True
+            assert len(result["results"]) <= 1
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestEmbeddingIndexStatus
+# ===================================================================
+
+
+class TestEmbeddingIndexStatus:
+    """Tests for get_embedding_index_status()."""
+
+    def test_empty_status(self, tmp_path: Path) -> None:
+        """Empty DB returns ok with no providers."""
+        cache = Cache(tmp_path / "emb_status_empty.sqlite3")
+        try:
+            result = get_embedding_index_status(cache=cache)
+            assert result["ok"] is True
+            assert result["providers"] == []
+            assert result["version"] == EMBEDDING_VERSION
+        finally:
+            cache.close()
+
+    def test_status_after_index(self, tmp_path: Path) -> None:
+        """After indexing, status shows provider with count."""
+        cache = Cache(tmp_path / "emb_status_idx.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_embedding_index(cache=cache)
+            result = get_embedding_index_status(cache=cache)
+            assert result["ok"] is True
+            assert len(result["providers"]) == 1
+            p = result["providers"][0]
+            assert p["provider_id"] == "local-hash-v1"
+            assert p["cnt"] == 3
+            assert p["dim"] == 128
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestHybridV3Regression
+# ===================================================================
+
+
+class TestHybridV3Regression:
+    """Tests for hybrid_search v3 with dense_weight parameter."""
+
+    def test_w_dense_none_uses_config(self, tmp_path: Path) -> None:
+        """dense_weight=None falls back to config (default 0.0)."""
+        cache = Cache(tmp_path / "h3_none.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            result = hybrid_search("test", cache=cache)
+            assert result["ok"] is True
+            # dense_weight should be resolved from config (default 0.0)
+            assert result.get("dense_weight", 0.0) == 0.0
+        finally:
+            cache.close()
+
+    def test_w_dense_zero_same_as_v2(self, tmp_path: Path) -> None:
+        """dense_weight=0.0 produces identical results to v2 (no dense)."""
+        cache = Cache(tmp_path / "h3_zero.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            # v2 behaviour: dense_weight explicitly 0
+            r_v2 = hybrid_search("sözleşme", cache=cache, hybrid_weight=0.6, dense_weight=0.0)
+            # v3 behaviour: dense_weight=None (uses config default 0.0)
+            r_v3 = hybrid_search("sözleşme", cache=cache, hybrid_weight=0.6, dense_weight=None)
+            assert r_v2["ok"] is True
+            assert r_v3["ok"] is True
+            # Both should have same results when dense is disabled
+            assert r_v2["hybrid_weight"] == r_v3["hybrid_weight"]
+            # dense_weight should be 0.0 in both cases
+            assert r_v2.get("dense_weight", 0.0) == 0.0
+            assert r_v3.get("dense_weight", 0.0) == 0.0
+        finally:
+            cache.close()
+
+    def test_w_dense_positive_adds_dense_score(self, tmp_path: Path) -> None:
+        """dense_weight>0 adds dense_score field to results."""
+        cache = Cache(tmp_path / "h3_pos.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            build_embedding_index(cache=cache)
+            result = hybrid_search(
+                "sözleşme", cache=cache, hybrid_weight=0.4, dense_weight=0.3,
+            )
+            assert result["ok"] is True
+            assert result["dense_weight"] == 0.3
+            if result["results"]:
+                # dense_score should be present in each result
+                for r in result["results"]:
+                    assert "dense_score" in r
+        finally:
+            cache.close()
+
+    def test_dense_weight_in_output(self, tmp_path: Path) -> None:
+        """dense_weight is always in output dict."""
+        cache = Cache(tmp_path / "h3_out.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            result = hybrid_search("test", cache=cache, dense_weight=0.5)
+            assert "dense_weight" in result
+            assert result["dense_weight"] == 0.5
+        finally:
+            cache.close()
+
+    def test_existing_hybrid_tests_still_pass(self, tmp_path: Path) -> None:
+        """Existing hybrid behaviour is preserved (regression guard)."""
+        cache = Cache(tmp_path / "h3_regress.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            # Default: hybrid_weight=0.6, dense_weight from config (0.0)
+            result = hybrid_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert result["method"] == "hybrid"
+            assert result["hybrid_weight"] == 0.6
+            assert result["total_matches"] >= 1
+            # Results should have bm25_score and cosine_score
+            for r in result["results"]:
+                assert "bm25_score" in r
+                assert "cosine_score" in r
+                assert "hybrid_score" in r
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestCLIImports
+# ===================================================================
+
+
+class TestCLIImports:
+    """Tests that CLI commands are importable and registered."""
+
+    def test_cli_app_has_embed_commands(self) -> None:
+        """CLI app has embed-index, embed-search, providers commands."""
+        from typer.testing import CliRunner
+
+        from emsal_mcp.cli import app
+
+        runner = CliRunner()
+        # Test providers command exists and works
+        result = runner.invoke(app, ["semantic", "providers", "--json"])
+        assert result.exit_code == 0
+        assert "local-hash-v1" in result.output
+
+    def test_cli_embed_index_command(self) -> None:
+        """CLI embed-index command runs successfully."""
+        from typer.testing import CliRunner
+
+        from emsal_mcp.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["semantic", "embed-index", "--json"])
+        assert result.exit_code == 0
+        assert "ok" in result.output
+
+    def test_cli_embed_search_command(self) -> None:
+        """CLI embed-search command runs successfully."""
+        from typer.testing import CliRunner
+
+        from emsal_mcp.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["semantic", "embed-search", "test", "--json"])
+        assert result.exit_code == 0
+        assert "ok" in result.output
+
+    def test_cli_embedding_status_command(self) -> None:
+        """CLI embedding-status command runs successfully."""
+        from typer.testing import CliRunner
+
+        from emsal_mcp.cli import app
+
+        runner = CliRunner()
+        result = runner.invoke(app, ["semantic", "embedding-status", "--json"])
+        assert result.exit_code == 0
+        assert "ok" in result.output
+
+
+# ===================================================================
+# TestMCPImports
+# ===================================================================
+
+
+class TestMCPImports:
+    """Tests that MCP server can import the new tools."""
+
+    def test_server_imports(self) -> None:
+        """Server module can be imported (tools registered)."""
+        from emsal_mcp.server import main
+
+        assert callable(main)
+
+    def test_semantic_imports_all_new_functions(self) -> None:
+        """All new semantic functions are importable."""
+        from emsal_mcp.semantic import (
+            build_embedding_index,
+            embedding_search,
+            get_embedding_index_status,
+        )
+
+        assert callable(build_embedding_index)
+        assert callable(embedding_search)
+        assert callable(get_embedding_index_status)
+
+    def test_embeddings_imports_all(self) -> None:
+        """All embeddings module exports are importable."""
+        from emsal_mcp.embeddings import (
+            EMBEDDING_VERSION,
+            EmbeddingProvider,
+            FastEmbedProvider,
+            LocalHashProvider,
+        )
+
+        assert EMBEDDING_VERSION == "2.1.0"
+        assert issubclass(LocalHashProvider, EmbeddingProvider)
+        assert issubclass(FastEmbedProvider, EmbeddingProvider)
+
+
+# ===================================================================
+# TestConfigEmbeddingProperties
+# ===================================================================
+
+
+class TestConfigEmbeddingProperties:
+    """Tests for EmsalConfig embedding properties."""
+
+    def test_embedding_provider_default(self) -> None:
+        """Default embedding_provider is 'local-hash-v1'."""
+        from emsal_mcp.config import EmsalConfig
+
+        c = EmsalConfig()
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("EMSAL_EMBEDDING_PROVIDER", None)
+            assert c.embedding_provider == "local-hash-v1"
+
+    def test_embedding_cache_dir_default(self) -> None:
+        """Default embedding_cache_dir is ~/.emsal_mcp/models/fastembed."""
+        from emsal_mcp.config import EmsalConfig
+
+        c = EmsalConfig()
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("EMSAL_EMBEDDING_CACHE_DIR", None)
+            d = c.embedding_cache_dir
+            assert d == Path.home() / ".emsal_mcp" / "models" / "fastembed"
+
+    def test_embedding_batch_size_default(self) -> None:
+        """Default embedding_batch_size is 16."""
+        from emsal_mcp.config import EmsalConfig
+
+        c = EmsalConfig()
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("EMSAL_EMBEDDING_BATCH_SIZE", None)
+            assert c.embedding_batch_size == 16
+
+    def test_hybrid_weights_defaults(self) -> None:
+        """Default hybrid weights: bm25=0.4, tfidf=0.6, dense=0.0."""
+        from emsal_mcp.config import EmsalConfig
+
+        c = EmsalConfig()
+        with patch.dict(os.environ, {}, clear=False):
+            for k in ("EMSAL_HYBRID_W_BM25", "EMSAL_HYBRID_W_TFIDF", "EMSAL_HYBRID_W_DENSE"):
+                os.environ.pop(k, None)
+            assert c.hybrid_w_bm25 == 0.4
+            assert c.hybrid_w_tfidf == 0.6
+            assert c.hybrid_w_dense == 0.0

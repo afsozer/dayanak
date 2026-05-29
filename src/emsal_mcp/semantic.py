@@ -17,10 +17,11 @@ from collections import Counter
 from typing import Any
 
 from .cache import Cache
+from .embeddings import EMBEDDING_VERSION
 from .models import build_error  # noqa: F401
 
 
-SEMANTIC_VERSION = "0.12.0"
+SEMANTIC_VERSION = "0.13.0"
 
 # ---------------------------------------------------------------------------
 # Tokenizer & Vector Math
@@ -679,8 +680,12 @@ def hybrid_search(
     cache: Cache | None = None,
     filters: dict[str, Any] | None = None,
     hybrid_weight: float = 0.6,
+    dense_weight: float | None = None,
 ) -> dict[str, Any]:
-    """Combined FTS5 BM25 + TF-IDF cosine hybrid search.
+    """Combined FTS5 BM25 + TF-IDF cosine hybrid search (v3 with optional dense).
+
+    When dense_weight is None or 0.0, behaviour is identical to v2 (regression safe).
+    When dense_weight > 0, a third dense-embedding signal is merged into the score.
 
     Args:
         query: Free-text search query.
@@ -692,10 +697,12 @@ def hybrid_search(
         hybrid_weight: Weight for BM25 component (1-hybrid_weight for cosine).
             Must be between 0.0 and 1.0.  Default 0.6 means 60% BM25, 40%
             cosine.
+        dense_weight: Optional weight for dense embedding component.
+            When None, defaults to config value.  Set to 0.0 to disable.
 
     Returns:
         Dict with ok, results, total_matches, method, hybrid_weight,
-        expanded_query_terms, snippet_highlighted, warnings, version.
+        dense_weight, expanded_query_terms, snippet_highlighted, warnings, version.
     """
     # Validate hybrid_weight
     if not (0.0 <= hybrid_weight <= 1.0):
@@ -713,6 +720,12 @@ def hybrid_search(
             snippet_highlighted=False,
             version=SEMANTIC_VERSION,
         )
+
+    # Resolve dense_weight: explicit arg > env config > 0.0 (disabled)
+    if dense_weight is None:
+        from .config import config as _cfg
+
+        dense_weight = _cfg.hybrid_w_dense
 
     db, own_cache = _get_db(cache)
     warnings: list[str] = []
@@ -732,6 +745,7 @@ def hybrid_search(
                 "total_matches": 0,
                 "method": "hybrid",
                 "hybrid_weight": hybrid_weight,
+                "dense_weight": dense_weight,
                 "warnings": ["No documents in cache. Store documents first."],
                 "recommended_next_steps": ["Use store_document() to add documents."],
                 "expanded_query_terms": [],
@@ -786,8 +800,21 @@ def hybrid_search(
                     if cs > 0:
                         cosine_results[(doc_id, source)] = cs
 
+        # ---- Dense Embedding Search (optional, v3) ----
+        dense_results: dict[tuple[str, str], float] = {}
+        dense_provider: str | None = None
+        if dense_weight is not None and dense_weight > 0:
+            try:
+                dr = embedding_search(query=query, limit=limit * 3, cache=cache, filters=None)
+                if dr.get("ok"):
+                    for r in dr.get("results", []):
+                        dense_results[(r["document_id"], r["source"])] = r["score"]
+                    dense_provider = dr.get("provider")
+            except Exception:
+                warnings.append("Dense embedding search failed; proceeding without dense signal.")
+
         # ---- Merge Scores ----
-        all_keys = set(bm25_results.keys()) | set(cosine_results.keys())
+        all_keys = set(bm25_results.keys()) | set(cosine_results.keys()) | set(dense_results.keys())
         if not all_keys:
             return {
                 "ok": True,
@@ -796,6 +823,7 @@ def hybrid_search(
                 "total_matches": 0,
                 "method": "hybrid",
                 "hybrid_weight": hybrid_weight,
+                "dense_weight": dense_weight,
                 "warnings": warnings,
                 "recommended_next_steps": ["Try a broader query or check index status."],
                 "expanded_query_terms": expanded_terms,
@@ -811,13 +839,24 @@ def hybrid_search(
             doc_id, source = key
             bm25_raw = bm25_results.get(key, 0.0)
             cosine_raw = cosine_results.get(key, 0.0)
+            dense_raw = dense_results.get(key, 0.0)
 
             # Normalize BM25: lower (more negative) = better match
             # Map to [0, 1]: bm25_norm = 1.0 / (1.0 + abs(bm25_score))
             bm25_norm = 1.0 / (1.0 + abs(bm25_raw)) if bm25_raw != 0 else 0.0
             # Cosine is already in [0, 1] by definition
+            # Dense is already in [0, 1] by definition
 
-            final_score = hybrid_weight * bm25_norm + (1.0 - hybrid_weight) * cosine_raw
+            # 3-signal merge when dense_weight > 0, else 2-signal (regression safe)
+            if dense_weight and dense_weight > 0:
+                # Normalize weights to sum to 1.0
+                total_w = hybrid_weight + (1.0 - hybrid_weight) + dense_weight
+                w_bm25 = hybrid_weight / total_w
+                w_tfidf = (1.0 - hybrid_weight) / total_w
+                w_dense = dense_weight / total_w
+                final_score = w_bm25 * bm25_norm + w_tfidf * cosine_raw + w_dense * dense_raw
+            else:
+                final_score = hybrid_weight * bm25_norm + (1.0 - hybrid_weight) * cosine_raw
 
             doc_info = _fetch_doc_row(db, doc_id, source)
             if doc_info is None:
@@ -830,7 +869,7 @@ def hybrid_search(
             if hl:
                 any_highlighted = True
 
-            merged.append({
+            entry: dict[str, Any] = {
                 "document_id": doc_id,
                 "source": source,
                 "title": doc_info["title"],
@@ -844,7 +883,10 @@ def hybrid_search(
                 "content_status": doc_info["content_status"],
                 "quote_usable": doc_info["quote_usable"],
                 "draft_usable": doc_info["draft_usable"],
-            })
+            }
+            if dense_weight and dense_weight > 0:
+                entry["dense_score"] = round(dense_raw, 6)
+            merged.append(entry)
 
         # Apply filters
         merged = _apply_filters(merged, filters)
@@ -857,6 +899,10 @@ def hybrid_search(
             recommended.append("FTS5 index may be empty. Run build_semantic_index() to rebuild.")
         if not cosine_results:
             recommended.append("TF-IDF vectors may be empty. Run build_semantic_index() to rebuild.")
+        if dense_weight and dense_weight > 0 and not dense_results:
+            recommended.append(
+                "Dense embedding index may be empty. Run build_embedding_index() to index."
+            )
 
         return {
             "ok": True,
@@ -865,6 +911,8 @@ def hybrid_search(
             "total_matches": len(merged),
             "method": "hybrid",
             "hybrid_weight": hybrid_weight,
+            "dense_weight": dense_weight,
+            "dense_provider": dense_provider,
             "warnings": warnings,
             "recommended_next_steps": recommended,
             "expanded_query_terms": expanded_terms,
@@ -880,6 +928,7 @@ def hybrid_search(
             total_matches=0,
             method="hybrid",
             hybrid_weight=hybrid_weight,
+            dense_weight=dense_weight,
             warnings=[str(exc)],
             recommended_next_steps=[],
             expanded_query_terms=[],
@@ -994,3 +1043,294 @@ def rebuild_index(cache: Cache | None = None) -> dict[str, Any]:
         Status dict from build_semantic_index.
     """
     return build_semantic_index(cache=cache, force_rebuild=True)
+
+
+# ---------------------------------------------------------------------------
+# Dense Embedding Vectors (M-24)
+# ---------------------------------------------------------------------------
+
+
+def _ensure_embedding_vectors(db: sqlite3.Connection) -> bool:
+    """Create the embedding_vectors table for dense embedding storage.
+
+    Returns True if the table already existed.
+    """
+    existing = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='embedding_vectors'"
+    ).fetchone()
+    already_existed = existing is not None
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS embedding_vectors (
+            document_id TEXT NOT NULL,
+            source TEXT NOT NULL,
+            provider_id TEXT NOT NULL,
+            dim INTEGER NOT NULL,
+            vector BLOB NOT NULL,
+            norm REAL DEFAULT 0.0,
+            indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            content_hash TEXT,
+            PRIMARY KEY (document_id, source, provider_id)
+        )
+    """)
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ev_provider ON embedding_vectors(provider_id)"
+    )
+    db.commit()
+    return already_existed
+
+
+def build_embedding_index(
+    cache: Cache | None = None,
+    provider: str | None = None,
+    force_rebuild: bool = False,
+) -> dict[str, Any]:
+    """Build dense embedding index from cached documents.
+
+    Args:
+        cache: Optional Cache instance for DB injection.
+        provider: Provider ID (default from config/env).
+        force_rebuild: If True, re-embed all documents.
+
+    Returns:
+        Status dict with ok, documents_indexed, provider, dimensions, etc.
+    """
+    import time
+
+    from .embeddings import get_embedding_provider, pack_vector
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+        _ensure_embedding_vectors(db)
+
+        prov = get_embedding_provider(provider)
+        if prov is None:
+            return build_error(
+                "EMBEDDING_BACKEND_UNAVAILABLE",
+                f"Embedding provider '{provider or 'default'}' unavailable. "
+                "Install fastembed or use local-hash-v1.",
+            )
+
+        # Get documents with text content
+        rows = db.execute(
+            """
+            SELECT document_id, source, full_text, markdown, content_hash
+            FROM documents_v2
+            WHERE (full_text IS NOT NULL AND full_text != '')
+               OR (markdown IS NOT NULL AND markdown != '')
+        """
+        ).fetchall()
+
+        if not rows:
+            return {
+                "ok": True,
+                "documents_indexed": 0,
+                "provider": prov.id,
+                "dimensions": prov.dimensions,
+                "warnings": ["No documents with text content."],
+            }
+
+        indexed = 0
+        skipped = 0
+        t0 = time.time()
+        for row in rows:
+            doc_id = row["document_id"]
+            source = row["source"]
+            text = row["full_text"] or row["markdown"] or ""
+            content_hash = row["content_hash"]
+
+            if not force_rebuild:
+                existing = db.execute(
+                    "SELECT content_hash FROM embedding_vectors "
+                    "WHERE document_id=? AND source=? AND provider_id=?",
+                    (doc_id, source, prov.id),
+                ).fetchone()
+                if existing and existing["content_hash"] == content_hash:
+                    skipped += 1
+                    continue
+
+            # Embed
+            vec = prov.embed_text(text)
+            blob = pack_vector(vec)
+            norm = math.sqrt(sum(v * v for v in vec))
+
+            db.execute(
+                """
+                INSERT OR REPLACE INTO embedding_vectors
+                (document_id, source, provider_id, dim, vector, norm, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+                (doc_id, source, prov.id, prov.dimensions, blob, norm, content_hash),
+            )
+            indexed += 1
+
+        db.commit()
+        elapsed = round(time.time() - t0, 3)
+
+        return {
+            "ok": True,
+            "documents_indexed": indexed,
+            "skipped": skipped,
+            "provider": prov.id,
+            "dimensions": prov.dimensions,
+            "elapsed_seconds": elapsed,
+        }
+    except Exception as exc:
+        return build_error(
+            "EMBEDDING_INDEX_FAILED",
+            str(exc),
+            documents_indexed=0,
+            provider=provider,
+            warnings=[str(exc)],
+        )
+    finally:
+        if own_cache:
+            try:
+                c.close()
+            except Exception:
+                pass
+
+
+def embedding_search(
+    query: str,
+    limit: int = 10,
+    provider: str | None = None,
+    cache: Cache | None = None,
+    filters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Search using dense embeddings with brute-force cosine similarity.
+
+    Args:
+        query: Free-text search query.
+        limit: Maximum results to return.
+        provider: Provider ID (default from config/env).
+        cache: Optional Cache instance for DB injection.
+        filters: Optional metadata filters applied after scoring.
+
+    Returns:
+        Dict with ok, results, total_matches, method, provider, version.
+    """
+    from .embeddings import get_embedding_provider, unpack_vector
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+
+        prov = get_embedding_provider(provider)
+        if prov is None:
+            return build_error(
+                "EMBEDDING_BACKEND_UNAVAILABLE",
+                "Embedding provider unavailable.",
+            )
+
+        # Embed query
+        q_vec = prov.embed_text(query)
+        q_norm = math.sqrt(sum(v * v for v in q_vec))
+
+        if q_norm == 0:
+            return {
+                "ok": True,
+                "results": [],
+                "total_matches": 0,
+                "method": "dense",
+                "provider": prov.id,
+                "version": EMBEDDING_VERSION,
+            }
+
+        # Load all embeddings for this provider (brute force)
+        rows = db.execute(
+            "SELECT document_id, source, vector, norm, dim FROM embedding_vectors WHERE provider_id=?",
+            (prov.id,),
+        ).fetchall()
+
+        scores: list[dict[str, Any]] = []
+        for row in rows:
+            vec = unpack_vector(row["vector"], row["dim"])
+            dot = sum(q_vec[i] * vec[i] for i in range(min(len(q_vec), len(vec))))
+            denom = q_norm * row["norm"]
+            score = dot / denom if denom > 0 else 0.0
+
+            if score > 0:
+                # Get doc metadata
+                doc = db.execute(
+                    "SELECT title, content_status FROM documents_v2 "
+                    "WHERE document_id=? AND source=?",
+                    (row["document_id"], row["source"]),
+                ).fetchone()
+                scores.append(
+                    {
+                        "document_id": row["document_id"],
+                        "source": row["source"],
+                        "title": doc["title"] if doc else "",
+                        "score": round(score, 6),
+                        "content_status": doc["content_status"] if doc else "unknown",
+                    }
+                )
+
+        scores.sort(key=lambda x: x["score"], reverse=True)
+
+        # Apply filters if any
+        if filters:
+            scores = _apply_filters(scores, filters)
+
+        return {
+            "ok": True,
+            "results": scores[:limit],
+            "total_matches": len(scores),
+            "method": "dense",
+            "provider": prov.id,
+            "version": EMBEDDING_VERSION,
+        }
+    except Exception as exc:
+        return build_error(
+            "EMBEDDING_SEARCH_FAILED",
+            str(exc),
+            results=[],
+            total_matches=0,
+            method="dense",
+            warnings=[str(exc)],
+        )
+    finally:
+        if own_cache:
+            try:
+                c.close()
+            except Exception:
+                pass
+
+
+def get_embedding_index_status(cache: Cache | None = None) -> dict[str, Any]:
+    """Check dense embedding index status.
+
+    Returns:
+        Dict with ok, providers list, version.
+    """
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+        _ensure_embedding_vectors(db)
+        rows = db.execute(
+            """
+            SELECT provider_id, COUNT(*) as cnt, dim FROM embedding_vectors
+            GROUP BY provider_id
+        """
+        ).fetchall()
+        return {
+            "ok": True,
+            "providers": [dict(r) for r in rows],
+            "version": EMBEDDING_VERSION,
+        }
+    except Exception as exc:
+        return build_error(
+            "EMBEDDING_STATUS_FAILED",
+            str(exc),
+            providers=[],
+        )
+    finally:
+        if own_cache:
+            try:
+                c.close()
+            except Exception:
+                pass

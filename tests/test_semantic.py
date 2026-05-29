@@ -691,8 +691,8 @@ class TestModuleConstants:
     """Tests for module-level constants."""
 
     def test_version(self) -> None:
-        """SEMANTIC_VERSION equals '0.12.0'."""
-        assert SEMANTIC_VERSION == "0.12.0"
+        """SEMANTIC_VERSION equals '0.13.0'."""
+        assert SEMANTIC_VERSION == "0.13.0"
 
 
 # ===================================================================
