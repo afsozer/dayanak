@@ -1001,6 +1001,82 @@ def main() -> None:
         """
         return get_citation_graph_stats_impl()
 
+    # ── Dedup v0.15 MCP tools ─────────────────────────────────────────────
+
+    @mcp.tool()
+    def find_duplicates(dry_run: bool = False) -> dict:
+        """Find duplicate documents across sources (same court+esas_no+karar_no).
+
+        Groups documents by matching court, esas_no, and karar_no.
+        Only documents with non-empty esas_no AND karar_no are considered.
+        Never false-merges: strict matching only.
+
+        Args:
+            dry_run: If True, compute plan without modifying DB.
+
+        Returns:
+            Dict with ok, clusters_found, total_duplicates, dry_run, clusters.
+        """
+        from .dedup import find_duplicates as find_duplicates_impl
+        cache = Cache()
+        try:
+            return find_duplicates_impl(cache=cache, dry_run=dry_run)
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def get_dedup_cluster(document_id: str, source: str) -> dict:
+        """Find which dedup cluster a document belongs to.
+
+        Args:
+            document_id: Document ID to look up.
+            source: Source identifier.
+
+        Returns:
+            Dict with ok, in_cluster, cluster_id, canonical, all_members.
+        """
+        from .dedup import get_dedup_cluster as get_dedup_cluster_impl
+        cache = Cache()
+        try:
+            return get_dedup_cluster_impl(document_id=document_id, source=source, cache=cache)
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def dedup_stats() -> dict:
+        """Get deduplication statistics.
+
+        Returns:
+            Dict with ok, total_clusters, total_duplicate_docs,
+            space_saved_estimate, sources_most_duplicates.
+        """
+        from .dedup import get_dedup_stats as get_dedup_stats_impl
+        cache = Cache()
+        try:
+            return get_dedup_stats_impl(cache=cache)
+        finally:
+            cache.close()
+
+    @mcp.tool()
+    def merge_dedup_cluster(cluster_id: str) -> dict:
+        """Merge a dedup cluster: enrich canonical record with alt source URLs.
+
+        Adds alternative source URLs from non-canonical members to the
+        canonical document's metadata without overwriting existing fields.
+
+        Args:
+            cluster_id: The dedup cluster ID to merge.
+
+        Returns:
+            Dict with ok, cluster_id, canonical, enriched_fields, members_merged.
+        """
+        from .dedup import merge_cluster as merge_cluster_impl
+        cache = Cache()
+        try:
+            return merge_cluster_impl(cluster_id=cluster_id, cache=cache)
+        finally:
+            cache.close()
+
     # ── Release v0.13 MCP tools ──────────────────────────────────────────
 
     @mcp.tool()

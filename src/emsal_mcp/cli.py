@@ -63,6 +63,12 @@ from .citation_graph import (
     get_citation_graph as get_citation_graph_impl,
     get_citation_graph_stats as get_citation_graph_stats_impl,
 )
+from .dedup import (
+    find_duplicates as find_duplicates_impl,
+    get_dedup_cluster as get_dedup_cluster_impl,
+    get_dedup_stats as get_dedup_stats_impl,
+    merge_cluster as merge_cluster_impl,
+)
 from .exporter import prepare_docx_export, prepare_export_package_bundle
 from .udf import (
     convert_docx_to_udf_experimental,
@@ -359,6 +365,69 @@ def cache_integrity_check(
     result = cache.check_integrity_full()
     _print(result, json_out)
     cache.close()
+
+
+# ── Dedup subcommands ──────────────────────────────────────────────────────
+
+
+@cache_app.command("find-duplicates")
+def cache_find_duplicates(
+    dry_run: bool = typer.Option(False, help="Compute plan without modifying DB"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Find duplicate documents across sources (same court+esas_no+karar_no)."""
+    cache = Cache(cache_path)
+    try:
+        result = find_duplicates_impl(cache=cache, dry_run=dry_run)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@cache_app.command("dedup-cluster")
+def cache_dedup_cluster(
+    document_id: str = typer.Argument(..., help="Document ID to look up"),
+    source: str = typer.Option(None, help="Source filter"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Find which dedup cluster a document belongs to."""
+    cache = Cache(cache_path)
+    try:
+        result = get_dedup_cluster_impl(document_id=document_id, source=source or "", cache=cache)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@cache_app.command("dedup-stats")
+def cache_dedup_stats(
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Show deduplication statistics."""
+    cache = Cache(cache_path)
+    try:
+        result = get_dedup_stats_impl(cache=cache)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
+@cache_app.command("merge-cluster")
+def cache_merge_cluster(
+    cluster_id: str = typer.Argument(..., help="Cluster ID to merge"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Merge a dedup cluster: enrich canonical record with alternative source URLs."""
+    cache = Cache(cache_path)
+    try:
+        result = merge_cluster_impl(cluster_id=cluster_id, cache=cache)
+        _print(result, json_out)
+    finally:
+        cache.close()
 
 
 # ── Release subcommands ────────────────────────────────────────────────────
