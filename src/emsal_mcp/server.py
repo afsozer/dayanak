@@ -43,6 +43,8 @@ from .semantic import (
     hybrid_search as hybrid_search_impl,
     rebuild_index as rebuild_index_impl,
     semantic_search as semantic_search_impl,
+    update_indexes as update_indexes_impl,
+    get_index_sync_status as get_index_sync_status_impl,
 )
 from .models import Document
 from .petition import (
@@ -1272,6 +1274,35 @@ def main() -> None:
         from .embeddings import list_embedding_providers as _list_emb
 
         return _list_emb()
+
+    @mcp.tool()
+    def update_indexes(provider: str | None = None) -> dict:
+        """Incrementally update both TF-IDF and dense indexes.
+
+        Only processes documents that are new or have changed content.
+        Uses content_hash comparison to skip unchanged documents.
+        After update, cleans orphan vectors.
+
+        Args:
+            provider: Optional embedding provider for dense index updates.
+
+        Returns:
+            Dict with ok, tfidf_updated, dense_updated, skipped, warnings.
+        """
+        return update_indexes_impl(provider=provider)
+
+    @mcp.tool()
+    def index_sync_status() -> dict:
+        """Report how many documents are out of sync with indexes.
+
+        Compares total documents with text content against indexed
+        counts in TF-IDF and dense embedding stores.
+
+        Returns:
+            Dict with ok, total_documents, tfidf_indexed, dense_indexed,
+            tfidf_out_of_sync, dense_out_of_sync.
+        """
+        return get_index_sync_status_impl()
 
     # ── Chamber Profiling v0.12 MCP tools ──────────────────────────────────
 

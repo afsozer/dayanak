@@ -416,7 +416,7 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 5 | M-23 v2.0.0 review | [x] |
 | 6 | M-24 Dense embedding (fastembed) | [x] |
 | 7 | M-25 Cross-encoder reranking | [x] |
-| 7 | M-26 Incremental index | [ ] |
+| 7 | M-26 Incremental index | [x] |
 | 7 | M-27 PDF/OCR çıkarım | [ ] |
 | 7 | M-28 Fuzzy dedup v2 | [ ] |
 | 8 | M-29 Async concurrency/pooling | [ ] |

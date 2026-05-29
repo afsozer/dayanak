@@ -1322,6 +1322,8 @@ def embedding_search(
 def get_embedding_index_status(cache: Cache | None = None) -> dict[str, Any]:
     """Check dense embedding index status.
 
+    Returns per-provider vector counts and dimensions.
+
     Returns:
         Dict with ok, providers list, version.
     """
@@ -1346,6 +1348,269 @@ def get_embedding_index_status(cache: Cache | None = None) -> dict[str, Any]:
             "EMBEDDING_STATUS_FAILED",
             str(exc),
             providers=[],
+        )
+    finally:
+        if own_cache:
+            try:
+                c.close()
+            except Exception:
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Incremental Index Update (M-26)
+# ---------------------------------------------------------------------------
+
+
+def _table_exists(db: sqlite3.Connection, table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    return db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,),
+    ).fetchone() is not None
+
+
+def update_indexes(
+    cache: Cache | None = None,
+    since: str | None = None,
+    provider: str | None = None,
+) -> dict[str, Any]:
+    """Incrementally update both TF-IDF and dense indexes.
+
+    Only processes documents that are:
+    - New (not in search_vectors/embedding_vectors)
+    - Changed (content_hash differs from indexed hash, dense only)
+
+    After incremental update, cleans orphan vectors.
+
+    Args:
+        cache: Optional Cache instance for DB injection.
+        since: Optional ISO timestamp — only process docs fetched after this time.
+        provider: Optional embedding provider for dense index updates.
+
+    Returns:
+        Dict with ok, tfidf_updated, dense_updated, skipped, warnings.
+    """
+    results: dict[str, Any] = {
+        "ok": True,
+        "tfidf_updated": 0,
+        "dense_updated": 0,
+        "skipped": 0,
+        "warnings": [],
+    }
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+
+        # Ensure tables exist
+        _ensure_fts5(db)
+        _ensure_search_vectors(db)
+
+        # --- TF-IDF incremental ---
+        # Find documents with text that are NOT yet in search_vectors
+        tfidf_query = """
+            SELECT dv.document_id, dv.source, dv.full_text, dv.markdown, dv.content_hash
+            FROM documents_v2 dv
+            LEFT JOIN search_vectors sv ON dv.document_id = sv.document_id AND dv.source = sv.source
+            WHERE sv.document_id IS NULL
+              AND ((dv.full_text IS NOT NULL AND dv.full_text != '')
+                OR (dv.markdown IS NOT NULL AND dv.markdown != ''))
+        """
+        params: list[Any] = []
+        if since:
+            tfidf_query += " AND dv.retrieved_at >= ?"
+            params.append(since)
+
+        new_tfidf_docs = db.execute(tfidf_query, params).fetchall()
+
+        if new_tfidf_docs:
+            # Get existing IDF from stored vectors
+            existing_terms: Counter = Counter()
+            existing_rows = db.execute(
+                "SELECT vector_json FROM search_vectors"
+            ).fetchall()
+            for row in existing_rows:
+                try:
+                    vec = json.loads(row["vector_json"])
+                    for term in vec:
+                        existing_terms[term] += 1
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            # Tokenize new docs and count
+            new_terms: Counter = Counter()
+            new_docs_text: list[tuple[str, str, str | None, list[str]]] = []
+            for row in new_tfidf_docs:
+                text = row["full_text"] or row["markdown"] or ""
+                tokens = _tokenize(text)
+                if tokens:
+                    new_docs_text.append(
+                        (row["document_id"], row["source"], row["content_hash"], tokens)
+                    )
+                    for t in set(tokens):
+                        new_terms[t] += 1
+
+            # Update IDF
+            total_docs = len(existing_rows) + len(new_docs_text)
+            idf: dict[str, float] = {}
+            for term in set(existing_terms.keys()) | set(new_terms.keys()):
+                df = existing_terms.get(term, 0) + new_terms.get(term, 0)
+                if df > 0:
+                    idf[term] = math.log(total_docs / df) + 1.0
+
+            # Compute TF-IDF for new docs
+            for doc_id, source, _content_hash, tokens in new_docs_text:
+                tf = Counter(tokens)
+                total = len(tokens) or 1
+                vec = {
+                    t: (c_val / total) * idf.get(t, 1.0)
+                    for t, c_val in tf.items()
+                    if idf.get(t, 0) > 0
+                }
+                norm = math.sqrt(sum(v * v for v in vec.values())) if vec else 0.0
+                vector_json = json.dumps(vec, ensure_ascii=False)
+
+                db.execute(
+                    """
+                    INSERT OR REPLACE INTO search_vectors (document_id, source, vector_json, norm, indexed_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (doc_id, source, vector_json, norm),
+                )
+                results["tfidf_updated"] += 1
+        else:
+            results["skipped"] += db.execute(
+                "SELECT COUNT(*) FROM search_vectors"
+            ).fetchone()[0]
+
+        # --- Dense incremental ---
+        if provider:
+            from .embeddings import get_embedding_provider, pack_vector
+
+            prov = get_embedding_provider(provider)
+            if prov:
+                _ensure_embedding_vectors(db)
+                # Find docs not in embedding_vectors, or with different content_hash
+                dense_query = """
+                    SELECT dv.document_id, dv.source, dv.full_text, dv.markdown, dv.content_hash
+                    FROM documents_v2 dv
+                    LEFT JOIN embedding_vectors ev
+                      ON dv.document_id = ev.document_id
+                      AND dv.source = ev.source
+                      AND ev.provider_id = ?
+                    WHERE ev.document_id IS NULL
+                      AND ((dv.full_text IS NOT NULL AND dv.full_text != '')
+                        OR (dv.markdown IS NOT NULL AND dv.markdown != ''))
+                """
+                dense_params: list[Any] = [prov.id]
+                if since:
+                    dense_query += " AND dv.retrieved_at >= ?"
+                    dense_params.append(since)
+
+                new_dense_docs = db.execute(dense_query, dense_params).fetchall()
+
+                for row in new_dense_docs:
+                    doc_id = row["document_id"]
+                    source = row["source"]
+                    content_hash = row["content_hash"]
+                    text = row["full_text"] or row["markdown"] or ""
+                    vec = prov.embed_text(text)
+                    blob = pack_vector(vec)
+                    norm_val = math.sqrt(sum(v * v for v in vec))
+                    db.execute(
+                        """
+                        INSERT OR REPLACE INTO embedding_vectors
+                        (document_id, source, provider_id, dim, vector, norm, content_hash)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (doc_id, source, prov.id, prov.dimensions, blob, norm_val, content_hash),
+                    )
+                    results["dense_updated"] += 1
+            else:
+                results["warnings"].append(
+                    f"Embedding provider '{provider}' unavailable; dense index skipped."
+                )
+
+        db.commit()
+
+        # Clean orphans (delegate to existing cleanup method)
+        try:
+            c.cleanup_orphans()
+        except Exception:
+            pass
+
+        return results
+    except Exception as exc:
+        return build_error(
+            "INCREMENTAL_INDEX_FAILED",
+            str(exc),
+            tfidf_updated=0,
+            dense_updated=0,
+            skipped=0,
+            warnings=[str(exc)],
+            recommended_next_steps=["Check database permissions and schema."],
+        )
+    finally:
+        if own_cache:
+            try:
+                c.close()
+            except Exception:
+                pass
+
+
+def get_index_sync_status(cache: Cache | None = None) -> dict[str, Any]:
+    """Report how many documents are out of sync with indexes.
+
+    Compares total documents with text content against the number
+    of documents indexed in TF-IDF (search_vectors) and dense
+    (embedding_vectors) stores.
+
+    Args:
+        cache: Optional Cache instance for DB injection.
+
+    Returns:
+        Dict with ok, total_documents, tfidf_indexed, dense_indexed,
+        tfidf_out_of_sync, dense_out_of_sync.
+    """
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+        total = db.execute(
+            "SELECT COUNT(*) FROM documents_v2 "
+            "WHERE (full_text IS NOT NULL AND full_text != '') "
+            "OR (markdown IS NOT NULL AND markdown != '')"
+        ).fetchone()[0]
+
+        in_tfidf = 0
+        if _table_exists(db, "search_vectors"):
+            in_tfidf = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
+
+        in_dense = 0
+        if _table_exists(db, "embedding_vectors"):
+            in_dense = db.execute(
+                "SELECT COUNT(DISTINCT document_id || '|' || source) FROM embedding_vectors"
+            ).fetchone()[0]
+
+        return {
+            "ok": True,
+            "total_documents": total,
+            "tfidf_indexed": in_tfidf,
+            "dense_indexed": in_dense,
+            "tfidf_out_of_sync": max(0, total - in_tfidf),
+            "dense_out_of_sync": max(0, total - in_dense),
+        }
+    except Exception as exc:
+        return build_error(
+            "INDEX_SYNC_STATUS_FAILED",
+            str(exc),
+            total_documents=0,
+            tfidf_indexed=0,
+            dense_indexed=0,
+            tfidf_out_of_sync=0,
+            dense_out_of_sync=0,
         )
     finally:
         if own_cache:

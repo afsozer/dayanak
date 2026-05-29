@@ -23,9 +23,11 @@ from emsal_mcp.semantic import (
     _strip_turkish_suffix,
     build_semantic_index,
     get_index_status,
+    get_index_sync_status,
     hybrid_search,
     rebuild_index,
     semantic_search,
+    update_indexes,
 )
 
 
@@ -1548,5 +1550,278 @@ class TestPerSourceFilter:
             assert result["ok"] is True
             for r in result["results"]:
                 assert r["quote_usable"] is True
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestUpdateIndexes (M-26)
+# ===================================================================
+
+
+class TestUpdateIndexes:
+    """Tests for update_indexes() incremental indexing."""
+
+    def test_update_indexes_empty_db(self, tmp_path: Path) -> None:
+        """update_indexes on empty DB returns ok with zero updates."""
+        cache = Cache(tmp_path / "upd_empty.sqlite3")
+        try:
+            result = update_indexes(cache=cache)
+            assert result["ok"] is True
+            assert result["tfidf_updated"] == 0
+            assert result["dense_updated"] == 0
+        finally:
+            cache.close()
+
+    def test_update_indexes_processes_new_documents(self, tmp_path: Path) -> None:
+        """update_indexes indexes documents not yet in search_vectors."""
+        cache = Cache(tmp_path / "upd_new.sqlite3")
+        try:
+            _populate_docs(cache)
+            result = update_indexes(cache=cache)
+            assert result["ok"] is True
+            assert result["tfidf_updated"] == 3
+        finally:
+            cache.close()
+
+    def test_update_indexes_skips_unchanged(self, tmp_path: Path) -> None:
+        """Second call skips documents already indexed (same content_hash)."""
+        cache = Cache(tmp_path / "upd_skip.sqlite3")
+        try:
+            _populate_docs(cache)
+            r1 = update_indexes(cache=cache)
+            assert r1["tfidf_updated"] == 3
+            # Second call — same docs, should skip
+            r2 = update_indexes(cache=cache)
+            assert r2["ok"] is True
+            # All 3 already indexed, should be 0 new
+            assert r2["tfidf_updated"] == 0
+        finally:
+            cache.close()
+
+    def test_update_indexes_new_doc_after_initial(self, tmp_path: Path) -> None:
+        """After initial index, a newly stored doc gets indexed incrementally."""
+        cache = Cache(tmp_path / "upd_after.sqlite3")
+        try:
+            _populate_docs(cache)
+            r1 = update_indexes(cache=cache)
+            assert r1["tfidf_updated"] == 3
+            # Add new doc
+            cache.store_document(
+                _make_doc(
+                    document_id="upd-new-1",
+                    source="danistay",
+                    title="New Incremental Doc",
+                    full_text="This is a new document about tax compliance and regulations.",
+                )
+            )
+            r2 = update_indexes(cache=cache)
+            assert r2["ok"] is True
+            assert r2["tfidf_updated"] == 1
+        finally:
+            cache.close()
+
+    def test_update_indexes_with_provider(self, tmp_path: Path) -> None:
+        """update_indexes with provider updates dense embeddings too."""
+        cache = Cache(tmp_path / "upd_provider.sqlite3")
+        try:
+            _populate_docs(cache)
+            result = update_indexes(cache=cache, provider="local-hash-v1")
+            assert result["ok"] is True
+            assert result["tfidf_updated"] == 3
+            assert result["dense_updated"] == 3
+        finally:
+            cache.close()
+
+    def test_update_indexes_returns_expected_keys(self, tmp_path: Path) -> None:
+        """Result dict has all expected keys."""
+        cache = Cache(tmp_path / "upd_keys.sqlite3")
+        try:
+            _populate_docs(cache)
+            result = update_indexes(cache=cache)
+            expected_keys = {"ok", "tfidf_updated", "dense_updated", "skipped", "warnings"}
+            assert expected_keys.issubset(set(result.keys()))
+        finally:
+            cache.close()
+
+    def test_update_indexes_no_cache_creates_own(self) -> None:
+        """Calling without a cache parameter should still work."""
+        result = update_indexes(cache=None)
+        assert result["ok"] is True
+
+    def test_update_indexes_textless_docs_skipped(self, tmp_path: Path) -> None:
+        """Documents without text content are not indexed."""
+        cache = Cache(tmp_path / "upd_textless.sqlite3")
+        try:
+            docs = [
+                {
+                    "source": "test",
+                    "document_id": "upd-nt-1",
+                    "title": "No Text Doc",
+                    "content_status": ContentStatus.METADATA_ONLY,
+                },
+            ]
+            _populate_docs(cache, docs=docs)
+            result = update_indexes(cache=cache)
+            assert result["ok"] is True
+            assert result["tfidf_updated"] == 0
+        finally:
+            cache.close()
+
+    def test_update_indexes_searchable_after_update(self, tmp_path: Path) -> None:
+        """Documents indexed via update_indexes are searchable."""
+        cache = Cache(tmp_path / "upd_search.sqlite3")
+        try:
+            _populate_docs(cache)
+            update_indexes(cache=cache)
+            result = hybrid_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert result["total_matches"] >= 1
+            doc_ids = [r["document_id"] for r in result["results"]]
+            assert "yg-001" in doc_ids
+        finally:
+            cache.close()
+
+    def test_update_indexes_orphan_cleanup_called(self, tmp_path: Path) -> None:
+        """update_indexes calls cleanup_orphans after update."""
+        cache = Cache(tmp_path / "upd_orphan.sqlite3")
+        try:
+            _populate_docs(cache)
+            result = update_indexes(cache=cache)
+            assert result["ok"] is True
+            # Verify no orphans exist after update
+            sv_count = cache.db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
+            doc_count = cache.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+            assert sv_count == doc_count
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestGetIndexSyncStatus (M-26)
+# ===================================================================
+
+
+class TestGetIndexSyncStatus:
+    """Tests for get_index_sync_status()."""
+
+    def test_sync_status_empty_db(self, tmp_path: Path) -> None:
+        """Sync status on empty DB shows zero counts."""
+        cache = Cache(tmp_path / "sync_empty.sqlite3")
+        try:
+            result = get_index_sync_status(cache=cache)
+            assert result["ok"] is True
+            assert result["total_documents"] == 0
+            assert result["tfidf_indexed"] == 0
+            assert result["dense_indexed"] == 0
+            assert result["tfidf_out_of_sync"] == 0
+            assert result["dense_out_of_sync"] == 0
+        finally:
+            cache.close()
+
+    def test_sync_status_all_indexed(self, tmp_path: Path) -> None:
+        """After full index, all counts match."""
+        cache = Cache(tmp_path / "sync_all.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = get_index_sync_status(cache=cache)
+            assert result["ok"] is True
+            assert result["total_documents"] == 3
+            assert result["tfidf_indexed"] == 3
+            assert result["tfidf_out_of_sync"] == 0
+        finally:
+            cache.close()
+
+    def test_sync_status_partial_index(self, tmp_path: Path) -> None:
+        """Unindexed docs reported as out-of-sync."""
+        cache = Cache(tmp_path / "sync_partial.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            # Add more docs without re-indexing
+            cache.store_document(
+                _make_doc(
+                    document_id="sync-extra-1",
+                    source="danistay",
+                    title="Extra Doc",
+                    full_text="Extra document for sync status testing.",
+                )
+            )
+            result = get_index_sync_status(cache=cache)
+            assert result["ok"] is True
+            assert result["total_documents"] == 4
+            assert result["tfidf_indexed"] == 3
+            assert result["tfidf_out_of_sync"] == 1
+        finally:
+            cache.close()
+
+    def test_sync_status_dense_indexed(self, tmp_path: Path) -> None:
+        """Dense index count reflects embedding_vectors entries."""
+        cache = Cache(tmp_path / "sync_dense.sqlite3")
+        try:
+            _populate_docs(cache)
+            update_indexes(cache=cache, provider="local-hash-v1")
+            result = get_index_sync_status(cache=cache)
+            assert result["ok"] is True
+            assert result["dense_indexed"] == 3
+            assert result["dense_out_of_sync"] == 0
+        finally:
+            cache.close()
+
+    def test_sync_status_returns_expected_keys(self, tmp_path: Path) -> None:
+        """Result dict has all expected keys."""
+        cache = Cache(tmp_path / "sync_keys.sqlite3")
+        try:
+            result = get_index_sync_status(cache=cache)
+            expected_keys = {
+                "ok",
+                "total_documents",
+                "tfidf_indexed",
+                "dense_indexed",
+                "tfidf_out_of_sync",
+                "dense_out_of_sync",
+            }
+            assert expected_keys.issubset(set(result.keys()))
+        finally:
+            cache.close()
+
+    def test_sync_status_no_cache_creates_own(self) -> None:
+        """Calling without a cache parameter should still work."""
+        result = get_index_sync_status(cache=None)
+        assert result["ok"] is True
+
+    def test_sync_status_textless_docs_not_counted(self, tmp_path: Path) -> None:
+        """Documents without text are not counted in total_documents."""
+        cache = Cache(tmp_path / "sync_textless.sqlite3")
+        try:
+            docs = [
+                {
+                    "source": "test",
+                    "document_id": "sync-nt-1",
+                    "title": "No Text",
+                    "content_status": ContentStatus.METADATA_ONLY,
+                },
+            ]
+            _populate_docs(cache, docs=docs)
+            result = get_index_sync_status(cache=cache)
+            assert result["ok"] is True
+            assert result["total_documents"] == 0
+            assert result["tfidf_out_of_sync"] == 0
+        finally:
+            cache.close()
+
+    def test_sync_status_after_update_indexes(self, tmp_path: Path) -> None:
+        """After update_indexes, out-of-sync count drops to zero."""
+        cache = Cache(tmp_path / "sync_after_upd.sqlite3")
+        try:
+            _populate_docs(cache)
+            # Before update — all out of sync
+            status_before = get_index_sync_status(cache=cache)
+            assert status_before["tfidf_out_of_sync"] == 3
+            # After update — all in sync
+            update_indexes(cache=cache)
+            status_after = get_index_sync_status(cache=cache)
+            assert status_after["tfidf_out_of_sync"] == 0
+            assert status_after["tfidf_indexed"] == 3
         finally:
             cache.close()

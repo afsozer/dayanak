@@ -70,6 +70,8 @@ from .semantic import (
     build_embedding_index as build_embedding_impl,
     embedding_search as embedding_search_impl,
     get_embedding_index_status as embedding_status_impl,
+    update_indexes as update_indexes_impl,
+    get_index_sync_status as sync_status_impl,
 )
 from .chamber import (
     chamber_timeline as chamber_timeline_impl,
@@ -1114,6 +1116,25 @@ def semantic_embedding_status(
 ):
     """Check dense embedding index status."""
     result = embedding_status_impl()
+    _print(result, json_out)
+
+
+@semantic_app.command("update-indexes")
+def semantic_update_indexes(
+    provider: Optional[str] = typer.Option(None, help="Embedding provider for dense index"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Incrementally update indexes (new/changed docs only)."""
+    result = update_indexes_impl(provider=provider)
+    _print(result, json_out)
+
+
+@semantic_app.command("sync-status")
+def semantic_sync_status(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Check index sync status."""
+    result = sync_status_impl()
     _print(result, json_out)
 
 
