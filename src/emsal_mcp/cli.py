@@ -33,6 +33,11 @@ from .petition import (
     prepare_drafting_input_pack,
     prepare_petition_outline,
 )
+from .argument import (
+    build_argument_chain,
+    get_argument_strength_report,
+    render_arguments_to_markdown,
+)
 from .templates import (
     get_template as get_template_impl,
     list_templates as list_templates_impl,
@@ -94,6 +99,7 @@ cache_app = typer.Typer(help="Cache v2: istatistik, listeleme, arama, yedekleme,
 research_app = typer.Typer(help="Research workflow: topic search, refresh, quality dashboard")
 cite_app = typer.Typer(help="Citation verification and formatting")
 petition_app = typer.Typer(help="Petition pack: prepare drafting input, inspect packs")
+argument_app = typer.Typer(help="Argument builder: build chains, score, render")
 legislation_app = typer.Typer(help="Mevzuat: ara, belge al, madde ara, gerekçe çıkar")
 semantic_app = typer.Typer(help="Semantic search: FTS5 + TF-IDF hybrid, index yönetimi")
 chamber_app = typer.Typer(help="Chamber profiling: istatistik, timeline, benzer daire bulma")
@@ -106,6 +112,7 @@ app.add_typer(cache_app, name="cache")
 app.add_typer(research_app, name="research")
 app.add_typer(cite_app, name="cite")
 app.add_typer(petition_app, name="petition")
+app.add_typer(argument_app, name="argument")
 app.add_typer(legislation_app, name="legislation")
 app.add_typer(semantic_app, name="semantic")
 app.add_typer(chamber_app, name="chamber")
@@ -779,6 +786,43 @@ def petition_export_bundle(
         out_dir=str(out_dir) if out_dir else None,
     )
     _print(result, json_out)
+
+
+# ── Argument subcommands ────────────────────────────────────────────────
+
+
+@argument_app.command("build")
+def argument_build(
+    pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Build structured argument chains from a petition pack."""
+    result = build_argument_chain(pack_dir=pack_dir)
+    _print(result, json_out)
+
+
+@argument_app.command("score")
+def argument_score(
+    pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Score argument strength for a petition pack."""
+    result = get_argument_strength_report(pack_dir=pack_dir)
+    _print(result, json_out)
+
+
+@argument_app.command("render")
+def argument_render(
+    pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
+    out_path: Optional[Path] = typer.Option(None, help="Output markdown file path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Render argument chains as markdown."""
+    md = render_arguments_to_markdown(pack_dir=pack_dir, out_path=out_path)
+    if out_path:
+        _print({"ok": True, "out_path": str(out_path), "length": len(md)}, json_out)
+    else:
+        sys.stdout.buffer.write((md + "\n").encode("utf-8"))
 
 
 # ── Legislation subcommands ──────────────────────────────────────────

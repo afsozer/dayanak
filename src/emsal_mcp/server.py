@@ -45,6 +45,11 @@ from .templates import (
     list_templates as list_templates_impl,
     render_template_to_skeleton as render_template_impl,
 )
+from .argument import (
+    build_argument_chain as build_argument_chain_impl,
+    score_argument as score_argument_impl,
+    get_argument_strength_report as get_argument_strength_report_impl,
+)
 from .exporter import (
     prepare_docx_export as prepare_docx_export_impl,
     prepare_export_package_bundle as prepare_export_package_bundle_impl,
@@ -613,6 +618,72 @@ def main() -> None:
             return {"ok": True, "name": name, "markdown": md}
         except KeyError as exc:
             return {"ok": False, "error": str(exc)}
+
+    # ── Argument Builder v0.12 MCP tools ──────────────────────────────────
+
+    @mcp.tool()
+    def build_argument_chain(pack_dir: str) -> dict:
+        """Build structured argument chains from a petition pack.
+
+        Reads argument-map.md and petition-pack.json, produces claim ->
+        supporting authority -> counter-argument chains.  Only petition_ready
+        authorities appear in supporting_authorities (citation-safe).
+
+        Safety invariants enforced:
+        - No metadata_only leak into supporting_authorities
+        - No fabrication: missing support produces warning
+        - All cited documents pass citation_check
+
+        Args:
+            pack_dir: Path to petition pack directory.
+
+        Returns:
+            Dict with ok, pack_dir, arguments, overall_strength, warnings.
+        """
+        return build_argument_chain_impl(pack_dir=pack_dir)
+
+    @mcp.tool()
+    def score_argument(
+        claim_text: str,
+        document_json: dict | None = None,
+    ) -> dict:
+        """Score how well an argument is supported by authorities.
+
+        Computes a 0.0-1.0 score based on: count of supporting documents,
+        content availability, citation safety.
+
+        Args:
+            claim_text: The legal claim/argument text.
+            document_json: Optional authority dict with document_id, source,
+                title, content_status fields.
+
+        Returns:
+            Dict with ok, score, factors, supporting_count, warnings.
+        """
+        authorities = []
+        if document_json:
+            authorities = [document_json]
+        return score_argument_impl(
+            claim_text=claim_text,
+            authorities=authorities,
+        )
+
+    @mcp.tool()
+    def get_argument_strength_report(pack_dir: str) -> dict:
+        """Generate overall argument strength report for a petition pack.
+
+        Aggregates individual argument scores into a comprehensive report
+        with strength distribution and recommendations.
+
+        Args:
+            pack_dir: Path to petition pack directory.
+
+        Returns:
+            Dict with ok, overall_strength, argument_count,
+            classification_distribution, strength_distribution,
+            recommendations, warnings.
+        """
+        return get_argument_strength_report_impl(pack_dir=pack_dir)
 
     # ── Legislation v0.10 MCP tools ──────────────────────────────────────
 
