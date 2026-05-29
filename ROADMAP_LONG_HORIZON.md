@@ -423,7 +423,7 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 8 | M-30 Adaptive throttle/calibrate | [x] |
 | 8 | M-31 Benchmark suite | [x] |
 | 8 | M-32 Embedding cache | [x] |
-| 9 | M-33 HTTP/REST API | [ ] |
+| 9 | M-33 HTTP/REST API | [x] |
 | 9 | M-34 Çok-makine cache sync | [ ] |
 | 9 | M-35 Adapter SDK/plugin | [ ] |
 | 9 | M-36 Watchlist/alert | [ ] |

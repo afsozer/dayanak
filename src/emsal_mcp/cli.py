@@ -136,6 +136,7 @@ from .pdf_extractor import (
 )
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
+api_app = typer.Typer(help="HTTP REST API server")
 udf_app = typer.Typer(help="UDF okuma/yazma araçları")
 release_app = typer.Typer(help="Release smoke/dashboard/history/regression/notes/archive")
 cache_app = typer.Typer(help="Cache v2: istatistik, listeleme, arama, yedekleme, import/export")
@@ -155,6 +156,7 @@ circuit_app = typer.Typer(help="Circuit breaker: status, health, reset")
 router_app = typer.Typer(help="Capability-based routing: capable sources, search routing, document routing")
 pdf_app = typer.Typer(help="PDF content extraction: text layer, toolkit status")
 calibrate_app = typer.Typer(help="Source calibration: measure safe request rates")
+app.add_typer(api_app, name="api")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -1635,6 +1637,21 @@ def calibrate_all_cmd(
 ):
     """Calibrate all registered sources."""
     _print(calibrate_all_impl(online=online), json_out)
+
+
+# ── API server subcommands (M-33) ─────────────────────────────────────────
+
+
+@api_app.command("serve")
+def api_serve(
+    host: str = typer.Option("127.0.0.1", help="Bind address"),
+    port: int = typer.Option(8765, help="Bind port"),
+    token: Optional[str] = typer.Option(None, help="Auth token (overrides EMSAL_API_TOKEN env)"),
+):
+    """Start HTTP REST API server (read-only, stdlib only)."""
+    from .api_server import run_api_server
+
+    run_api_server(host=host, port=port, token=token)
 
 
 # ── Benchmark (M-31) ───────────────────────────────────────────────────────

@@ -25,6 +25,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [project.optional-dependencies]
+api = []
 mcp = ["mcp>=1.0"]
 udf = ["python-docx>=1.1"]  # LibreOffice is external
 embeddings = ["fastembed>=0.4"]
