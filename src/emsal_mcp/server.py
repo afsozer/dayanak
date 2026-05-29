@@ -379,6 +379,27 @@ def main() -> None:
         finally:
             cache.close()
 
+    @mcp.tool()
+    def sync_cache(other_db_path: str) -> dict:
+        """Sync documents from another cache database (multi-machine merge).
+
+        Merges documents_v2 rows from the other database into this one.
+        Conflict resolution: newest retrieved_at wins for same
+        (document_id, source). If same retrieved_at, existing is kept.
+        Content hashes compared — mismatches produce warnings.
+
+        Args:
+            other_db_path: Path to the other cache database file.
+
+        Returns:
+            Dict with ok, synced, skipped, conflicts, total_in_other, warnings.
+        """
+        cache = Cache()
+        try:
+            return cache.sync_cache(other_db_path)
+        finally:
+            cache.close()
+
     # ── Research v0.5 MCP tools ────────────────────────────────────────
 
     @mcp.tool()

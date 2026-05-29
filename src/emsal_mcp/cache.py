@@ -1019,5 +1019,116 @@ class Cache:
         ).fetchone()
         return Draft.model_validate_json(row[0]) if row else None
 
+    # ------------------------------------------------------------------
+    # Multi-Machine Cache Sync (M-34)
+    # ------------------------------------------------------------------
+
+    def sync_cache(self, other_db_path: str | Path) -> dict:
+        """Sync documents from another cache database.
+
+        Conflict resolution: newest retrieved_at wins for same (document_id, source).
+        If same retrieved_at, keep existing (no overwrite).
+        Content hashes compared with warning on mismatch.
+
+        Returns dict with synced, skipped, conflicts, warnings.
+        """
+        other_path = Path(other_db_path)
+        if not other_path.exists():
+            return build_error("FILE_NOT_FOUND", f"Cache database not found: {other_path}")
+
+        try:
+            other_db = sqlite3.connect(str(other_path))
+            other_db.row_factory = sqlite3.Row
+        except Exception as e:
+            return build_error("DB_OPEN_FAILED", f"Cannot open cache DB: {e}")
+
+        try:
+            # Check documents_v2 table exists in other DB
+            table_exists = other_db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='documents_v2'"
+            ).fetchone()
+            if not table_exists:
+                return build_error(
+                    "TABLE_NOT_FOUND",
+                    f"documents_v2 table not found in {other_path}",
+                )
+
+            # Get all docs from other DB
+            other_docs = other_db.execute("SELECT * FROM documents_v2").fetchall()
+
+            synced = 0
+            skipped = 0
+            conflicts = 0
+            warnings: list[str] = []
+
+            for row in other_docs:
+                doc_id = row["document_id"]
+                source = row["source"]
+
+                # Check if exists in this DB
+                existing = self.db.execute(
+                    "SELECT retrieved_at, content_hash FROM documents_v2 WHERE document_id=? AND source=?",
+                    (doc_id, source),
+                ).fetchone()
+
+                if existing:
+                    # Resolve conflict: newest wins
+                    other_retrieved = row["retrieved_at"] or ""
+                    this_retrieved = existing["retrieved_at"] or ""
+
+                    if other_retrieved <= this_retrieved:
+                        skipped += 1
+                        continue
+
+                    # Check hash
+                    if row["content_hash"] and existing["content_hash"]:
+                        if row["content_hash"] != existing["content_hash"]:
+                            conflicts += 1
+                            warnings.append(
+                                f"Content hash mismatch for {source}/{doc_id}: "
+                                f"existing={existing['content_hash']}, incoming={row['content_hash']}"
+                            )
+
+                    # Update with newer version
+                    cols = [k for k in row.keys() if k != "rowid"]
+                    placeholders = ", ".join(f"{c}=?" for c in cols)
+                    values = [row[c] for c in cols]
+                    self.db.execute(
+                        f"UPDATE documents_v2 SET {placeholders} WHERE document_id=? AND source=?",
+                        values + [doc_id, source],
+                    )
+                else:
+                    # New document — insert
+                    cols = [k for k in row.keys() if k != "rowid"]
+                    placeholders = ", ".join("?" for _ in cols)
+                    values = [row[c] for c in cols]
+                    self.db.execute(
+                        f"INSERT INTO documents_v2 ({', '.join(cols)}) VALUES ({placeholders})",
+                        values,
+                    )
+                synced += 1
+
+            self.db.commit()
+
+            self.log("sync_cache", {
+                "other_db_path": str(other_path),
+                "synced": synced,
+                "skipped": skipped,
+                "conflicts": conflicts,
+                "total_in_other": len(other_docs),
+                "warnings_count": len(warnings),
+            })
+
+            return {
+                "ok": True,
+                "synced": synced,
+                "skipped": skipped,
+                "conflicts": conflicts,
+                "total_in_other": len(other_docs),
+                "warnings": warnings,
+            }
+        finally:
+            other_db.close()
+
     def close(self) -> None:
         self.db.close()

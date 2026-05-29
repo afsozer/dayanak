@@ -497,3 +497,264 @@ class TestCLIExecution:
         assert "checks" in output
         assert "warnings" in output
         assert output["checks"]["sqlite_integrity"]["ok"] is True
+
+
+class TestSyncCache:
+    """Test multi-machine cache sync (M-34)."""
+
+    def _make_other_db(self, tmp_path, docs):
+        """Helper: create a separate cache DB with the given documents."""
+        other = Cache(tmp_path / "other.sqlite3")
+        for doc in docs:
+            other.store_document(doc)
+        other.close()
+        return tmp_path / "other.sqlite3"
+
+    def test_sync_empty_other_db(self, tmp_path):
+        """Sync with empty other DB -> 0 synced."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        other_path = self._make_other_db(tmp_path, [])
+        result = cache.sync_cache(other_path)
+        assert result["ok"] is True
+        assert result["synced"] == 0
+        assert result["skipped"] == 0
+        assert result["total_in_other"] == 0
+        cache.close()
+
+    def test_sync_new_documents(self, tmp_path):
+        """Sync with new documents -> synced count correct."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        docs = [
+            Document(source="test", document_id="d1", title="Doc 1",
+                     full_text="Content 1", content_status=ContentStatus.FULL_TEXT),
+            Document(source="test", document_id="d2", title="Doc 2",
+                     full_text="Content 2", content_status=ContentStatus.FULL_TEXT),
+        ]
+        other_path = self._make_other_db(tmp_path, docs)
+        result = cache.sync_cache(other_path)
+        assert result["ok"] is True
+        assert result["synced"] == 2
+        assert result["skipped"] == 0
+        # Verify docs are now in main DB
+        row1 = cache.db.execute(
+            "SELECT title FROM documents_v2 WHERE document_id='d1' AND source='test'"
+        ).fetchone()
+        assert row1 is not None
+        assert row1["title"] == "Doc 1"
+        cache.close()
+
+    def test_sync_older_version_skipped(self, tmp_path):
+        """Sync with older retrieved_at -> skipped (keeps existing)."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        # Insert doc with newer timestamp
+        cache.db.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at)
+            VALUES('d1', 'test', 'Main version', '2026-05-30T12:00:00')
+        """)
+        cache.db.commit()
+
+        # Create other DB with same doc but older timestamp
+        import sqlite3 as _sqlite3
+        other_path = tmp_path / "other.sqlite3"
+        other = _sqlite3.connect(str(other_path))
+        other.execute("PRAGMA user_version = 3")
+        other.execute("""
+            CREATE TABLE IF NOT EXISTS documents_v2 (
+                document_id TEXT NOT NULL, source TEXT NOT NULL,
+                title TEXT, court TEXT, chamber TEXT, decision_date TEXT,
+                esas_no TEXT, karar_no TEXT, source_url TEXT,
+                content_status TEXT DEFAULT 'metadata_only',
+                markdown TEXT, full_text TEXT, content_hash TEXT,
+                metadata_json TEXT, raw_json TEXT,
+                retrieved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                access_count INTEGER DEFAULT 0,
+                quote_usable INTEGER DEFAULT 0, draft_usable INTEGER DEFAULT 0,
+                metadata_confidence TEXT, warnings_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (document_id, source)
+            )
+        """)
+        other.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at)
+            VALUES('d1', 'test', 'Older version', '2026-01-01T00:00:00')
+        """)
+        other.commit()
+        other.close()
+
+        result = cache.sync_cache(other_path)
+        assert result["ok"] is True
+        assert result["synced"] == 0
+        assert result["skipped"] == 1
+        # Main version preserved
+        row = cache.db.execute(
+            "SELECT title FROM documents_v2 WHERE document_id='d1' AND source='test'"
+        ).fetchone()
+        assert row["title"] == "Main version"
+        cache.close()
+
+    def test_sync_newer_version_updates(self, tmp_path):
+        """Sync with newer retrieved_at -> updates existing."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        cache.db.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at)
+            VALUES('d1', 'test', 'Old version', '2026-01-01T00:00:00')
+        """)
+        cache.db.commit()
+
+        import sqlite3 as _sqlite3
+        other_path = tmp_path / "other.sqlite3"
+        other = _sqlite3.connect(str(other_path))
+        other.execute("PRAGMA user_version = 3")
+        other.execute("""
+            CREATE TABLE IF NOT EXISTS documents_v2 (
+                document_id TEXT NOT NULL, source TEXT NOT NULL,
+                title TEXT, court TEXT, chamber TEXT, decision_date TEXT,
+                esas_no TEXT, karar_no TEXT, source_url TEXT,
+                content_status TEXT DEFAULT 'metadata_only',
+                markdown TEXT, full_text TEXT, content_hash TEXT,
+                metadata_json TEXT, raw_json TEXT,
+                retrieved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                access_count INTEGER DEFAULT 0,
+                quote_usable INTEGER DEFAULT 0, draft_usable INTEGER DEFAULT 0,
+                metadata_confidence TEXT, warnings_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (document_id, source)
+            )
+        """)
+        other.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at)
+            VALUES('d1', 'test', 'Newer version', '2026-06-01T00:00:00')
+        """)
+        other.commit()
+        other.close()
+
+        result = cache.sync_cache(other_path)
+        assert result["ok"] is True
+        assert result["synced"] == 1
+        assert result["skipped"] == 0
+        row = cache.db.execute(
+            "SELECT title FROM documents_v2 WHERE document_id='d1' AND source='test'"
+        ).fetchone()
+        assert row["title"] == "Newer version"
+        cache.close()
+
+    def test_sync_hash_mismatch_reports_conflict(self, tmp_path):
+        """Sync conflict (hash mismatch) -> reports conflict."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        cache.db.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at, content_hash)
+            VALUES('d1', 'test', 'Main', '2026-01-01T00:00:00', 'hash_abc')
+        """)
+        cache.db.commit()
+
+        import sqlite3 as _sqlite3
+        other_path = tmp_path / "other.sqlite3"
+        other = _sqlite3.connect(str(other_path))
+        other.execute("PRAGMA user_version = 3")
+        other.execute("""
+            CREATE TABLE IF NOT EXISTS documents_v2 (
+                document_id TEXT NOT NULL, source TEXT NOT NULL,
+                title TEXT, court TEXT, chamber TEXT, decision_date TEXT,
+                esas_no TEXT, karar_no TEXT, source_url TEXT,
+                content_status TEXT DEFAULT 'metadata_only',
+                markdown TEXT, full_text TEXT, content_hash TEXT,
+                metadata_json TEXT, raw_json TEXT,
+                retrieved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                access_count INTEGER DEFAULT 0,
+                quote_usable INTEGER DEFAULT 0, draft_usable INTEGER DEFAULT 0,
+                metadata_confidence TEXT, warnings_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (document_id, source)
+            )
+        """)
+        other.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at, content_hash)
+            VALUES('d1', 'test', 'Updated', '2026-06-01T00:00:00', 'hash_xyz')
+        """)
+        other.commit()
+        other.close()
+
+        result = cache.sync_cache(other_path)
+        assert result["ok"] is True
+        assert result["conflicts"] == 1
+        assert len(result["warnings"]) == 1
+        assert "hash mismatch" in result["warnings"][0].lower()
+        cache.close()
+
+    def test_sync_nonexistent_file(self, tmp_path):
+        """Sync nonexistent file -> FILE_NOT_FOUND error."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        result = cache.sync_cache(tmp_path / "nonexistent.sqlite3")
+        assert result["ok"] is False
+        assert result["errorCode"] == "FILE_NOT_FOUND"
+        cache.close()
+
+    def test_sync_logs_history(self, tmp_path):
+        """Sync action is logged in history."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        other_path = self._make_other_db(tmp_path, [])
+        cache.sync_cache(other_path)
+        history = cache.history(limit=10)
+        sync_entries = [h for h in history if h["action"] == "sync_cache"]
+        assert len(sync_entries) == 1
+        assert "other_db_path" in sync_entries[0]["payload"]
+        cache.close()
+
+    def test_sync_mixed_new_and_existing(self, tmp_path):
+        """Sync a mix of new + existing docs."""
+        cache = Cache(tmp_path / "main.sqlite3")
+        cache.db.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at)
+            VALUES('existing', 'test', 'Existing', '2026-01-01T00:00:00')
+        """)
+        cache.db.commit()
+
+        import sqlite3 as _sqlite3
+        other_path = tmp_path / "other.sqlite3"
+        other = _sqlite3.connect(str(other_path))
+        other.execute("PRAGMA user_version = 3")
+        other.execute("""
+            CREATE TABLE IF NOT EXISTS documents_v2 (
+                document_id TEXT NOT NULL, source TEXT NOT NULL,
+                title TEXT, court TEXT, chamber TEXT, decision_date TEXT,
+                esas_no TEXT, karar_no TEXT, source_url TEXT,
+                content_status TEXT DEFAULT 'metadata_only',
+                markdown TEXT, full_text TEXT, content_hash TEXT,
+                metadata_json TEXT, raw_json TEXT,
+                retrieved_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                access_count INTEGER DEFAULT 0,
+                quote_usable INTEGER DEFAULT 0, draft_usable INTEGER DEFAULT 0,
+                metadata_confidence TEXT, warnings_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (document_id, source)
+            )
+        """)
+        other.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at)
+            VALUES('existing', 'test', 'Same timestamp', '2026-01-01T00:00:00')
+        """)
+        other.execute("""
+            INSERT INTO documents_v2(document_id, source, title, retrieved_at)
+            VALUES('brand_new', 'test', 'Brand New', '2026-06-01T00:00:00')
+        """)
+        other.commit()
+        other.close()
+
+        result = cache.sync_cache(other_path)
+        assert result["ok"] is True
+        assert result["synced"] == 1  # only brand_new
+        assert result["skipped"] == 1  # existing skipped (same timestamp)
+        cache.close()
+
+
+class TestCLISyncImport:
+    """Test that the CLI sync command is importable."""
+
+    def test_cli_sync_importable(self):
+        from emsal_mcp.cli import cache_app
+        commands = {cmd.name for cmd in cache_app.registered_commands}
+        assert "sync" in commands

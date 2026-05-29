@@ -440,6 +440,21 @@ def cache_integrity_check(
     cache.close()
 
 
+@cache_app.command("sync")
+def cache_sync(
+    other_db: Path = typer.Argument(..., help="Path to other cache DB"),
+    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Sync documents from another cache database (multi-machine merge)."""
+    cache = Cache(cache_path)
+    try:
+        result = cache.sync_cache(other_db)
+        _print(result, json_out)
+    finally:
+        cache.close()
+
+
 # ── Dedup subcommands ──────────────────────────────────────────────────────
 
 
