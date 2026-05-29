@@ -223,6 +223,6 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 4 | M-18 Retry/rate-limit | [x] |
 | 4 | M-19 Capability routing | [x] |
 | 5 | M-20 Packaging | [x] |
-| 5 | M-21 CI pipeline | [ ] |
+| 5 | M-21 CI pipeline | [x] |
 | 5 | M-22 MCP sertleştirme | [ ] |
 | 5 | M-23 v2.0.0 review | [ ] |
