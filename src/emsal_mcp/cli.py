@@ -39,6 +39,12 @@ from .semantic import (
     rebuild_index as rebuild_impl,
     semantic_search as semantic_search_cli_impl,
 )
+from .chamber import (
+    chamber_timeline as chamber_timeline_impl,
+    find_similar_chambers as find_similar_impl,
+    get_chamber_overview as chamber_overview_impl,
+    profile_chamber as profile_chamber_impl,
+)
 from .exporter import prepare_docx_export, prepare_export_package_bundle
 from .udf import (
     convert_docx_to_udf_experimental,
@@ -61,6 +67,7 @@ cite_app = typer.Typer(help="Citation verification and formatting")
 petition_app = typer.Typer(help="Petition pack: prepare drafting input, inspect packs")
 legislation_app = typer.Typer(help="Mevzuat: ara, belge al, madde ara, gerekçe çıkar")
 semantic_app = typer.Typer(help="Semantic search: FTS5 + TF-IDF hybrid, index yönetimi")
+chamber_app = typer.Typer(help="Chamber profiling: istatistik, timeline, benzer daire bulma")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -69,6 +76,7 @@ app.add_typer(cite_app, name="cite")
 app.add_typer(petition_app, name="petition")
 app.add_typer(legislation_app, name="legislation")
 app.add_typer(semantic_app, name="semantic")
+app.add_typer(chamber_app, name="chamber")
 
 
 def _print(obj, json_out: bool):
@@ -748,6 +756,58 @@ def semantic_rebuild(
 ):
     """Force rebuild all search indices."""
     result = rebuild_impl()
+    _print(result, json_out)
+
+
+# ── Chamber profiling subcommands ────────────────────────────────────────────
+
+
+@chamber_app.command("overview")
+def chamber_overview(
+    court: Optional[str] = typer.Option(None, help="Mahkeme filtresi (örn: Yargitay)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Chamber overview with document counts and date ranges."""
+    result = chamber_overview_impl(court=court)
+    _print(result, json_out)
+
+
+@chamber_app.command("profile")
+def chamber_profile(
+    chamber: str = typer.Argument(..., help="Daire adı (örn: '3. Hukuk Dairesi')"),
+    court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Detailed profile of a specific chamber."""
+    result = profile_chamber_impl(chamber=chamber, court=court)
+    _print(result, json_out)
+
+
+@chamber_app.command("timeline")
+def chamber_timeline_cmd(
+    chamber: Optional[str] = typer.Option(None, help="Daire adı"),
+    court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
+    start_year: Optional[int] = typer.Option(None, help="Başlangıç yılı"),
+    end_year: Optional[int] = typer.Option(None, help="Bitiş yılı"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Decision timeline grouped by year."""
+    result = chamber_timeline_impl(
+        chamber=chamber, court=court,
+        start_year=start_year, end_year=end_year,
+    )
+    _print(result, json_out)
+
+
+@chamber_app.command("similar")
+def chamber_similar(
+    chamber: str = typer.Argument(..., help="Hedef daire adı"),
+    court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
+    limit: int = typer.Option(5, help="Maksimum benzer daire sayısı"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Find chambers with similar topic profiles."""
+    result = find_similar_impl(chamber=chamber, court=court, limit=limit)
     _print(result, json_out)
 
 

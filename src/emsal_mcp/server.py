@@ -13,6 +13,12 @@ from .legislation import (
     search_legislation as search_legislation_impl,
     search_legislation_articles as search_legislation_articles_impl,
 )
+from .chamber import (
+    chamber_timeline as chamber_timeline_impl,
+    find_similar_chambers as find_similar_chambers_impl,
+    get_chamber_overview as get_chamber_overview_impl,
+    profile_chamber as profile_chamber_impl,
+)
 from .semantic import (
     build_semantic_index as build_semantic_index_impl,
     get_index_status as get_index_status_impl,
@@ -744,6 +750,90 @@ def main() -> None:
             Dict with ok, fts5_row_count, vectors_count, documents_total.
         """
         return rebuild_index_impl()
+
+    # ── Chamber Profiling v0.12 MCP tools ──────────────────────────────────
+
+    @mcp.tool()
+    def chamber_overview(
+        court: str | None = None,
+    ) -> dict:
+        """Overview of all chambers with document counts and date ranges.
+
+        Reads from cached documents.  GROUP BY court + chamber.
+
+        Args:
+            court: Optional court name filter (e.g. 'Yargitay').
+
+        Returns:
+            Dict with ok, total_chambers, total_documents, chambers list
+            (each with document_count, content_available_count, date range).
+        """
+        return get_chamber_overview_impl(court=court)
+
+    @mcp.tool()
+    def profile_chamber(
+        chamber: str,
+        court: str | None = None,
+    ) -> dict:
+        """Detailed profile of a specific court chamber.
+
+        Computes document counts, content status distribution, top keywords,
+        usability flags, and recent documents.
+
+        Args:
+            chamber: Chamber name (e.g. '3. Hukuk Dairesi').
+            court: Optional court name filter.
+
+        Returns:
+            Dict with ok, metrics, top_keywords, recent_documents.
+        """
+        return profile_chamber_impl(chamber=chamber, court=court)
+
+    @mcp.tool()
+    def chamber_timeline(
+        chamber: str | None = None,
+        court: str | None = None,
+        start_year: int | None = None,
+        end_year: int | None = None,
+    ) -> dict:
+        """Decision timeline grouped by year for a chamber.
+
+        Args:
+            chamber: Optional chamber name filter.
+            court: Optional court name filter.
+            start_year: Optional start year (inclusive).
+            end_year: Optional end year (inclusive).
+
+        Returns:
+            Dict with ok, timeline (list of {year, count}), year_range.
+        """
+        return chamber_timeline_impl(
+            chamber=chamber, court=court,
+            start_year=start_year, end_year=end_year,
+        )
+
+    @mcp.tool()
+    def find_similar_chambers(
+        chamber: str,
+        court: str | None = None,
+        limit: int = 5,
+    ) -> dict:
+        """Find chambers with similar topic profiles via keyword overlap.
+
+        Uses Jaccard similarity on top keywords extracted from decision titles.
+
+        Args:
+            chamber: Target chamber name.
+            court: Optional court filter.
+            limit: Max results (default 5).
+
+        Returns:
+            Dict with ok, similar_chambers (each with similarity_score,
+            shared_keywords, document_count).
+        """
+        return find_similar_chambers_impl(
+            chamber=chamber, court=court, limit=limit,
+        )
 
     mcp.run()
 
