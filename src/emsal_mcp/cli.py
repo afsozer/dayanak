@@ -40,6 +40,12 @@ from .argument import (
     get_argument_strength_report,
     render_arguments_to_markdown,
 )
+from .draft_diff import (
+    diff_drafts as diff_drafts_impl,
+    get_fill_report as get_fill_report_impl,
+    save_draft_version as save_draft_version_impl,
+    track_placeholders as track_placeholders_impl,
+)
 from .templates import (
     get_template as get_template_impl,
     list_templates as list_templates_impl,
@@ -108,6 +114,7 @@ chamber_app = typer.Typer(help="Chamber profiling: istatistik, timeline, benzer 
 graph_app = typer.Typer(help="Citation graph: build, show, citing, cited, stats")
 analytics_app = typer.Typer(help="Search analytics: report, empty queries, top queries, source coverage")
 template_app = typer.Typer(help="Petition templates: list, show, render")
+draft_app = typer.Typer(help="Draft diffing, placeholder tracking, versioning")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -121,6 +128,7 @@ app.add_typer(chamber_app, name="chamber")
 app.add_typer(graph_app, name="graph")
 app.add_typer(analytics_app, name="analytics")
 app.add_typer(template_app, name="template")
+app.add_typer(draft_app, name="draft")
 
 
 def _print(obj, json_out: bool):
@@ -1250,6 +1258,52 @@ def template_render(
         typer.echo(str(out_path))
     else:
         sys.stdout.buffer.write((md + "\n").encode("utf-8"))
+
+
+# ── Draft diff / versioning subcommands (M-14) ──────────────────────────────
+
+
+@draft_app.command("diff")
+def draft_diff(
+    draft_a: Path = typer.Argument(..., help="Path to first (older) draft"),
+    draft_b: Path = typer.Argument(..., help="Path to second (newer) draft"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Compare two draft files and show changes."""
+    result = diff_drafts_impl(draft_a, draft_b)
+    _print(result, json_out)
+
+
+@draft_app.command("placeholders")
+def draft_placeholders(
+    draft_path: Path = typer.Argument(..., help="Path to draft file"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Analyze placeholder fill status in a draft."""
+    result = track_placeholders_impl(draft_path)
+    _print(result, json_out)
+
+
+@draft_app.command("fill-report")
+def draft_fill_report(
+    draft_path: Path = typer.Argument(..., help="Path to draft file"),
+    pack_dir: Optional[Path] = typer.Option(None, help="Petition pack directory for source suggestions"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Generate a fill report: what still needs attention."""
+    result = get_fill_report_impl(draft_path, pack_dir=str(pack_dir) if pack_dir else None)
+    _print(result, json_out)
+
+
+@draft_app.command("save-version")
+def draft_save_version(
+    draft_dir: Path = typer.Argument(..., help="Directory containing draft files"),
+    label: Optional[str] = typer.Option(None, help="Human-readable version label"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Save a snapshot of current draft state for later diff."""
+    result = save_draft_version_impl(draft_dir, version_label=label)
+    _print(result, json_out)
 
 
 if __name__ == "__main__":

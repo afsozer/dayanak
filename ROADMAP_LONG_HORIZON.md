@@ -216,7 +216,7 @@ FAZ 5 (M-20..M-23)  → v2.0.0
 | 3 | M-11 Template library | [x] |
 | 3 | M-12 Argument builder | [x] |
 | 3 | M-13 Multi-issue pack | [x] |
-| 3 | M-14 Draft diff | [ ] |
+| 3 | M-14 Draft diff | [x] |
 | 3 | M-15 Export formatları | [ ] |
 | 4 | M-16 KİK adapter | [ ] |
 | 4 | M-17 Health/circuit breaker | [ ] |

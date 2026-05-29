@@ -49,6 +49,12 @@ from .templates import (
     list_templates as list_templates_impl,
     render_template_to_skeleton as render_template_impl,
 )
+from .draft_diff import (
+    diff_drafts as diff_drafts_impl,
+    get_fill_report as get_fill_report_impl,
+    save_draft_version as save_draft_version_impl,
+    track_placeholders as track_placeholders_impl,
+)
 from .argument import (
     build_argument_chain as build_argument_chain_impl,
     score_argument as score_argument_impl,
@@ -675,6 +681,74 @@ def main() -> None:
             return {"ok": True, "name": name, "markdown": md}
         except KeyError as exc:
             return {"ok": False, "error": str(exc)}
+
+    # ── Draft Diff & Versioning MCP tools (M-14) ──────────────────────────
+
+    @mcp.tool()
+    def diff_drafts(draft_a: str, draft_b: str) -> dict:
+        """Compare two draft files and report changes.
+
+        Computes unified diff, identifies added/removed/modified sections,
+        and reports placeholder fill status changes.
+
+        Args:
+            draft_a: Path to the first (older) draft file.
+            draft_b: Path to the second (newer) draft file.
+
+        Returns:
+            Dict with ok, draft_a, draft_b, diff_lines, changes, unified_diff,
+            sections_added, sections_removed, placeholders_filled, warnings.
+        """
+        return diff_drafts_impl(draft_a, draft_b)
+
+    @mcp.tool()
+    def track_placeholders(draft_path: str) -> dict:
+        """Analyze a draft for placeholder fill status.
+
+        Finds all {{PLACEHOLDER}} patterns and reports which are filled
+        (no longer present as raw tokens) vs unfilled.
+
+        Args:
+            draft_path: Path to the draft file.
+
+        Returns:
+            Dict with ok, total_placeholders, filled, unfused, fill_ratio,
+            placeholders, unfilled_list, ready_for_submission, warnings.
+        """
+        return track_placeholders_impl(draft_path)
+
+    @mcp.tool()
+    def get_fill_report(draft_path: str, pack_dir: str | None = None) -> dict:
+        """Generate a fill report for a draft.
+
+        Lists unfilled placeholders with section context, suggests
+        citation-safe sources from the pack, and provides readiness assessment.
+
+        Args:
+            draft_path: Path to the draft file.
+            pack_dir: Optional petition pack directory for source suggestions.
+
+        Returns:
+            Dict with ok, total_placeholders, filled, unfilled, fill_ratio,
+            readiness, items, suggestions, warnings.
+        """
+        return get_fill_report_impl(draft_path, pack_dir=pack_dir)
+
+    @mcp.tool()
+    def save_draft_version(draft_dir: str, version_label: str | None = None) -> dict:
+        """Save a snapshot of current draft state for later diff.
+
+        Copies draft files to a versioned subdirectory with metadata.
+
+        Args:
+            draft_dir: Directory containing draft files.
+            version_label: Optional human-readable label for this version.
+
+        Returns:
+            Dict with ok, version_id, version_label, version_dir,
+            files_copied, metadata_path, warnings.
+        """
+        return save_draft_version_impl(draft_dir, version_label=version_label)
 
     # ── Argument Builder v0.12 MCP tools ──────────────────────────────────
 
