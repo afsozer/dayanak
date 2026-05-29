@@ -20,7 +20,7 @@ from .cache import Cache
 from .models import build_error  # noqa: F401
 
 
-SEMANTIC_VERSION = "0.11.0"
+SEMANTIC_VERSION = "0.12.0"
 
 # ---------------------------------------------------------------------------
 # Tokenizer & Vector Math
@@ -32,6 +32,84 @@ _TOKEN_RE = re.compile(r'\b\w+\b', re.UNICODE)
 def _tokenize(text: str) -> list[str]:
     """Tokenize text into lowercase word tokens."""
     return [t.lower() for t in _TOKEN_RE.findall(text or "")]
+
+
+# ---------------------------------------------------------------------------
+# Turkish Query Expansion (Heuristic Suffix Stripping)
+# ---------------------------------------------------------------------------
+
+# Turkish suffix stripping rules (heuristic, deterministic).
+# Applied longest-match-first to generate stemmed variants for FTS5 OR queries.
+_TR_SUFFIX_PATTERNS = [
+    (r'(lar|ler)$', ''),           # plural
+    (r'(nın|nin|nun|nün)$', ''),  # genitive
+    (r'(da|de|ta|te)$', ''),       # locative
+    (r'(dan|den|tan|ten)$', ''),   # ablative
+    (r'(ın|in|un|ün)$', ''),       # possessive
+    (r'(a|e)$', ''),               # dative
+    (r'(ı|i|u|ü)$', ''),          # accusative
+    (r'(la|le)$', ''),             # instrumental
+    (r'(dir|dır|dur|dür|tir|tır|tur|tür)$', ''),  # copula
+    (r'(mek|mak)$', ''),           # infinitive
+    (r'(me|ma)$', ''),             # negation
+]
+
+
+def _strip_turkish_suffix(word: str) -> list[str]:
+    """Strip Turkish suffixes from a single word, returning possible stems.
+
+    Uses a heuristic longest-match approach.  Returns a list of unique
+    stemmed variants (may include the original word if no suffix matched).
+    This is NOT a full morphological analyzer — it's an approximation
+    designed to improve recall for FTS5 queries on Turkish legal text.
+    """
+    variants: list[str] = []
+    lower = word.lower()
+    if len(lower) < 3:
+        return [lower]  # too short to strip
+
+    # Try each suffix pattern
+    for pattern, replacement in _TR_SUFFIX_PATTERNS:
+        stemmed = re.sub(pattern, replacement, lower)
+        if stemmed != lower and len(stemmed) >= 2:
+            variants.append(stemmed)
+            # Also try stripping one more suffix from the stemmed result
+            for pattern2, replacement2 in _TR_SUFFIX_PATTERNS:
+                stemmed2 = re.sub(pattern2, replacement2, stemmed)
+                if stemmed2 != stemmed and len(stemmed2) >= 2:
+                    variants.append(stemmed2)
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for v in variants:
+        if v not in seen:
+            seen.add(v)
+            unique.append(v)
+    return unique
+
+
+def _expand_query(query: str) -> list[str]:
+    """Expand a search query with Turkish suffix-stripped variants.
+
+    Tokenizes the query, generates stemmed variants for each token,
+    and returns the original tokens plus stemmed variants for use in
+    FTS5 OR queries.
+
+    Example: "sözleşmelerin" -> ["sözleşmelerin", "sözleşme", "sözleş"]
+    English words will typically produce no additional variants (harmless).
+
+    Returns:
+        List of unique terms: original tokens + stemmed variants.
+    """
+    tokens = _tokenize(query)
+    expanded: list[str] = list(tokens)  # start with originals
+    for token in tokens:
+        stems = _strip_turkish_suffix(token)
+        for s in stems:
+            if s not in expanded:
+                expanded.append(s)
+    return expanded
 
 
 def _cosine_similarity(vec_a: dict[str, float], vec_b: dict[str, float]) -> float:
@@ -225,24 +303,42 @@ def _compute_tfidf_vectors(db: sqlite3.Connection, limit: int = 1000) -> int:
 # Snippet Generation
 # ---------------------------------------------------------------------------
 
-def _generate_snippet(text: str, query: str, max_length: int = 200) -> str:
-    """Generate a snippet from document text around the query match."""
+def _generate_snippet(
+    text: str,
+    query: str,
+    max_length: int = 200,
+    highlight: bool = True,
+) -> tuple[str, bool]:
+    """Generate a snippet from document text around the query match.
+
+    If *highlight* is True, matching query terms in the snippet are wrapped
+    in ``**...**`` markers for Markdown-style bold highlighting.
+
+    Returns:
+        Tuple of (snippet_text, was_highlighted).
+    """
     if not text:
-        return ""
+        return "", False
     if not query:
-        return text[:max_length]
+        return text[:max_length], False
+
+    tokens = _tokenize(query)
     lower_text = text.lower()
-    lower_query = query.lower()
-    idx = lower_text.find(lower_query)
+
+    # Find the first matching term position
+    idx = -1
+    matched_token = ""
+    for t in tokens:
+        pos = lower_text.find(t)
+        if pos != -1:
+            idx = pos
+            matched_token = t
+            break
+
     if idx == -1:
-        # Try matching individual query tokens
-        tokens = _tokenize(query)
-        for t in tokens:
-            idx = lower_text.find(t)
-            if idx != -1:
-                break
-        if idx == -1:
-            return text[:max_length]
+        return text[:max_length], False
+
+    # Extract window around match
     start = max(0, idx - max_length // 3)
     end = min(len(text), idx + len(query) + 2 * max_length // 3)
     snippet = text[start:end]
@@ -250,7 +346,18 @@ def _generate_snippet(text: str, query: str, max_length: int = 200) -> str:
         snippet = "..." + snippet
     if end < len(text):
         snippet = snippet + "..."
-    return snippet
+
+    # Apply highlighting: wrap matching tokens in **...**
+    was_highlighted = False
+    if highlight and matched_token:
+        # Case-insensitive replacement wrapping matched tokens in **
+        pattern = re.compile(re.escape(matched_token), re.IGNORECASE)
+        highlighted = pattern.sub(lambda m: f"**{m.group()}**", snippet)
+        if highlighted != snippet:
+            snippet = highlighted
+            was_highlighted = True
+
+    return snippet, was_highlighted
 
 
 # ---------------------------------------------------------------------------
@@ -464,8 +571,13 @@ def semantic_search(
                     "total_matches": 0,
                     "method": "tfidf_cosine",
                     "warnings": ["No indexed documents found. Call build_semantic_index() first."],
+                    "expanded_query_terms": _expand_query(query),
+                    "snippet_highlighted": False,
                     "version": SEMANTIC_VERSION,
                 }
+
+        # Expand query with Turkish suffix stripping
+        expanded_terms = _expand_query(query)
 
         # Load IDF from stored vectors
         idf = _load_idf_from_vectors(db)
@@ -479,6 +591,8 @@ def semantic_search(
                 "total_matches": 0,
                 "method": "tfidf_cosine",
                 "warnings": ["Query produced no meaningful tokens."],
+                "expanded_query_terms": expanded_terms,
+                "snippet_highlighted": False,
                 "version": SEMANTIC_VERSION,
             }
 
@@ -486,6 +600,7 @@ def semantic_search(
         rows = db.execute("SELECT document_id, source, vector_json FROM search_vectors").fetchall()
 
         scored: list[dict[str, Any]] = []
+        any_highlighted = False
         for row in rows:
             doc_id, source, vjson = row
             doc_vec = json.loads(vjson)
@@ -498,10 +613,12 @@ def semantic_search(
             if doc_info is None:
                 continue
 
-            snippet = _generate_snippet(
+            snippet, hl = _generate_snippet(
                 doc_info["full_text"] or doc_info["markdown"],
                 query,
             )
+            if hl:
+                any_highlighted = True
 
             scored.append({
                 "document_id": doc_id,
@@ -531,6 +648,8 @@ def semantic_search(
             "total_matches": len(scored),
             "method": "tfidf_cosine",
             "warnings": warnings,
+            "expanded_query_terms": expanded_terms,
+            "snippet_highlighted": any_highlighted,
             "version": SEMANTIC_VERSION,
         }
     except Exception as exc:
@@ -542,6 +661,8 @@ def semantic_search(
             total_matches=0,
             method="tfidf_cosine",
             warnings=[str(exc)],
+            expanded_query_terms=[],
+            snippet_highlighted=False,
             version=SEMANTIC_VERSION,
         )
     finally:
@@ -566,12 +687,33 @@ def hybrid_search(
         limit: Maximum results to return.
         cache: Optional Cache instance for DB injection.
         filters: Optional metadata filters applied after scoring.
+            Supported keys: source, court, chamber, content_status,
+            quote_usable, draft_usable.
         hybrid_weight: Weight for BM25 component (1-hybrid_weight for cosine).
-            Default 0.6 means 60% BM25, 40% cosine.
+            Must be between 0.0 and 1.0.  Default 0.6 means 60% BM25, 40%
+            cosine.
 
     Returns:
-        Dict with ok, results, total_matches, method, hybrid_weight, warnings, version.
+        Dict with ok, results, total_matches, method, hybrid_weight,
+        expanded_query_terms, snippet_highlighted, warnings, version.
     """
+    # Validate hybrid_weight
+    if not (0.0 <= hybrid_weight <= 1.0):
+        return build_error(
+            "INVALID_HYBRID_WEIGHT",
+            f"hybrid_weight must be between 0.0 and 1.0, got {hybrid_weight}",
+            query=query,
+            results=[],
+            total_matches=0,
+            method="hybrid",
+            hybrid_weight=hybrid_weight,
+            warnings=[],
+            recommended_next_steps=["Set hybrid_weight to a value between 0.0 and 1.0."],
+            expanded_query_terms=[],
+            snippet_highlighted=False,
+            version=SEMANTIC_VERSION,
+        )
+
     db, own_cache = _get_db(cache)
     warnings: list[str] = []
     recommended: list[str] = []
@@ -592,14 +734,20 @@ def hybrid_search(
                 "hybrid_weight": hybrid_weight,
                 "warnings": ["No documents in cache. Store documents first."],
                 "recommended_next_steps": ["Use store_document() to add documents."],
+                "expanded_query_terms": [],
+                "snippet_highlighted": False,
                 "version": SEMANTIC_VERSION,
             }
+
+        # ---- Query Expansion (Turkish suffix stripping) ----
+        expanded_terms = _expand_query(query)
+        expanded_query = " OR ".join(expanded_terms) if expanded_terms else query
 
         # ---- FTS5 BM25 Search ----
         bm25_results: dict[tuple[str, str], float] = {}
         try:
-            # Escape special FTS5 characters in query for MATCH
-            safe_query = re.sub(r'[^\w\s]', ' ', query).strip()
+            # Escape special FTS5 characters in expanded query for MATCH
+            safe_query = re.sub(r'[^\w\s]', ' ', expanded_query).strip()
             if safe_query:
                 fts_rows = db.execute(
                     """\
@@ -650,12 +798,15 @@ def hybrid_search(
                 "hybrid_weight": hybrid_weight,
                 "warnings": warnings,
                 "recommended_next_steps": ["Try a broader query or check index status."],
+                "expanded_query_terms": expanded_terms,
+                "snippet_highlighted": False,
                 "version": SEMANTIC_VERSION,
             }
 
         # Normalize BM25 to [0, 1] range
         # BM25 scores are negative (lower = better match), so invert
         merged: list[dict[str, Any]] = []
+        any_highlighted = False
         for key in all_keys:
             doc_id, source = key
             bm25_raw = bm25_results.get(key, 0.0)
@@ -672,10 +823,12 @@ def hybrid_search(
             if doc_info is None:
                 continue
 
-            snippet = _generate_snippet(
+            snippet, hl = _generate_snippet(
                 doc_info["full_text"] or doc_info["markdown"],
                 query,
             )
+            if hl:
+                any_highlighted = True
 
             merged.append({
                 "document_id": doc_id,
@@ -714,6 +867,8 @@ def hybrid_search(
             "hybrid_weight": hybrid_weight,
             "warnings": warnings,
             "recommended_next_steps": recommended,
+            "expanded_query_terms": expanded_terms,
+            "snippet_highlighted": any_highlighted,
             "version": SEMANTIC_VERSION,
         }
     except Exception as exc:
@@ -727,6 +882,8 @@ def hybrid_search(
             hybrid_weight=hybrid_weight,
             warnings=[str(exc)],
             recommended_next_steps=[],
+            expanded_query_terms=[],
+            snippet_highlighted=False,
             version=SEMANTIC_VERSION,
         )
     finally:

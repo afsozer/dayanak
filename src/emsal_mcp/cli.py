@@ -811,10 +811,20 @@ def semantic_index(
 def semantic_search_cmd(
     query: str = typer.Argument(..., help="Arama sorgusu"),
     limit: int = typer.Option(10, help="Maksimum sonuç"),
+    source: Optional[str] = typer.Option(None, help="Kaynak filtresi (örn: yargitay)"),
+    court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
+    chamber: Optional[str] = typer.Option(None, help="Daire filtresi"),
     json_out: bool = typer.Option(False, "--json"),
 ):
-    """TF-IDF cosine similarity search."""
-    result = semantic_search_cli_impl(query=query, limit=limit)
+    """TF-IDF cosine similarity search. Supports --source, --court, --chamber filters."""
+    filters = {}
+    if source:
+        filters["source"] = source
+    if court:
+        filters["court"] = court
+    if chamber:
+        filters["chamber"] = chamber
+    result = semantic_search_cli_impl(query=query, limit=limit, filters=filters or None)
     _print(result, json_out)
 
 
@@ -823,10 +833,20 @@ def semantic_hybrid(
     query: str = typer.Argument(..., help="Arama sorgusu"),
     limit: int = typer.Option(10, help="Maksimum sonuç"),
     weight: float = typer.Option(0.6, help="Hybrid ağırlık (0.0=sadece semantic, 1.0=sadece BM25)"),
+    source: Optional[str] = typer.Option(None, help="Kaynak filtresi (örn: yargitay)"),
+    court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
+    chamber: Optional[str] = typer.Option(None, help="Daire filtresi"),
     json_out: bool = typer.Option(False, "--json"),
 ):
-    """FTS5 BM25 + TF-IDF cosine hybrid search."""
-    result = hybrid_search_impl(query=query, limit=limit, hybrid_weight=weight)
+    """FTS5 BM25 + TF-IDF cosine hybrid search. Supports --source, --court, --chamber filters."""
+    filters = {}
+    if source:
+        filters["source"] = source
+    if court:
+        filters["court"] = court
+    if chamber:
+        filters["chamber"] = chamber
+    result = hybrid_search_impl(query=query, limit=limit, hybrid_weight=weight, filters=filters or None)
     _print(result, json_out)
 
 

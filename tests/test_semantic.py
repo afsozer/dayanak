@@ -18,6 +18,9 @@ from emsal_mcp.cache import Cache
 from emsal_mcp.models import ContentStatus, Document
 from emsal_mcp.semantic import (
     SEMANTIC_VERSION,
+    _expand_query,
+    _generate_snippet,
+    _strip_turkish_suffix,
     build_semantic_index,
     get_index_status,
     hybrid_search,
@@ -688,8 +691,8 @@ class TestModuleConstants:
     """Tests for module-level constants."""
 
     def test_version(self) -> None:
-        """SEMANTIC_VERSION equals '0.11.0'."""
-        assert SEMANTIC_VERSION == "0.11.0"
+        """SEMANTIC_VERSION equals '0.12.0'."""
+        assert SEMANTIC_VERSION == "0.12.0"
 
 
 # ===================================================================
@@ -1068,5 +1071,482 @@ class TestEdgeCases:
             _build_and_populate(cache, docs=docs)
             result = semantic_search("日本法", cache=cache)
             assert result["ok"] is True
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestTurkishQueryExpansion
+# ===================================================================
+
+
+class TestTurkishQueryExpansion:
+    """Tests for _expand_query() and _strip_turkish_suffix()."""
+
+    def test_expand_query_basic(self) -> None:
+        """'sözleşmelerin' should expand to include 'sözleşme' variant."""
+        expanded = _expand_query("sözleşmelerin")
+        assert "sözleşmelerin" in expanded
+        # Should include at least one stemmed form
+        assert len(expanded) > 1
+
+    def test_expand_query_preserves_original(self) -> None:
+        """Original tokens are always present in expanded result."""
+        expanded = _expand_query("tazminat")
+        assert "tazminat" in expanded
+
+    def test_expand_query_empty(self) -> None:
+        """Empty query returns empty list."""
+        expanded = _expand_query("")
+        assert expanded == []
+
+    def test_expand_query_english(self) -> None:
+        """English words expand to just themselves (no Turkish suffixes)."""
+        expanded = _expand_query("contract")
+        assert "contract" in expanded
+        # English word shouldn't produce Turkish stems
+        assert len(expanded) == 1
+
+    def test_expand_query_multiple_words(self) -> None:
+        """Multi-word query expands each word."""
+        expanded = _expand_query("sözleşme hükümleri")
+        assert "sözleşme" in expanded
+        assert "hükümleri" in expanded
+        assert len(expanded) > 2
+
+    def test_strip_turkish_suffix_plural(self) -> None:
+        """Plural suffix '-ler'/'-lar' is stripped."""
+        stems = _strip_turkish_suffix("kararlar")
+        assert "karar" in stems
+
+    def test_strip_turkish_suffix_genitive(self) -> None:
+        """Genitive suffix '-nın'/'-nin' is stripped."""
+        stems = _strip_turkish_suffix("sözleşmenin")
+        assert "sözleşme" in stems
+
+    def test_strip_turkish_suffix_dative(self) -> None:
+        """Dative suffix '-a'/'-e' is stripped (heuristic, may leave buffer consonant)."""
+        stems = _strip_turkish_suffix("mahkemeye")
+        # 'mahkemeye' -> strip 'e' -> 'mahkemey' (heuristic: buffer consonant remains)
+        assert len(stems) > 0
+        # At minimum, some suffix was stripped
+        assert stems[0] != "mahkemeye" or len(stems) > 1
+
+    def test_strip_turkish_suffix_ablative(self) -> None:
+        """Ablative suffix '-dan'/'-den' is stripped."""
+        stems = _strip_turkish_suffix("karardan")
+        assert "karar" in stems
+
+    def test_strip_turkish_suffix_accusative(self) -> None:
+        """Accusative suffix '-ı'/'-i' is stripped."""
+        stems = _strip_turkish_suffix("kararı")
+        assert "karar" in stems
+
+    def test_strip_turkish_suffix_verb_mak(self) -> None:
+        """Verb infinitive '-mak'/'-mek' is stripped."""
+        stems = _strip_turkish_suffix("etmek")
+        # 'etmek' -> 'et' after stripping -mek
+        assert "et" in stems
+
+    def test_strip_turkish_suffix_short_word(self) -> None:
+        """Words shorter than 3 chars are not stripped."""
+        stems = _strip_turkish_suffix("ve")
+        assert stems == ["ve"]
+
+    def test_expand_query_deduplication(self) -> None:
+        """No duplicate terms in expanded output."""
+        expanded = _expand_query("kararlardan")
+        assert len(expanded) == len(set(expanded))
+
+    def test_expand_query_in_search(self, tmp_path: Path) -> None:
+        """Query expansion helps FTS5 find documents with suffixed forms (hybrid search)."""
+        cache = Cache(tmp_path / "expand_search.sqlite3")
+        try:
+            docs = [
+                {
+                    "source": "yargitay",
+                    "document_id": "exp-1",
+                    "title": "Sözleşme Kararı",
+                    "court": "Yargitay",
+                    "content_status": ContentStatus.FULL_TEXT,
+                    "full_text": "Bu kararda sözleşme hükümleri değerlendirilmiştir.",
+                },
+                {
+                    "source": "yargitay",
+                    "document_id": "exp-2",
+                    "title": "Başka Karar",
+                    "court": "Yargitay",
+                    "content_status": ContentStatus.FULL_TEXT,
+                    "full_text": "İş kazası tazminat davası hakkında karar.",
+                },
+            ]
+            _build_and_populate(cache, docs=docs)
+            # hybrid_search uses FTS5 with expanded query — suffixed form finds base
+            result = hybrid_search("sözleşmelerin", cache=cache)
+            assert result["ok"] is True
+            assert result["total_matches"] >= 1
+            doc_ids = [r["document_id"] for r in result["results"]]
+            assert "exp-1" in doc_ids
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestSnippetHighlighting
+# ===================================================================
+
+
+class TestSnippetHighlighting:
+    """Tests for _generate_snippet() with highlighting."""
+
+    def test_highlight_returns_tuple(self) -> None:
+        """_generate_snippet returns (snippet, was_highlighted) tuple."""
+        text = "Taraflar arasındaki sözleşme hükümleri ihlal edilmiştir."
+        snippet, hl = _generate_snippet(text, "sözleşme")
+        assert isinstance(snippet, str)
+        assert isinstance(hl, bool)
+
+    def test_highlight_markers_present(self) -> None:
+        """Matching terms get **...** markers."""
+        text = "Taraflar arasındaki sözleşme hükümleri ihlal edilmiştir."
+        snippet, hl = _generate_snippet(text, "sözleşme")
+        assert "**sözleşme**" in snippet or "**Sözleşme**" in snippet
+
+    def test_highlight_no_match(self) -> None:
+        """Non-matching query returns no highlights."""
+        text = "Taraflar arasındaki sözleşme hükümleri ihlal edilmiştir."
+        snippet, hl = _generate_snippet(text, "tazminat")
+        assert "**" not in snippet
+        assert hl is False
+
+    def test_highlight_empty_text(self) -> None:
+        """Empty text returns empty snippet."""
+        snippet, hl = _generate_snippet("", "query")
+        assert snippet == ""
+        assert hl is False
+
+    def test_highlight_empty_query(self) -> None:
+        """Empty query returns truncated text, no highlight."""
+        text = "A" * 300
+        snippet, hl = _generate_snippet(text, "")
+        assert "**" not in snippet
+        assert hl is False
+
+    def test_highlight_disabled(self) -> None:
+        """highlight=False disables highlighting."""
+        text = "Taraflar arasındaki sözleşme hükümleri ihlal edilmiştir."
+        snippet, hl = _generate_snippet(text, "sözleşme", highlight=False)
+        assert "**" not in snippet
+        assert hl is False
+
+    def test_highlight_in_search_result(self, tmp_path: Path) -> None:
+        """Search results contain highlighted snippets."""
+        cache = Cache(tmp_path / "hl_search.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert len(result["results"]) > 0
+            # At least one result should have highlighting
+            snippets = [r["snippet"] for r in result["results"]]
+            assert any("**" in s for s in snippets)
+        finally:
+            cache.close()
+
+    def test_highlight_case_insensitive(self) -> None:
+        """Highlighting works regardless of case."""
+        text = "Sözleşme hükümleri SözleşmeMETNİNDE yer almaktadır."
+        snippet, hl = _generate_snippet(text, "sözleşme")
+        assert hl is True
+        assert "**" in snippet
+
+
+# ===================================================================
+# TestHybridWeightValidation
+# ===================================================================
+
+
+class TestHybridWeightValidation:
+    """Tests for hybrid_weight boundary validation."""
+
+    def test_weight_0_0_valid(self, tmp_path: Path) -> None:
+        """hybrid_weight=0.0 (pure semantic) is accepted."""
+        cache = Cache(tmp_path / "w0.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search("test", cache=cache, hybrid_weight=0.0)
+            assert result["ok"] is True
+            assert result["hybrid_weight"] == 0.0
+        finally:
+            cache.close()
+
+    def test_weight_1_0_valid(self, tmp_path: Path) -> None:
+        """hybrid_weight=1.0 (pure BM25) is accepted."""
+        cache = Cache(tmp_path / "w1.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search("test", cache=cache, hybrid_weight=1.0)
+            assert result["ok"] is True
+            assert result["hybrid_weight"] == 1.0
+        finally:
+            cache.close()
+
+    def test_weight_negative_invalid(self) -> None:
+        """hybrid_weight=-0.1 returns error."""
+        result = hybrid_search("test", hybrid_weight=-0.1)
+        assert result["ok"] is False
+        assert "INVALID_HYBRID_WEIGHT" in result.get("errorCode", "")
+
+    def test_weight_over_1_invalid(self) -> None:
+        """hybrid_weight=1.1 returns error."""
+        result = hybrid_search("test", hybrid_weight=1.1)
+        assert result["ok"] is False
+        assert "INVALID_HYBRID_WEIGHT" in result.get("errorCode", "")
+
+    def test_weight_boundary_0(self) -> None:
+        """Exactly 0.0 is valid."""
+        result = hybrid_search("test", hybrid_weight=0.0)
+        assert result["ok"] is True
+
+    def test_weight_boundary_1(self) -> None:
+        """Exactly 1.0 is valid."""
+        result = hybrid_search("test", hybrid_weight=1.0)
+        assert result["ok"] is True
+
+
+# ===================================================================
+# TestNewResultFields
+# ===================================================================
+
+
+class TestNewResultFields:
+    """Tests for expanded_query_terms and snippet_highlighted fields."""
+
+    def test_semantic_search_has_expanded_terms(self, tmp_path: Path) -> None:
+        """semantic_search returns expanded_query_terms."""
+        cache = Cache(tmp_path / "exp_terms.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = semantic_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert "expanded_query_terms" in result
+            assert isinstance(result["expanded_query_terms"], list)
+            assert len(result["expanded_query_terms"]) >= 1
+        finally:
+            cache.close()
+
+    def test_semantic_search_has_snippet_highlighted(self, tmp_path: Path) -> None:
+        """semantic_search returns snippet_highlighted."""
+        cache = Cache(tmp_path / "exp_hl.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = semantic_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert "snippet_highlighted" in result
+            assert isinstance(result["snippet_highlighted"], bool)
+        finally:
+            cache.close()
+
+    def test_hybrid_search_has_expanded_terms(self, tmp_path: Path) -> None:
+        """hybrid_search returns expanded_query_terms."""
+        cache = Cache(tmp_path / "hyb_exp.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert "expanded_query_terms" in result
+            assert isinstance(result["expanded_query_terms"], list)
+        finally:
+            cache.close()
+
+    def test_hybrid_search_has_snippet_highlighted(self, tmp_path: Path) -> None:
+        """hybrid_search returns snippet_highlighted."""
+        cache = Cache(tmp_path / "hyb_hl.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search("sözleşme", cache=cache)
+            assert result["ok"] is True
+            assert "snippet_highlighted" in result
+            assert isinstance(result["snippet_highlighted"], bool)
+        finally:
+            cache.close()
+
+    def test_empty_search_returns_expanded_terms(self) -> None:
+        """Empty search still returns expanded_query_terms."""
+        result = hybrid_search("")
+        assert result["ok"] is True
+        assert result["expanded_query_terms"] == []
+
+    def test_invalid_weight_returns_expanded_terms(self) -> None:
+        """Invalid hybrid_weight error still includes new fields."""
+        result = hybrid_search("test", hybrid_weight=2.0)
+        assert result["ok"] is False
+        assert "expanded_query_terms" in result
+        assert "snippet_highlighted" in result
+
+
+# ===================================================================
+# TestPerSourceFilter
+# ===================================================================
+
+
+class TestPerSourceFilter:
+    """Tests for per-source filter support in hybrid search."""
+
+    def test_hybrid_source_filter(self, tmp_path: Path) -> None:
+        """Filter by source='yargitay' in hybrid search."""
+        cache = Cache(tmp_path / "per_src.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search(
+                "tazminat", cache=cache, filters={"source": "yargitay"}
+            )
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert r["source"] == "yargitay"
+        finally:
+            cache.close()
+
+    def test_hybrid_court_filter(self, tmp_path: Path) -> None:
+        """Filter by court='Danistay' in hybrid search."""
+        cache = Cache(tmp_path / "per_court.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search(
+                "tazminat", cache=cache, filters={"court": "Danistay"}
+            )
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert "Danistay" in (r.get("court") or "")
+        finally:
+            cache.close()
+
+    def test_hybrid_chamber_filter(self, tmp_path: Path) -> None:
+        """Filter by chamber in hybrid search."""
+        cache = Cache(tmp_path / "per_chamber.sqlite3")
+        try:
+            docs = [
+                {
+                    "source": "yargitay",
+                    "document_id": "ch-1",
+                    "title": "Karar 1",
+                    "court": "Yargitay",
+                    "chamber": "1. Hukuk Dairesi",
+                    "content_status": ContentStatus.FULL_TEXT,
+                    "full_text": "Tazminat davası 1. Hukuk Dairesi kararı.",
+                },
+                {
+                    "source": "yargitay",
+                    "document_id": "ch-2",
+                    "title": "Karar 2",
+                    "court": "Yargitay",
+                    "chamber": "2. Hukuk Dairesi",
+                    "content_status": ContentStatus.FULL_TEXT,
+                    "full_text": "Tazminat davası 2. Hukuk Dairesi kararı.",
+                },
+            ]
+            _build_and_populate(cache, docs=docs)
+            result = hybrid_search(
+                "tazminat",
+                cache=cache,
+                filters={"chamber": "1. Hukuk Dairesi"},
+            )
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert "1. Hukuk Dairesi" in (r.get("chamber") or "")
+        finally:
+            cache.close()
+
+    def test_hybrid_combined_filters(self, tmp_path: Path) -> None:
+        """Multiple filters applied together."""
+        cache = Cache(tmp_path / "per_combined.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search(
+                "tazminat",
+                cache=cache,
+                filters={"source": "yargitay", "court": "Yargitay"},
+            )
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert r["source"] == "yargitay"
+                assert "Yargitay" in (r.get("court") or "")
+        finally:
+            cache.close()
+
+    def test_semantic_source_filter(self, tmp_path: Path) -> None:
+        """Filter by source='danistay' in semantic search."""
+        cache = Cache(tmp_path / "per_sem_src.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = semantic_search(
+                "tazminat", cache=cache, filters={"source": "danistay"}
+            )
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert r["source"] == "danistay"
+        finally:
+            cache.close()
+
+    def test_semantic_court_filter(self, tmp_path: Path) -> None:
+        """Filter by court in semantic search."""
+        cache = Cache(tmp_path / "per_sem_court.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = semantic_search(
+                "tazminat", cache=cache, filters={"court": "Danistay"}
+            )
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert "Danistay" in (r.get("court") or "")
+        finally:
+            cache.close()
+
+    def test_no_results_with_strict_filter(self, tmp_path: Path) -> None:
+        """Filter that matches no docs returns empty results."""
+        cache = Cache(tmp_path / "per_strict.sqlite3")
+        try:
+            _build_and_populate(cache)
+            result = hybrid_search(
+                "tazminat",
+                cache=cache,
+                filters={"source": "nonexistent_source"},
+            )
+            assert result["ok"] is True
+            assert result["results"] == []
+        finally:
+            cache.close()
+
+    def test_filter_quote_usable(self, tmp_path: Path) -> None:
+        """Filter by quote_usable flag."""
+        cache = Cache(tmp_path / "per_quote.sqlite3")
+        try:
+            docs = [
+                {
+                    "source": "yargitay",
+                    "document_id": "qu-1",
+                    "title": "Quote Usable Doc",
+                    "court": "Yargitay",
+                    "content_status": ContentStatus.FULL_TEXT,
+                    "full_text": "Tazminat kararı alıntılanabilir.",
+                    "quote_usable": True,
+                },
+                {
+                    "source": "yargitay",
+                    "document_id": "qu-2",
+                    "title": "Not Quote Usable",
+                    "court": "Yargitay",
+                    "content_status": ContentStatus.FULL_TEXT,
+                    "full_text": "Tazminat kararı alıntılanamaz.",
+                    "quote_usable": False,
+                },
+            ]
+            _build_and_populate(cache, docs=docs)
+            result = hybrid_search(
+                "tazminat", cache=cache, filters={"quote_usable": True}
+            )
+            assert result["ok"] is True
+            for r in result["results"]:
+                assert r["quote_usable"] is True
         finally:
             cache.close()

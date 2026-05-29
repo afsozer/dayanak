@@ -735,6 +735,10 @@ def main() -> None:
 
         Pure term-frequency search without keyword dependency.
         Works best with documents that share vocabulary.
+        Uses Turkish suffix stripping for query expansion — stemmed
+        variants of query terms are generated automatically.
+
+        Snippets include **highlighted** matching terms.
 
         Args:
             query: Search query string.
@@ -743,7 +747,8 @@ def main() -> None:
                      quote_usable, draft_usable.
 
         Returns:
-            Dict with ok, query, results (score + snippet), total_matches, method.
+            Dict with ok, query, results (score + snippet), total_matches, method,
+            expanded_query_terms, snippet_highlighted.
         """
         return semantic_search_impl(
             query=query, limit=limit, filters=filters,
@@ -762,6 +767,12 @@ def main() -> None:
         (TF-IDF cosine).  hybrid_weight controls the balance: higher = more
         keyword-oriented, lower = more semantic.
 
+        Uses Turkish suffix stripping for query expansion — stemmed
+        variants of query terms are generated automatically for FTS5.
+        Snippets include **highlighted** matching terms.
+
+        hybrid_weight must be between 0.0 and 1.0.
+
         Args:
             query: Search query string.
             limit: Max results (default 10).
@@ -771,7 +782,8 @@ def main() -> None:
 
         Returns:
             Dict with ok, query, results (bm25/cosine/hybrid scores + snippet),
-            total_matches, method, hybrid_weight.
+            total_matches, method, hybrid_weight, expanded_query_terms,
+            snippet_highlighted.
         """
         return hybrid_search_impl(
             query=query, limit=limit, filters=filters,
