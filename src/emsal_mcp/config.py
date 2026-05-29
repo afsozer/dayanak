@@ -26,6 +26,8 @@ class EmsalConfig:
         self._udf_toolkit_dir: Path | None = None
         self._log_level: str | None = None
         self._http_timeout: float | None = None
+        self._circuit_breaker_threshold: int | None = None
+        self._circuit_recovery_timeout: int | None = None
 
     # ── Cache path ────────────────────────────────────────────────────────
 
@@ -79,6 +81,32 @@ class EmsalConfig:
             env_val = os.environ.get("EMSAL_HTTP_TIMEOUT", "").strip()
             self._http_timeout = float(env_val) if env_val else 30.0
         return self._http_timeout
+
+    # ── Circuit breaker threshold ──────────────────────────────────────
+
+    @property
+    def circuit_breaker_threshold(self) -> int:
+        """Consecutive failures before circuit breaker opens.
+
+        Env: EMSAL_CB_THRESHOLD (default: 5)
+        """
+        if self._circuit_breaker_threshold is None:
+            env_val = os.environ.get("EMSAL_CB_THRESHOLD", "").strip()
+            self._circuit_breaker_threshold = int(env_val) if env_val else 5
+        return self._circuit_breaker_threshold
+
+    # ── Circuit breaker recovery timeout ───────────────────────────────
+
+    @property
+    def circuit_recovery_timeout(self) -> int:
+        """Seconds to wait before transitioning OPEN -> HALF_OPEN.
+
+        Env: EMSAL_CB_TIMEOUT (default: 300)
+        """
+        if self._circuit_recovery_timeout is None:
+            env_val = os.environ.get("EMSAL_CB_TIMEOUT", "").strip()
+            self._circuit_recovery_timeout = int(env_val) if env_val else 300
+        return self._circuit_recovery_timeout
 
     # ── UDF toolkit directory ─────────────────────────────────────────────
 

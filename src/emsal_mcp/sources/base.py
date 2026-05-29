@@ -17,6 +17,7 @@ from emsal_mcp.models import (
     SourceCapability,
     SourceSmokeResult,
     SourceStatus,
+    build_error,
 )
 
 
@@ -68,6 +69,32 @@ class SourceClient(ABC):
     def capabilities(self) -> dict[str, Any]:
         """Legacy dict form — kept for backward compat with callers."""
         return self.capability_model().to_legacy_dict()
+
+    async def _with_circuit(self, coro: Any, operation: str = "search") -> Any:
+        """Execute with circuit breaker protection.
+
+        If the circuit breaker is open, returns a CIRCUIT_OPEN error dict
+        without executing the coroutine.  Otherwise runs the coroutine and
+        records success/failure.
+
+        This is OPT-IN: callers must explicitly wrap their calls.
+        """
+        from emsal_mcp.circuit import is_circuit_open, record_success, record_failure
+
+        if is_circuit_open(self.source_id):
+            return build_error(
+                "CIRCUIT_OPEN",
+                f"Circuit breaker open for {self.source_id}. Try again later.",
+                source=self.source_id,
+            )
+
+        try:
+            result = await coro
+            record_success(self.source_id)
+            return result
+        except Exception:
+            record_failure(self.source_id)
+            raise
 
     async def smoke(self, online: bool = False) -> SourceSmokeResult:
         """Offline-safe smoke test. Override for online-specific checks.

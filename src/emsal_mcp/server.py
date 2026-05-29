@@ -1531,6 +1531,56 @@ def main() -> None:
         finally:
             cache.close()
 
+    # ── Circuit Breaker MCP tools (M-17) ──────────────────────────────
+
+    @mcp.tool()
+    def circuit_breaker_status(source: str | None = None) -> dict:
+        """Check circuit breaker status for one or all sources.
+
+        Args:
+            source: Optional source_id filter.
+
+        Returns:
+            Dict with ok, state, failure_count, consecutive_failures,
+            circuit_open, uptime_pct (per source).
+        """
+        from .circuit import get_source_health as get_source_health_impl, get_all_sources_health as get_all_sources_health_impl
+
+        if source:
+            return get_source_health_impl(source)
+        return get_all_sources_health_impl()
+
+    @mcp.tool()
+    def source_health(source: str | None = None) -> dict:
+        """Get source health metrics (uptime, failure counts, circuit state).
+
+        Args:
+            source: Optional source_id filter.
+
+        Returns:
+            Dict with ok, source_id, state, success_count, failure_count,
+            uptime_pct, circuit_open.
+        """
+        from .circuit import get_source_health as get_source_health_impl, get_all_sources_health as get_all_sources_health_impl
+
+        if source:
+            return get_source_health_impl(source)
+        return get_all_sources_health_impl()
+
+    @mcp.tool()
+    def reset_circuit(source: str) -> dict:
+        """Manually reset a circuit breaker to CLOSED state.
+
+        Args:
+            source: Source identifier to reset.
+
+        Returns:
+            Dict with ok, source_id, state, previous_state.
+        """
+        from .circuit import reset_circuit as reset_circuit_impl
+
+        return reset_circuit_impl(source)
+
     mcp.run()
 
 

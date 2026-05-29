@@ -105,6 +105,11 @@ from .udf import (
     udf_to_markdown,
     write_udf,
 )
+from .circuit import (
+    get_all_sources_health,
+    get_source_health,
+    reset_circuit,
+)
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
 udf_app = typer.Typer(help="UDF okuma/yazma araçları")
@@ -122,6 +127,7 @@ analytics_app = typer.Typer(help="Search analytics: report, empty queries, top q
 template_app = typer.Typer(help="Petition templates: list, show, render")
 draft_app = typer.Typer(help="Draft diffing, placeholder tracking, versioning")
 export_app = typer.Typer(help="Export formats: plain text, DOCX, PDF, UDF")
+circuit_app = typer.Typer(help="Circuit breaker: status, health, reset")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -137,6 +143,7 @@ app.add_typer(analytics_app, name="analytics")
 app.add_typer(template_app, name="template")
 app.add_typer(draft_app, name="draft")
 app.add_typer(export_app, name="export")
+app.add_typer(circuit_app, name="circuit")
 
 
 def _print(obj, json_out: bool):
@@ -1357,6 +1364,47 @@ def export_capabilities_cmd(
 ):
     """Show which export formats are currently available."""
     _print(get_export_capabilities(), json_out)
+
+
+# ── Circuit breaker subcommands ──────────────────────────────────────────────
+
+
+@circuit_app.command("status")
+def circuit_status_cmd(
+    source: Optional[str] = typer.Option(None, help="Filter by source_id"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Show circuit breaker status for one or all sources."""
+    if source:
+        health = get_source_health(source)
+        _print(health, json_out)
+    else:
+        all_health = get_all_sources_health()
+        _print(all_health, json_out)
+
+
+@circuit_app.command("health")
+def circuit_health_cmd(
+    source: Optional[str] = typer.Option(None, help="Filter by source_id"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Show source health metrics (uptime, failure counts, circuit state)."""
+    if source:
+        health = get_source_health(source)
+        _print(health, json_out)
+    else:
+        all_health = get_all_sources_health()
+        _print(all_health, json_out)
+
+
+@circuit_app.command("reset")
+def circuit_reset_cmd(
+    source: str = typer.Argument(..., help="Source ID to reset"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Manually reset a circuit breaker to CLOSED state."""
+    result = reset_circuit(source)
+    _print(result, json_out)
 
 
 if __name__ == "__main__":
