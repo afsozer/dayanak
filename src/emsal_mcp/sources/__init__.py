@@ -1,5 +1,5 @@
 from .base import RateLimiter, RateLimitError, SourceClient
-from .registry import capabilities, get_source, registry, smoke_all, smoke_all_sync
+from .registry import capabilities, get_source, register_adapter, registry, smoke_all, smoke_all_sync
 
 __all__ = [
     "RateLimiter",
@@ -7,6 +7,7 @@ __all__ = [
     "SourceClient",
     "capabilities",
     "get_source",
+    "register_adapter",
     "registry",
     "smoke_all",
     "smoke_all_sync",

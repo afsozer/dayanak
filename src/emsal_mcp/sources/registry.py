@@ -16,6 +16,24 @@ from .simple_public import (
 from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceCapability, SourceSmokeResult, SourceStatus
 
 
+# ---------------------------------------------------------------------------
+# Extra (plugin / test) adapters — populated by register_adapter()
+# ---------------------------------------------------------------------------
+
+_extra_adapters: dict[str, Any] = {}
+
+
+def register_adapter(source_id: str, client_instance: Any) -> None:
+    """Register a custom adapter (for plugins/testing).
+
+    After registration, ``get_source(source_id)`` returns *client_instance*
+    and it appears in the capability matrix.
+
+    This does NOT persist across restarts — call it at application startup.
+    """
+    _extra_adapters[source_id] = client_instance
+
+
 class YargitayClient(BedestenClient):
     source_id = "yargitay"
     name = "Yargıtay/Bedesten"
@@ -435,17 +453,30 @@ def capabilities() -> list[dict[str, Any]]:
     """Return the full capability matrix for all sources (including unavailable KIK).
 
     Each entry is a dict with canonical snake_case keys plus legacy camelCase
-    aliases for backward compatibility.
+    aliases for backward compatibility.  Extra adapters registered via
+    ``register_adapter()`` are included.
     """
     out: list[dict[str, Any]] = []
     for sid, src in registry().items():
         cap = src.capabilities()
         out.append(cap)
+    for sid, src in _extra_adapters.items():
+        if hasattr(src, "capabilities"):
+            cap = src.capabilities()
+        else:
+            cap = {"source_id": sid, "name": getattr(src, "name", sid)}
+        out.append(cap)
     return out
 
 
 def get_source(source: str):
-    """Return a client for *source*, including structured unavailable clients."""
+    """Return a client for *source*, including structured unavailable clients.
+
+    Extra (plugin/test) adapters registered via ``register_adapter()``
+    take precedence over built-in sources.
+    """
+    if source in _extra_adapters:
+        return _extra_adapters[source]
     reg = registry()
     if source not in reg:
         raise KeyError(f"Bilinmeyen kaynak: {source}. Geçerli: {', '.join(reg)}")
@@ -455,7 +486,8 @@ def get_source(source: str):
 async def smoke_all(online: bool = False) -> list[SourceSmokeResult]:
     """Run offline/online smoke for all registered sources."""
     results: list[SourceSmokeResult] = []
-    for sid, src in registry().items():
+    all_sources = list(registry().items()) + list(_extra_adapters.items())
+    for sid, src in all_sources:
         try:
             result = await src.smoke(online=online)
             results.append(result)

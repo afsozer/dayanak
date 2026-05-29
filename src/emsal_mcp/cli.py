@@ -134,6 +134,12 @@ from .pdf_extractor import (
     get_pdf_toolkit_status,
     promote_pdf_to_full_text as promote_pdf_impl,
 )
+from .research_watch import (
+    add_watch as add_watch_impl,
+    list_watches as list_watches_impl,
+    remove_watch as remove_watch_impl,
+    run_watch as run_watch_impl,
+)
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
 api_app = typer.Typer(help="HTTP REST API server")
@@ -156,6 +162,7 @@ circuit_app = typer.Typer(help="Circuit breaker: status, health, reset")
 router_app = typer.Typer(help="Capability-based routing: capable sources, search routing, document routing")
 pdf_app = typer.Typer(help="PDF content extraction: text layer, toolkit status")
 calibrate_app = typer.Typer(help="Source calibration: measure safe request rates")
+watch_app = typer.Typer(help="Research watchlist: add, list, run, remove watches")
 app.add_typer(api_app, name="api")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
@@ -176,6 +183,7 @@ app.add_typer(circuit_app, name="circuit")
 app.add_typer(router_app, name="router")
 app.add_typer(pdf_app, name="pdf")
 app.add_typer(calibrate_app, name="calibrate")
+app.add_typer(watch_app, name="watch")
 
 
 def _print(obj, json_out: bool):
@@ -1679,6 +1687,53 @@ def benchmark_cmd(
 ):
     """Run micro-benchmark suite (deterministic corpus)."""
     _print(run_benchmarks_impl(corpus_size=corpus_size), json_out)
+
+
+# ── Research Watchlist subcommands (M-36) ─────────────────────────────────
+
+
+@watch_app.command("add")
+def watch_add(
+    name: str = typer.Argument(..., help="Unique watch name"),
+    query: str = typer.Argument(..., help="Research query"),
+    sources: Optional[str] = typer.Option(None, help="Comma-separated source_ids"),
+    fetch_count: int = typer.Option(5, help="Max docs to fetch per run"),
+    interval_hours: int = typer.Option(24, help="Suggested interval in hours"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Register a watch for periodic research."""
+    src_list = [s.strip() for s in sources.split(",")] if sources else None
+    result = add_watch_impl(
+        name=name, query=query, sources=src_list,
+        fetch_count=fetch_count, interval_hours=interval_hours,
+    )
+    _print(result, json_out)
+
+
+@watch_app.command("list")
+def watch_list(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """List all registered watches."""
+    _print(list_watches_impl(), json_out)
+
+
+@watch_app.command("run")
+def watch_run(
+    name: str = typer.Argument(..., help="Watch name to execute"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Execute a watch: re-search, detect new/changed docs."""
+    _print(run_watch_impl(name), json_out)
+
+
+@watch_app.command("remove")
+def watch_remove(
+    name: str = typer.Argument(..., help="Watch name to remove"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Remove a watch."""
+    _print(remove_watch_impl(name), json_out)
 
 
 if __name__ == "__main__":

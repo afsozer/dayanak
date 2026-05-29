@@ -425,8 +425,8 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 8 | M-32 Embedding cache | [x] |
 | 9 | M-33 HTTP/REST API | [x] |
 | 9 | M-34 Çok-makine cache sync | [x] |
-| 9 | M-35 Adapter SDK/plugin | [ ] |
-| 9 | M-36 Watchlist/alert | [ ] |
+| 9 | M-35 Adapter SDK/plugin | [x] |
+| 9 | M-36 Watchlist/alert | [x] |
 | 10 | M-37 PII redaction/privacy | [ ] |
 | 10 | M-38 Golden corpus testleri | [ ] |
 | 10 | M-39 Atıf grafiği export | [ ] |

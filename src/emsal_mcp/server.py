@@ -1970,6 +1970,70 @@ def main() -> None:
         """
         return promote_pdf_to_full_text_impl(document, ocr_enabled=ocr_enabled)
 
+    # ── Research Watchlist v2.4 MCP tools (M-36) ─────────────────────
+
+    @mcp.tool()
+    def watch_add(
+        name: str,
+        query: str,
+        sources: list[str] | None = None,
+        fetch_count: int = 5,
+        interval_hours: int = 24,
+    ) -> dict:
+        """Register a watch for periodic research.
+
+        Args:
+            name: Unique watch name (used as key).
+            query: Research query string.
+            sources: Optional list of source_ids to search.
+            fetch_count: Max documents per search (default 5).
+            interval_hours: Suggested interval in hours (default 24).
+
+        Returns:
+            Dict with ok, name, config.
+        """
+        from .research_watch import add_watch as add_watch_impl
+        return add_watch_impl(
+            name=name, query=query, sources=sources,
+            fetch_count=fetch_count, interval_hours=interval_hours,
+        )
+
+    @mcp.tool()
+    def watch_list() -> dict:
+        """List all registered watches.
+
+        Returns:
+            Dict with ok, watches list, total.
+        """
+        from .research_watch import list_watches as list_watches_impl
+        return list_watches_impl()
+
+    @mcp.tool()
+    def watch_run(name: str) -> dict:
+        """Execute a watch: re-search, detect new/changed docs, produce diff report.
+
+        Args:
+            name: Watch name to execute.
+
+        Returns:
+            Dict with ok, name, result, diff_report.
+        """
+        from .research_watch import run_watch as run_watch_impl
+        return run_watch_impl(name)
+
+    @mcp.tool()
+    def watch_remove(name: str) -> dict:
+        """Remove a watch.
+
+        Args:
+            name: Watch name to remove.
+
+        Returns:
+            Dict with ok, name, removed.
+        """
+        from .research_watch import remove_watch as remove_watch_impl
+        return remove_watch_impl(name)
+
     mcp.run()
 
 
