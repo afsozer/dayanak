@@ -29,6 +29,7 @@ from emsal_mcp.embeddings import (
     get_embedding_provider,
     list_embedding_providers,
     pack_vector,
+    rerank_results,
     unpack_vector,
 )
 from emsal_mcp.models import ContentStatus, Document
@@ -905,3 +906,268 @@ class TestConfigEmbeddingProperties:
             assert c.hybrid_w_bm25 == 0.4
             assert c.hybrid_w_tfidf == 0.6
             assert c.hybrid_w_dense == 0.0
+
+
+# ===================================================================
+# TestRerankResults (M-25)
+# ===================================================================
+
+
+class TestRerankResults:
+    """Tests for rerank_results() cross-encoder reranker."""
+
+    def test_empty_candidates_passthrough(self) -> None:
+        """Empty candidates list returns passthrough with no rerank."""
+        result = rerank_results("test query", [])
+        assert result["ok"] is True
+        assert result["results"] == []
+        assert result["was_reranked"] is False
+        assert result["method"] == "passthrough"
+
+    def test_single_candidate_passthrough(self) -> None:
+        """Single candidate returns passthrough (nothing to rerank)."""
+        candidates = [{"document_id": "d1", "source": "s", "title": "t", "score": 0.5}]
+        result = rerank_results("query", candidates)
+        assert result["ok"] is True
+        assert len(result["results"]) == 1
+        assert result["was_reranked"] is False
+        assert result["method"] == "passthrough"
+
+    def test_fastembed_unavailable_passthrough(self) -> None:
+        """When fastembed is unavailable, returns passthrough with warning."""
+        candidates = [
+            {"document_id": "d1", "source": "s", "title": "t1", "score": 0.5, "snippet": "text a"},
+            {"document_id": "d2", "source": "s", "title": "t2", "score": 0.3, "snippet": "text b"},
+        ]
+        # Ensure fastembed is not in sys.modules
+        import sys
+        saved = sys.modules.pop("fastembed", None)
+        sys.modules["fastembed"] = None  # block import
+        try:
+            result = rerank_results("query", candidates)
+        finally:
+            if saved is not None:
+                sys.modules["fastembed"] = saved
+            else:
+                sys.modules.pop("fastembed", None)
+        assert result["ok"] is True
+        assert result["was_reranked"] is False
+        assert result["method"] == "passthrough"
+        assert any("Cross-encoder not available" in w for w in result["warnings"])
+
+    def test_mock_cross_encoder_reranked(self) -> None:
+        """With a mock cross-encoder, was_reranked=True and results are resorted."""
+        candidates = [
+            {"document_id": "d1", "source": "s", "title": "t1", "score": 0.5, "snippet": "text a"},
+            {"document_id": "d2", "source": "s", "title": "t2", "score": 0.3, "snippet": "text b"},
+            {"document_id": "d3", "source": "s", "title": "t3", "score": 0.1, "snippet": "text c"},
+        ]
+
+        # Create a fake TextCrossEncoder class
+        class FakeCrossEncoder:
+            def __init__(self, model_name: str = "") -> None:
+                pass
+
+            def predict(self, pairs: list[list[str]]) -> list[float]:
+                # d2 gets highest score (10.0), d3 middle (5.0), d1 lowest (1.0)
+                score_map = {"text a": 1.0, "text b": 10.0, "text c": 5.0}
+                return [score_map.get(p[1], 0.0) for p in pairs]
+
+        # Create a fake fastembed module
+        import types
+        import sys
+        fake_fe = types.ModuleType("fastembed")
+        fake_fe.TextCrossEncoder = FakeCrossEncoder  # type: ignore[attr-defined]
+        saved = sys.modules.get("fastembed")
+        sys.modules["fastembed"] = fake_fe
+        try:
+            result = rerank_results("query", candidates, top_k=2)
+        finally:
+            if saved is not None:
+                sys.modules["fastembed"] = saved
+            else:
+                sys.modules.pop("fastembed", None)
+
+        assert result["ok"] is True
+        assert result["was_reranked"] is True
+        assert result["method"] == "cross-encoder"
+        assert len(result["results"]) == 2
+        # d2 gets highest rerank_score (10.0), should be first
+        assert result["results"][0]["document_id"] == "d2"
+        assert result["results"][1]["document_id"] == "d3"
+        assert "rerank_score" in result["results"][0]
+
+    def test_rerank_exception_passthrough(self) -> None:
+        """If cross-encoder predict() throws, gracefully passes through."""
+
+        class BrokenCrossEncoder:
+            def __init__(self, model_name: str = "") -> None:
+                pass
+
+            def predict(self, pairs: list[list[str]]) -> list[float]:
+                raise RuntimeError("Model load failed")
+
+        candidates = [
+            {"document_id": "d1", "source": "s", "title": "t1", "score": 0.5, "snippet": "a"},
+            {"document_id": "d2", "source": "s", "title": "t2", "score": 0.3, "snippet": "b"},
+        ]
+
+        import types
+        import sys
+        fake_fe = types.ModuleType("fastembed")
+        fake_fe.TextCrossEncoder = BrokenCrossEncoder  # type: ignore[attr-defined]
+        saved = sys.modules.get("fastembed")
+        sys.modules["fastembed"] = fake_fe
+        try:
+            result = rerank_results("query", candidates)
+        finally:
+            if saved is not None:
+                sys.modules["fastembed"] = saved
+            else:
+                sys.modules.pop("fastembed", None)
+
+        assert result["ok"] is True
+        assert result["was_reranked"] is False
+        assert result["method"] == "passthrough"
+        assert any("Reranking failed" in w for w in result["warnings"])
+
+    def test_top_k_respected(self) -> None:
+        """top_k limits the number of returned results."""
+        candidates = [
+            {"document_id": f"d{i}", "source": "s", "title": f"t{i}", "score": 0.5 - i * 0.1, "snippet": f"text {i}"}
+            for i in range(10)
+        ]
+        result = rerank_results("query", candidates, top_k=3)
+        assert result["ok"] is True
+        assert len(result["results"]) <= 3
+
+    def test_builds_text_preview_from_snippet(self) -> None:
+        """rerank_results uses snippet/text_preview/title as doc_text."""
+        candidates = [
+            {"document_id": "d1", "source": "s", "title": "t1", "score": 0.5, "snippet": "the snippet"},
+            {"document_id": "d2", "source": "s", "title": "t2", "score": 0.3},  # no snippet
+        ]
+
+        captured_pairs: list[list[str]] = []
+
+        class CapturingEncoder:
+            def __init__(self, model_name: str = "") -> None:
+                pass
+
+            def predict(self, pairs: list[list[str]]) -> list[float]:
+                captured_pairs.extend(pairs)
+                return [1.0, 0.5]
+
+        import types
+        import sys
+        fake_fe = types.ModuleType("fastembed")
+        fake_fe.TextCrossEncoder = CapturingEncoder  # type: ignore[attr-defined]
+        saved = sys.modules.get("fastembed")
+        sys.modules["fastembed"] = fake_fe
+        try:
+            rerank_results("query", candidates, top_k=2)
+        finally:
+            if saved is not None:
+                sys.modules["fastembed"] = saved
+            else:
+                sys.modules.pop("fastembed", None)
+
+        assert len(captured_pairs) == 2
+        assert captured_pairs[0] == ["query", "the snippet"]
+        # d2 has no snippet, falls back to title
+        assert captured_pairs[1] == ["query", "t2"]
+
+
+# ===================================================================
+# TestHybridSearchRerank (M-25 integration)
+# ===================================================================
+
+
+class TestHybridSearchRerank:
+    """Tests for hybrid_search with rerank parameter."""
+
+    def test_rerank_false_no_rerank_field(self, tmp_path: Path) -> None:
+        """hybrid_search with rerank=False does not include 'reranked' from reranking."""
+        cache = Cache(tmp_path / "rerank_false.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            result = hybrid_search("sözleşme", cache=cache, rerank=False)
+            assert result["ok"] is True
+            # reranked field should be present (always) but False when rerank=False
+            assert result.get("reranked") is False
+        finally:
+            cache.close()
+
+    def test_rerank_true_includes_metadata(self, tmp_path: Path) -> None:
+        """hybrid_search with rerank=True includes reranked field (passthrough when fastembed unavailable)."""
+        cache = Cache(tmp_path / "rerank_true.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            result = hybrid_search("sözleşme", cache=cache, rerank=True)
+            assert result["ok"] is True
+            # reranked should be in result (False since fastembed not installed)
+            assert "reranked" in result
+            assert result["reranked"] is False
+            # warnings should mention cross-encoder not available
+            assert any("Cross-encoder" in w for w in result.get("warnings", []))
+        finally:
+            cache.close()
+
+    def test_rerank_true_with_mock(self, tmp_path: Path) -> None:
+        """hybrid_search with rerank=True and mock cross-encoder sets reranked=True."""
+        cache = Cache(tmp_path / "rerank_mock.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+
+            class FakeCrossEncoder:
+                def __init__(self, model_name: str = "") -> None:
+                    pass
+
+                def predict(self, pairs: list[list[str]]) -> list[float]:
+                    return [float(i) for i in range(len(pairs))]
+
+            import types
+            import sys
+            fake_fe = types.ModuleType("fastembed")
+            fake_fe.TextCrossEncoder = FakeCrossEncoder  # type: ignore[attr-defined]
+            saved = sys.modules.get("fastembed")
+            sys.modules["fastembed"] = fake_fe
+            try:
+                result = hybrid_search("sözleşme", cache=cache, rerank=True)
+            finally:
+                if saved is not None:
+                    sys.modules["fastembed"] = saved
+                else:
+                    sys.modules.pop("fastembed", None)
+
+            assert result["ok"] is True
+            assert result["reranked"] is True
+        finally:
+            cache.close()
+
+    def test_rerank_not_in_output_when_false(self, tmp_path: Path) -> None:
+        """When rerank=False, reranked is False."""
+        cache = Cache(tmp_path / "rerank_absent.sqlite3")
+        try:
+            _populate_docs(cache)
+            build_semantic_index(cache=cache)
+            result = hybrid_search("test", cache=cache, rerank=False)
+            assert result["ok"] is True
+            assert result.get("reranked") is False
+        finally:
+            cache.close()
+
+    def test_empty_results_rerank_noop(self, tmp_path: Path) -> None:
+        """Reranking with no results is a no-op."""
+        cache = Cache(tmp_path / "rerank_empty.sqlite3")
+        try:
+            # No docs → no results
+            result = hybrid_search("nonexistent", cache=cache, rerank=True)
+            assert result["ok"] is True
+            assert result["results"] == []
+            assert result.get("reranked") is False
+        finally:
+            cache.close()

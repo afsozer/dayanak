@@ -1034,6 +1034,7 @@ def semantic_hybrid(
     limit: int = typer.Option(10, help="Maksimum sonuç"),
     weight: float = typer.Option(0.6, help="Hybrid ağırlık (0.0=sadece semantic, 1.0=sadece BM25)"),
     w_dense: float = typer.Option(0.0, "--w-dense", help="Dense embedding ağırlık (0.0=devre dışı)"),
+    rerank: bool = typer.Option(False, "--rerank", help="Cross-encoder rerank top results"),
     source: Optional[str] = typer.Option(None, help="Kaynak filtresi (örn: yargitay)"),
     court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
     chamber: Optional[str] = typer.Option(None, help="Daire filtresi"),
@@ -1051,6 +1052,7 @@ def semantic_hybrid(
         query=query, limit=limit, hybrid_weight=weight,
         dense_weight=w_dense if w_dense > 0 else None,
         filters=filters or None,
+        rerank=rerank,
     )
     _print(result, json_out)
 

@@ -681,6 +681,7 @@ def hybrid_search(
     filters: dict[str, Any] | None = None,
     hybrid_weight: float = 0.6,
     dense_weight: float | None = None,
+    rerank: bool = False,
 ) -> dict[str, Any]:
     """Combined FTS5 BM25 + TF-IDF cosine hybrid search (v3 with optional dense).
 
@@ -699,6 +700,9 @@ def hybrid_search(
             cosine.
         dense_weight: Optional weight for dense embedding component.
             When None, defaults to config value.  Set to 0.0 to disable.
+        rerank: Optional cross-encoder reranking of top results.
+            When True, re-scores top candidates with a cross-encoder model
+            if available.  Gracefully passes through when unavailable.
 
     Returns:
         Dict with ok, results, total_matches, method, hybrid_weight,
@@ -746,6 +750,7 @@ def hybrid_search(
                 "method": "hybrid",
                 "hybrid_weight": hybrid_weight,
                 "dense_weight": dense_weight,
+                "reranked": False,
                 "warnings": ["No documents in cache. Store documents first."],
                 "recommended_next_steps": ["Use store_document() to add documents."],
                 "expanded_query_terms": [],
@@ -824,6 +829,7 @@ def hybrid_search(
                 "method": "hybrid",
                 "hybrid_weight": hybrid_weight,
                 "dense_weight": dense_weight,
+                "reranked": False,
                 "warnings": warnings,
                 "recommended_next_steps": ["Try a broader query or check index status."],
                 "expanded_query_terms": expanded_terms,
@@ -895,6 +901,18 @@ def hybrid_search(
         merged.sort(key=lambda x: x["hybrid_score"], reverse=True)
         top = merged[:limit]
 
+        # ---- Optional cross-encoder reranking (M-25) ----
+        was_reranked = False
+        if rerank and top:
+            from .embeddings import rerank_results
+
+            rr = rerank_results(query, list(top), top_k=limit)
+            if rr.get("was_reranked"):
+                top = rr["results"]
+                was_reranked = True
+            if rr.get("warnings"):
+                warnings.extend(rr["warnings"])
+
         if not bm25_results:
             recommended.append("FTS5 index may be empty. Run build_semantic_index() to rebuild.")
         if not cosine_results:
@@ -913,6 +931,7 @@ def hybrid_search(
             "hybrid_weight": hybrid_weight,
             "dense_weight": dense_weight,
             "dense_provider": dense_provider,
+            "reranked": was_reranked,
             "warnings": warnings,
             "recommended_next_steps": recommended,
             "expanded_query_terms": expanded_terms,

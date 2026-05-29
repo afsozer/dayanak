@@ -228,3 +228,87 @@ def pack_vector(vec: list[float]) -> bytes:
 def unpack_vector(blob: bytes, dim: int) -> list[float]:
     """Unpack BLOB back to float32 vector."""
     return list(struct.unpack(f"{dim}f", blob[: dim * 4]))
+
+
+# ---------------------------------------------------------------------------
+# Cross-Encoder Reranker (M-25)
+# ---------------------------------------------------------------------------
+
+
+def rerank_results(
+    query: str,
+    candidates: list[dict],
+    top_k: int = 10,
+    provider: str | None = None,
+) -> dict:
+    """Re-rank candidates using cross-encoder if available.
+
+    If cross-encoder is not available, returns original candidates as-is
+    with a warning.  Never raises an exception.
+
+    Args:
+        query: Original search query.
+        candidates: List of {document_id, source, title, score, text_preview...}.
+        top_k: Number of top results to return after reranking.
+        provider: Embedding provider (unused, kept for interface consistency).
+
+    Returns:
+        dict with ok, results (reranked), was_reranked: bool, method, warnings.
+    """
+    warnings: list[str] = []
+
+    # Try lazy import cross-encoder
+    reranker_available = False
+    try:
+        from fastembed import TextCrossEncoder  # type: ignore[import-untyped]
+
+        reranker_available = True
+    except ImportError:
+        warnings.append("Cross-encoder not available (install fastembed for reranking)")
+
+    if not reranker_available or len(candidates) == 0:
+        return {
+            "ok": True,
+            "results": candidates[:top_k],
+            "was_reranked": False,
+            "method": "passthrough",
+            "warnings": warnings,
+        }
+
+    # Build query-document pairs for cross-encoder
+    pairs: list[list[str]] = []
+    for c in candidates[: max(20, top_k * 2)]:
+        doc_text = c.get("text_preview", "") or c.get("snippet", "") or c.get("title", "")
+        pairs.append([query, doc_text])
+
+    try:
+        model = TextCrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+        scores = model.predict(pairs)
+
+        # Map scores back to candidates
+        for i, (c, score) in enumerate(zip(candidates[: len(pairs)], scores)):
+            c["rerank_score"] = float(score)
+
+        # Re-sort by rerank score
+        reranked = sorted(
+            candidates[: len(pairs)],
+            key=lambda x: x.get("rerank_score", 0),
+            reverse=True,
+        )
+
+        return {
+            "ok": True,
+            "results": reranked[:top_k],
+            "was_reranked": True,
+            "method": "cross-encoder",
+            "warnings": warnings,
+        }
+    except Exception as e:
+        warnings.append(f"Reranking failed: {e}")
+        return {
+            "ok": True,
+            "results": candidates[:top_k],
+            "was_reranked": False,
+            "method": "passthrough",
+            "warnings": warnings,
+        }

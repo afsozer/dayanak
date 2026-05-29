@@ -1146,6 +1146,7 @@ def main() -> None:
         limit: int = 10,
         filters: dict | None = None,
         hybrid_weight: float = 0.6,
+        rerank: bool = False,
     ) -> dict:
         """Combined FTS5 BM25 + TF-IDF cosine hybrid search.
 
@@ -1165,15 +1166,17 @@ def main() -> None:
             filters: Optional dict with source, court, chamber, content_status,
                      quote_usable, draft_usable.
             hybrid_weight: Balance 0.0-1.0 (0.0 = pure semantic, 1.0 = pure BM25).
+            rerank: Cross-encoder reranking of top results (optional, requires fastembed).
 
         Returns:
             Dict with ok, query, results (bm25/cosine/hybrid scores + snippet),
-            total_matches, method, hybrid_weight, expanded_query_terms,
+            total_matches, method, hybrid_weight, reranked, expanded_query_terms,
             snippet_highlighted.
         """
         return hybrid_search_impl(
             query=query, limit=limit, filters=filters,
             hybrid_weight=hybrid_weight,
+            rerank=rerank,
         )
 
     @mcp.tool()
