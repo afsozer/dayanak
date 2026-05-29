@@ -1403,3 +1403,539 @@ def prepare_controlled_petition_draft(
         "warnings_path": str(warnings_path),
         "draft_metadata": draft_metadata,
     }
+
+
+# ===========================================================================
+# v0.9: Multi-Issue Petition Pack
+# ===========================================================================
+
+MULTI_ISSUE_VERSION = "0.9.0"
+
+
+def build_multi_issue_pack(
+    matter: str,
+    issues: list[dict[str, Any]],
+    documents: list[Document] | None = None,
+    out_dir: str | Path | None = None,
+    cache: Any | None = None,
+) -> dict[str, Any]:
+    """Build a petition pack supporting multiple isolated legal issues.
+
+    Each issue gets its own citation-bank.md and argument-map.md inside an
+    ``issues/issue-N/`` subdirectory.  Source documents are shared across all
+    issues but deduplicated.  The top-level hash-manifest covers every source
+    document across all issues.
+
+    Args:
+        matter: Legal matter description (shared across issues).
+        issues: List of issue dicts, each with keys:
+            - ``title`` (str): Issue title (required).
+            - ``description`` (str): Issue description (optional).
+            - ``documents`` (list[Document] or list[dict]): Documents
+              specific to this issue (optional).  These are merged with the
+              shared *documents* list (deduplicated by document_id).
+        documents: Shared documents applied to every issue unless overridden
+            by per-issue documents.
+        out_dir: Root output directory for the multi-issue pack.
+        cache: Optional Cache instance for history logging.
+
+    Returns:
+        Dict with ok, out_dir, issue_count, issues (per-issue results),
+        combined_classification_counts, draft_safe, files, warnings.
+    """
+    if not issues:
+        return build_error(
+            "NO_ISSUES",
+            "At least one issue is required for a multi-issue pack.",
+        )
+
+    shared_docs = list(documents or [])
+    warnings: list[str] = []
+
+    # Determine output directory
+    if out_dir is None:
+        out_dir = Path(".emsal_multi_pack") / _hash_text(matter)[:12]
+    else:
+        out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Collect all documents across issues for deduplication ──────────────
+    all_doc_keys: dict[str, Document] = {}
+
+    # Start with shared docs
+    for doc in shared_docs:
+        key = f"{doc.source}:{doc.document_id}"
+        all_doc_keys[key] = doc
+
+    # Merge per-issue documents
+    for issue_def in issues:
+        issue_docs_raw = issue_def.get("documents", [])
+        for item in issue_docs_raw:
+            if isinstance(item, dict):
+                doc = Document.model_validate(item)
+            elif isinstance(item, Document):
+                doc = item
+            else:
+                continue
+            key = f"{doc.source}:{doc.document_id}"
+            if key not in all_doc_keys:
+                all_doc_keys[key] = doc
+
+    all_documents = list(all_doc_keys.values())
+
+    # ── Classify all shared documents ──────────────────────────────────────
+    all_classifications: dict[str, str] = {}
+    for doc in all_documents:
+        all_classifications[f"{doc.source}:{doc.document_id}"] = _classify_authority(doc)
+
+    # ── Build per-issue packs ──────────────────────────────────────────────
+    issues_dir = out_dir / "issues"
+    issues_dir.mkdir(exist_ok=True)
+
+    issue_results: list[dict[str, Any]] = []
+    combined_counts = {
+        "petition_ready": 0,
+        "citation_only": 0,
+        "research_lead_only": 0,
+        "excluded": 0,
+    }
+    any_draft_safe = False
+
+    for idx, issue_def in enumerate(issues, 1):
+        issue_title = issue_def.get("title", f"Issue {idx}")
+        issue_desc = issue_def.get("description", issue_title)
+
+        # Per-issue documents: shared + issue-specific (deduplicated)
+        issue_specific_docs: list[Document] = []
+        for item in issue_def.get("documents", []):
+            if isinstance(item, dict):
+                doc = Document.model_validate(item)
+            elif isinstance(item, Document):
+                doc = item
+            else:
+                continue
+            issue_specific_docs.append(doc)
+
+        # Build merged doc list for this issue
+        issue_doc_map: dict[str, Document] = {}
+        for doc in all_documents:
+            key = f"{doc.source}:{doc.document_id}"
+            issue_doc_map[key] = doc
+        for doc in issue_specific_docs:
+            key = f"{doc.source}:{doc.document_id}"
+            if key not in issue_doc_map:
+                issue_doc_map[key] = doc
+
+        issue_docs = list(issue_doc_map.values())
+        issue_classifications: dict[str, str] = {}
+        for doc in issue_docs:
+            issue_classifications[f"{doc.source}:{doc.document_id}"] = all_classifications.get(
+                f"{doc.source}:{doc.document_id}",
+                _classify_authority(doc),
+            )
+
+        # Count
+        issue_counts = {
+            "petition_ready": 0,
+            "citation_only": 0,
+            "research_lead_only": 0,
+            "excluded": 0,
+        }
+        for cat in issue_classifications.values():
+            if cat in issue_counts:
+                issue_counts[cat] += 1
+        issue_draft_safe = issue_counts["petition_ready"] > 0
+        if issue_draft_safe:
+            any_draft_safe = True
+
+        # Accumulate combined counts (union of all issues)
+        for k in combined_counts:
+            combined_counts[k] = max(combined_counts[k], issue_counts[k])
+
+        # Write per-issue directory
+        issue_dir = issues_dir / f"issue-{idx}"
+        issue_dir.mkdir(exist_ok=True)
+
+        # Per-issue citation bank (isolation!)
+        citation_bank = _generate_citation_bank(issue_docs, issue_classifications)
+        (issue_dir / "citation-bank.md").write_text(citation_bank, encoding="utf-8")
+
+        # Per-issue argument map (isolation!)
+        argument_map = _generate_argument_map(matter, issue_desc, issue_docs, issue_classifications)
+        (issue_dir / "argument-map.md").write_text(argument_map, encoding="utf-8")
+
+        # Per-issue petition instructions
+        instructions = _generate_petition_instructions()
+        (issue_dir / "petition-instructions.md").write_text(instructions, encoding="utf-8")
+
+        issue_results.append({
+            "issue_index": idx,
+            "title": issue_title,
+            "description": issue_desc,
+            "dir": str(issue_dir),
+            "draft_safe": issue_draft_safe,
+            "classification_counts": issue_counts,
+            "authority_count": len(issue_docs),
+        })
+
+    # ── Write shared source documents ──────────────────────────────────────
+    source_files = _write_source_documents(out_dir, all_documents, all_classifications)
+
+    # ── Generate combined draft skeleton ───────────────────────────────────
+    skeleton_lines = [
+        "# Dilekçe Taslağı (Çoklu Mesele)",
+        "",
+        f"**Matter**: {matter}",
+        "",
+    ]
+    for issue_def in issues:
+        title = issue_def.get("title", "Mesele")
+        skeleton_lines.append(f"## {title}")
+        skeleton_lines.append("")
+        skeleton_lines.append(f"{{{{MESELE_{_safe_filename(title).upper()}}}}}")
+        skeleton_lines.append("")
+
+    skeleton_lines.extend([
+        "## Sonuç ve Talep",
+        "",
+        "{{SONUC_VE_TALEP}}",
+        "",
+        "---",
+        f"> Taslak emsal-mcp v{MULTI_ISSUE_VERSION} tarafından oluşturulmuştur.",
+        "> Bu taslak avukat denetimi gerektirir.",
+        "> {{}} içindeki alanlar doğrulanmış bilgilerle doldurulmalıdır.",
+    ])
+    skeleton = "\n".join(skeleton_lines)
+
+    # ── Write petition-brief.json ──────────────────────────────────────────
+    brief = {
+        "version": MULTI_ISSUE_VERSION,
+        "matter": matter,
+        "issues": [
+            {
+                "title": r["title"],
+                "description": r["description"],
+                "authority_count": r["authority_count"],
+                "classification_counts": r["classification_counts"],
+                "draft_safe": r["draft_safe"],
+            }
+            for r in issue_results
+        ],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "total_authority_count": len(all_documents),
+        "classification_counts": combined_counts,
+        "draft_safe": any_draft_safe,
+    }
+
+    brief_path = out_dir / "petition-brief.json"
+    brief_path.write_text(
+        json.dumps(brief, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+
+    # ── Write petition-pack.json ───────────────────────────────────────────
+    files_written: list[str] = ["petition-brief.json"]
+    for sf in source_files:
+        files_written.append(f"source-documents/{sf}")
+
+    pack_meta = {
+        "version": MULTI_ISSUE_VERSION,
+        "type": "multi_issue",
+        "matter": matter,
+        "issue_count": len(issues),
+        "draft_safe": any_draft_safe,
+        "classification_counts": combined_counts,
+        "total_authority_count": len(all_documents),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "files": files_written,
+        "warnings": warnings,
+    }
+
+    # ── Hash manifest (covers ALL source documents) ────────────────────────
+    hash_manifest = _hash_manifest(out_dir)
+    if hash_manifest:
+        manifest_path = out_dir / "hash-manifest.json"
+        manifest_path.write_text(
+            json.dumps(hash_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        files_written.append("hash-manifest.json")
+        pack_meta["hash_manifest"] = hash_manifest
+
+    # ── Write petition-pack.json last ──────────────────────────────────────
+    (out_dir / "petition-pack.json").write_text(
+        json.dumps(pack_meta, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+    files_written.append("petition-pack.json")
+
+    # ── Write combined draft-skeleton.md ───────────────────────────────────
+    (out_dir / "draft-skeleton.md").write_text(skeleton, encoding="utf-8")
+    files_written.append("draft-skeleton.md")
+
+    # ── Write shared petition-instructions.md ──────────────────────────────
+    instructions = _generate_petition_instructions()
+    (out_dir / "petition-instructions.md").write_text(instructions, encoding="utf-8")
+    files_written.append("petition-instructions.md")
+
+    # Log to cache if provided
+    if cache is not None:
+        try:
+            cache.log("build_multi_issue_pack", {
+                "matter": matter,
+                "issue_count": len(issues),
+                "out_dir": str(out_dir),
+                "draft_safe": any_draft_safe,
+                "total_authority_count": len(all_documents),
+            })
+        except Exception:
+            pass  # non-critical
+
+    return {
+        "ok": True,
+        "out_dir": str(out_dir),
+        "type": "multi_issue",
+        "issue_count": len(issues),
+        "issues": issue_results,
+        "combined_classification_counts": combined_counts,
+        "draft_safe": any_draft_safe,
+        "total_authority_count": len(all_documents),
+        "files": files_written,
+        "warnings": warnings,
+        "hash_manifest": hash_manifest,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Inspect Multi-Issue Pack
+# ---------------------------------------------------------------------------
+
+MULTI_ISSUE_REQUIRED_FILES = [
+    "petition-brief.json",
+    "petition-pack.json",
+    "draft-skeleton.md",
+    "petition-instructions.md",
+]
+
+
+def inspect_multi_issue_pack(pack_dir: str | Path) -> dict[str, Any]:
+    """Validate a multi-issue petition pack directory.
+
+    Checks:
+    - Top-level required files exist
+    - Each issue has its own citation-bank.md and argument-map.md
+    - No cross-issue citation contamination
+    - Hash manifest covers all source documents
+    - petition-instructions.md contains no-invention rule
+    - Placeholders preserved in draft-skeleton.md
+
+    Returns:
+        Dict with ok, draft_safe, errors, warnings, checks, issue_results.
+    """
+    pack_path = Path(pack_dir)
+    errors: list[str] = []
+    warnings: list[str] = []
+    checks: dict[str, Any] = {}
+    issue_results: list[dict[str, Any]] = []
+
+    # Check top-level required files
+    for fname in MULTI_ISSUE_REQUIRED_FILES:
+        if not (pack_path / fname).exists():
+            errors.append(f"Required file missing: {fname}")
+
+    # Read petition-pack.json
+    pack_meta: dict[str, Any] = {}
+    meta_path = pack_path / "petition-pack.json"
+    if meta_path.exists():
+        try:
+            pack_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            errors.append("petition-pack.json is not valid JSON")
+
+    draft_safe = pack_meta.get("draft_safe", False)
+    issue_count = pack_meta.get("issue_count", 0)
+
+    # Check that type is multi_issue
+    if pack_meta.get("type") != "multi_issue":
+        errors.append("petition-pack.json type is not 'multi_issue'")
+
+    # Check issues directory
+    issues_dir = pack_path / "issues"
+    if not issues_dir.exists():
+        errors.append("issues/ directory not found")
+    else:
+        actual_issue_dirs = sorted(issues_dir.iterdir()) if issues_dir.exists() else []
+        actual_issue_dirs = [d for d in actual_issue_dirs if d.is_dir()]
+
+        if len(actual_issue_dirs) == 0:
+            errors.append("No issue subdirectories found in issues/")
+
+        if len(actual_issue_dirs) != issue_count:
+            warnings.append(
+                f"Issue directory count ({len(actual_issue_dirs)}) does not match "
+                f"issue_count ({issue_count}) in petition-pack.json"
+            )
+
+        # Track all citation document IDs per issue for contamination check
+        all_issue_citation_ids: dict[str, set[str]] = {}
+
+        for issue_dir in actual_issue_dirs:
+            issue_name = issue_dir.name
+            issue_ok = True
+            issue_errors: list[str] = []
+
+            # Check per-issue required files
+            if not (issue_dir / "citation-bank.md").exists():
+                issue_errors.append(f"{issue_name}/citation-bank.md missing")
+                issue_ok = False
+            if not (issue_dir / "argument-map.md").exists():
+                issue_errors.append(f"{issue_name}/argument-map.md missing")
+                issue_ok = False
+
+            # Check citation-bank isolation: extract document IDs
+            citation_ids: set[str] = set()
+            citation_bank_path = issue_dir / "citation-bank.md"
+            if citation_bank_path.exists():
+                bank_text = citation_bank_path.read_text(encoding="utf-8")
+                # Extract document references from citation bank
+                for line in bank_text.splitlines():
+                    if "source:" in line.lower() or "document_id" in line.lower():
+                        # Extract the source:id pattern
+                        matches = re.findall(r"`([^`]+:[^`]+)`", line)
+                        for m in matches:
+                            citation_ids.add(m)
+
+                # Check for excluded refs
+                has_excluded = "EXCLUDED" in bank_text.upper() and "[EXCLUDED]" in bank_text
+                if has_excluded:
+                    issue_errors.append(f"{issue_name}/citation-bank.md references excluded documents")
+
+            all_issue_citation_ids[issue_name] = citation_ids
+
+            # Check no-invention rule in per-issue instructions
+            instructions_path = issue_dir / "petition-instructions.md"
+            if instructions_path.exists():
+                inst_text = instructions_path.read_text(encoding="utf-8")
+                has_no_invention = any(
+                    re.search(pat, inst_text, re.IGNORECASE)
+                    for pat in NO_INVENTION_PATTERNS
+                )
+                if not has_no_invention:
+                    issue_errors.append(
+                        f"{issue_name}/petition-instructions.md missing no-invention rule"
+                    )
+            else:
+                issue_errors.append(f"{issue_name}/petition-instructions.md missing")
+
+            issue_results.append({
+                "issue_dir": issue_name,
+                "ok": issue_ok and len(issue_errors) == 0,
+                "errors": issue_errors,
+                "citation_count": len(citation_ids),
+            })
+            errors.extend(issue_errors)
+
+        # Cross-issue citation contamination check
+        issue_names = list(all_issue_citation_ids.keys())
+        contamination_found = False
+        for i in range(len(issue_names)):
+            for j in range(i + 1, len(issue_names)):
+                overlap = all_issue_citation_ids[issue_names[i]] & all_issue_citation_ids[issue_names[j]]
+                if overlap:
+                    contamination_found = True
+                    errors.append(
+                        f"Cross-issue citation contamination between {issue_names[i]} "
+                        f"and {issue_names[j]}: {overlap}"
+                    )
+        checks["noCrossIssueContamination"] = {
+            "ok": not contamination_found,
+            "contamination_found": contamination_found,
+        }
+
+    # Check petition-instructions.md for no-invention rule
+    instructions_path = pack_path / "petition-instructions.md"
+    if instructions_path.exists():
+        inst_text = instructions_path.read_text(encoding="utf-8")
+        has_no_invention = any(
+            re.search(pat, inst_text, re.IGNORECASE)
+            for pat in NO_INVENTION_PATTERNS
+        )
+        checks["petitionInstructionsForbidsInvention"] = {
+            "ok": has_no_invention,
+            "rule_found": has_no_invention,
+        }
+        if not has_no_invention:
+            errors.append(
+                "petition-instructions.md does not contain the required no-invention rule"
+            )
+    else:
+        checks["petitionInstructionsForbidsInvention"] = {"ok": False, "rule_found": False}
+
+    # Check draft-skeleton.md for placeholders
+    skeleton_path = pack_path / "draft-skeleton.md"
+    if skeleton_path.exists():
+        skeleton_text = skeleton_path.read_text(encoding="utf-8")
+        placeholders = PLACEHOLDER_PATTERN.findall(skeleton_text)
+        checks["placeholdersInDraftSkeleton"] = {
+            "count": len(placeholders),
+            "placeholders": placeholders,
+            "ok": True,
+        }
+    else:
+        checks["placeholdersInDraftSkeleton"] = {
+            "count": 0,
+            "placeholders": [],
+            "ok": False,
+            "error": "draft-skeleton.md not found",
+        }
+
+    # Check hash manifest
+    manifest_path = pack_path / "hash-manifest.json"
+    if manifest_path.exists():
+        try:
+            stored_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            current_manifest = _hash_manifest(pack_path)
+            mismatches = []
+            for fname, stored_hash in stored_manifest.items():
+                if fname in current_manifest:
+                    if current_manifest[fname] != stored_hash:
+                        mismatches.append(fname)
+            checks["hashManifestValid"] = {
+                "ok": len(mismatches) == 0,
+                "mismatches": mismatches,
+                "file_count": len(stored_manifest),
+            }
+            if mismatches:
+                errors.append(f"Hash manifest mismatch for files: {mismatches}")
+        except json.JSONDecodeError:
+            checks["hashManifestValid"] = {
+                "ok": False,
+                "error": "hash-manifest.json is not valid JSON",
+            }
+    else:
+        checks["hashManifestValid"] = {
+            "ok": True,
+            "skipped": True,
+            "reason": "hash-manifest.json not present",
+        }
+
+    # metadataOnlyDraftUsable check
+    counts = pack_meta.get("classification_counts", {})
+    petition_ready = counts.get("petition_ready", 0)
+    metadata_only = counts.get("citation_only", 0) + counts.get("research_lead_only", 0)
+    checks["metadataOnlyDraftUsable"] = {
+        "ok": True,
+        "petition_ready": petition_ready,
+        "metadata_only_equivalent": metadata_only,
+        "note": "metadata_only and pdf_only are never petition_ready",
+    }
+
+    return {
+        "ok": len(errors) == 0,
+        "draft_safe": draft_safe,
+        "errors": errors,
+        "warnings": warnings,
+        "issue_count": issue_count,
+        "checks": checks,
+        "issue_results": issue_results,
+    }

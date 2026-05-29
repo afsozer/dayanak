@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from .cache import Cache
 from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
 from .document import controlled_draft, export_bundle as export_bundle_impl
@@ -35,6 +37,8 @@ from .semantic import (
 )
 from .models import Document
 from .petition import (
+    build_multi_issue_pack as build_multi_issue_pack_impl,
+    inspect_multi_issue_pack as inspect_multi_issue_pack_impl,
     inspect_petition_pack as inspect_petition_pack_impl,
     prepare_controlled_petition_draft as prepare_controlled_petition_draft_impl,
     prepare_drafting_input_pack as prepare_drafting_input_pack_impl,
@@ -523,6 +527,59 @@ def main() -> None:
         return prepare_controlled_petition_draft_impl(
             pack_dir=pack_dir, outline_path=outline_path, out_dir=out_dir,
         )
+
+    # ── Multi-Issue Petition Pack MCP tools (M-13) ──────────────────────
+
+    @mcp.tool()
+    def build_multi_issue_pack(
+        matter: str,
+        issues_json: str,
+        documents_json: str | None = None,
+        out_dir: str | None = None,
+    ) -> dict:
+        """Build a multi-issue petition pack with isolated citation banks.
+
+        Each issue gets its own citation-bank.md and argument-map.md.
+        Source documents are shared and deduplicated across issues.
+        Hash manifest covers all documents across all issues.
+
+        Args:
+            matter: Legal matter description.
+            issues_json: JSON string of issues list. Each issue has:
+                - title: Issue title (required)
+                - description: Issue description (optional)
+                - documents: List of Document dicts (optional)
+            documents_json: Optional JSON string of shared Document list.
+            out_dir: Output directory for the multi-issue pack.
+
+        Returns:
+            Dict with ok, out_dir, issue_count, issues, combined counts,
+            draft_safe, files, warnings, hash_manifest.
+        """
+        issues = json.loads(issues_json)
+        docs = [Document.model_validate(d) for d in json.loads(documents_json)] if documents_json else []
+        return build_multi_issue_pack_impl(
+            matter=matter,
+            issues=issues,
+            documents=docs,
+            out_dir=out_dir,
+        )
+
+    @mcp.tool()
+    def inspect_multi_issue_pack(pack_dir: str) -> dict:
+        """Inspect and validate a multi-issue petition pack directory.
+
+        Checks per-issue citation banks, cross-issue citation contamination,
+        hash manifest consistency, no-invention rules, and placeholder
+        preservation.
+
+        Args:
+            pack_dir: Path to multi-issue petition pack directory.
+
+        Returns:
+            Dict with ok, draft_safe, errors, warnings, checks, issue_results.
+        """
+        return inspect_multi_issue_pack_impl(pack_dir)
 
     @mcp.tool()
     def prepare_docx_export(

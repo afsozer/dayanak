@@ -28,6 +28,8 @@ from .research import refresh_research_bundle, research_quality_dashboard, resea
 from .safety import build_input_pack, citation_check
 from .sources.registry import capabilities, get_source, registry, smoke_all_sync
 from .petition import (
+    build_multi_issue_pack,
+    inspect_multi_issue_pack,
     inspect_petition_pack,
     prepare_controlled_petition_draft,
     prepare_drafting_input_pack,
@@ -785,6 +787,38 @@ def petition_export_bundle(
         docx_path=str(docx_path) if docx_path else None,
         out_dir=str(out_dir) if out_dir else None,
     )
+    _print(result, json_out)
+
+
+@petition_app.command("multi-pack")
+def petition_multi_pack(
+    matter: str = typer.Argument(..., help="Legal matter description"),
+    issues_json: Path = typer.Option(..., help="JSON file with issues list"),
+    docs_json: Optional[Path] = typer.Option(None, help="JSON file with shared Document list"),
+    out_dir: Optional[Path] = typer.Option(None, help="Output directory for multi-issue pack"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Build a multi-issue petition pack with isolated citation banks."""
+    issues = json.loads(issues_json.read_text(encoding="utf-8"))
+    docs = []
+    if docs_json:
+        docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
+    result = build_multi_issue_pack(
+        matter=matter,
+        issues=issues,
+        documents=docs,
+        out_dir=str(out_dir) if out_dir else None,
+    )
+    _print(result, json_out)
+
+
+@petition_app.command("multi-inspect")
+def petition_multi_inspect(
+    pack_dir: Path = typer.Argument(..., help="Path to multi-issue petition pack directory"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Inspect and validate a multi-issue petition pack directory."""
+    result = inspect_multi_issue_pack(pack_dir)
     _print(result, json_out)
 
 
