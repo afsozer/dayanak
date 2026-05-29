@@ -3,6 +3,16 @@ from __future__ import annotations
 from .cache import Cache
 from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
 from .document import controlled_draft, export_bundle as export_bundle_impl
+from .legislation import (
+    format_legislation_citation as format_legislation_citation_impl,
+    get_legislation_article_tree as get_legislation_article_tree_impl,
+    get_legislation_document as get_legislation_document_impl,
+    get_legislation_gerekce as get_legislation_gerekce_impl,
+    get_legislation_source_status as get_legislation_source_status_impl,
+    get_legislation_types as get_legislation_types_impl,
+    search_legislation as search_legislation_impl,
+    search_legislation_articles as search_legislation_articles_impl,
+)
 from .models import Document
 from .petition import (
     inspect_petition_pack as inspect_petition_pack_impl,
@@ -488,6 +498,152 @@ def main() -> None:
             pack_dir=pack_dir, draft_dir=draft_dir,
             docx_path=docx_path, out_dir=out_dir,
         )
+
+    # ── Legislation v0.10 MCP tools ──────────────────────────────────────
+
+    @mcp.tool()
+    def search_legislation(
+        query: str,
+        sources: list[str] | None = None,
+        legislation_type: str | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """Search legislation via the Mevzuat source.
+
+        Args:
+            query: Search phrase.
+            sources: Source IDs (default: ["mevzuat"]).
+            legislation_type: Filter by type (e.g. "Kanun", "Yönetmelik").
+            limit: Max results.
+
+        Returns:
+            Dict with ok, query, results, total_results, warnings, etc.
+        """
+        return search_legislation_impl(
+            query=query,
+            sources=sources,
+            legislation_type=legislation_type,
+            limit=limit,
+        )
+
+    @mcp.tool()
+    def get_legislation_document(
+        document_id: str,
+        source: str | None = None,
+    ) -> dict:
+        """Get a full legislation document from the Mevzuat source.
+
+        Args:
+            document_id: Mevzuat document ID.
+            source: Source ID (default: "mevzuat").
+
+        Returns:
+            Dict with ok, title, citation_check, article_count, etc.
+        """
+        return get_legislation_document_impl(
+            document_id=document_id,
+            source=source,
+        )
+
+    @mcp.tool()
+    def search_legislation_articles(
+        document_id: str,
+        article_number: str | None = None,
+        article_query: str | None = None,
+        source: str | None = None,
+    ) -> dict:
+        """Search articles within a legislation document.
+
+        Args:
+            document_id: Mevzuat document ID.
+            article_number: Optional specific article number.
+            article_query: Optional keyword search in article text.
+            source: Source ID (default: "mevzuat").
+
+        Returns:
+            Dict with ok, matching_articles, total_articles_found, etc.
+        """
+        return search_legislation_articles_impl(
+            document_id=document_id,
+            article_number=article_number,
+            article_query=article_query,
+            source=source,
+        )
+
+    @mcp.tool()
+    def get_legislation_article_tree(
+        document_id: str,
+        source: str | None = None,
+    ) -> dict:
+        """Build part/section/article hierarchy from legislation document.
+
+        Args:
+            document_id: Mevzuat document ID.
+            source: Source ID (default: "mevzuat").
+
+        Returns:
+            Dict with ok, article_count, part_count, section_count, tree, etc.
+        """
+        return get_legislation_article_tree_impl(
+            document_id=document_id,
+            source=source,
+        )
+
+    @mcp.tool()
+    def get_legislation_gerekce(
+        document_id: str,
+        source: str | None = None,
+    ) -> dict:
+        """Extract GENEL GEREKCE and MADDE GEREKCELERI from legislation.
+
+        Args:
+            document_id: Mevzuat document ID.
+            source: Source ID (default: "mevzuat").
+
+        Returns:
+            Dict with ok, found, genel_gerekce, madde_gerekceleri, etc.
+        """
+        return get_legislation_gerekce_impl(
+            document_id=document_id,
+            source=source,
+        )
+
+    @mcp.tool()
+    def legislation_source_status() -> dict:
+        """Check Mevzuat source health via smoke tests.
+
+        Returns:
+            Dict with ok, overall_ok, healthy_sources, degraded_sources, etc.
+        """
+        return get_legislation_source_status_impl()
+
+    @mcp.tool()
+    def format_legislation_citation(
+        document: dict | None = None,
+        style: str = "full",
+    ) -> dict:
+        """Format a legislation citation from document metadata.
+
+        Args:
+            document: Document dict with title, legislation_no, gazette_date.
+            style: 'full', 'short', or 'article'.
+
+        Returns:
+            Dict with formatted_citation, style, warnings, etc.
+        """
+        return format_legislation_citation_impl(
+            document=document or {},
+            style=style,  # type: ignore[arg-type]
+        )
+
+    @mcp.tool()
+    def get_legislation_types() -> list[dict]:
+        """Return known Turkish legislation types.
+
+        Returns:
+            List of {type_id, display_name} dicts.
+        """
+        return get_legislation_types_impl()
 
     mcp.run()
 

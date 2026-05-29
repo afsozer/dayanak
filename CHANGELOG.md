@@ -3,6 +3,85 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.10.0] — 2026-05-29
+
+### Added
+
+- **Legislation (Mevzuat) Module** (`legislation.py`):
+  - **`search_legislation(query, sources, legislation_type, limit)`**: search
+    Mevzuat source with optional legislation type filter (Kanun, KHK,
+    Yönetmelik, etc.). Returns structured dict with ok, query, results,
+    total_results, legislation_type, warnings, recommended_next_steps.
+  - **`get_legislation_document(document_id, source)`**: fetch full legislation
+    document with citation_check integration, article count, and content
+    status. Returns ok, title, citation_check, article_count, text_length.
+  - **`search_legislation_articles(document_id, article_number, article_query,
+    source)`**: search articles within a document by number or keyword query.
+    Parses MADDE entries from legislation text. Returns matching_articles
+    with number/text/preview.
+  - **`get_legislation_article_tree(document_id, source)`**: builds hierarchical
+    KISIM → BÖLÜM → MADDE tree from legislation text. Recognizes part and
+    section headers. Returns tree, flat_article_list, part_count,
+    section_count, article_count. Flat texts produce zero hierarchy counts.
+  - **`get_legislation_gerekce(document_id, source)`**: extracts GENEL GEREKÇE
+    and MADDE GEREKÇELERİ from legislation text. Parses individual article
+    rationales into structured list.
+  - **`get_legislation_source_status()`**: aggregate Mevzuat source health via
+    smoke tests. Returns overall_ok, healthy_sources, degraded_sources.
+  - **`format_legislation_citation(document, style)`**: format legislation
+    citations with styles full/short/article.
+  - **`get_legislation_types()`**: returns 11 Turkish legislation types with
+    type_id and display_name.
+
+- **Heuristic classification**: `_classify_type()` uses regex on title and
+  metadata fields (mevzuatTur, documentType) to classify legislation documents.
+  Handles Turkish suffixes (Kanun → Kanunu, Yönetmelik → Yönetmeliği).
+  Returns type_id, display_name, confidence. Never fabricates.
+
+- **12 CLI Commands** under `emsal-mcp legislation`:
+  - `search <query> [--legislation-type] [--limit] [--json]`
+  - `get <document_id> [--source] [--json]`
+  - `articles <document_id> [--article-number] [--article-query] [--json]`
+  - `tree <document_id> [--source] [--json]`
+  - `gerekce <document_id> [--source] [--json]`
+  - `status [--json]`
+  - `types [--json]`
+  - `format [--title] [--legislation-no] [--gazette-date] [--style] [--json]`
+
+- **8 MCP Tools**:
+  - `search_legislation`: search Mevzuat source with type filter
+  - `get_legislation_document`: fetch full legislation document
+  - `search_legislation_articles`: search articles within document
+  - `get_legislation_article_tree`: build part/section/article hierarchy
+  - `get_legislation_gerekce`: extract rationale sections
+  - `legislation_source_status`: check source health
+  - `format_legislation_citation`: format legislation citations
+  - `get_legislation_types`: list known legislation types
+
+- **Tests**: `tests/test_legislation.py` with 53 test cases covering:
+  - Type classification (11 types, Turkish suffixes, metadata fallback)
+  - Search (basic, type filter, no results, error handling, structure)
+  - Document fetch (basic, articles, citation check, metadata only)
+  - Article search (all, specific, keyword, not found, no content)
+  - Article tree (hierarchy, flat, no content, structure)
+  - Gerekçe (found, genel only, none, article parsing, structure)
+  - Source status (healthy, degraded, structure)
+  - Citation formatting (full/short/article, dict/Document, errors)
+  - Module constants (version, no-invention rule)
+  - CLI and MCP imports
+
+### Changed
+
+- **Version bumped to 0.10.0** in `__init__.py` and `pyproject.toml`.
+- **`ROADMAP.md`** updated with v0.10 legislation module details.
+- **Existing test** updated for flexible version assertion.
+
+### Backward Compatibility
+
+- All v0.9 tests continue to pass (442 total tests, all passing).
+- Legislation module is additive; no breaking changes to existing API.
+- New CLI commands and MCP tools are additive.
+
 ## [0.9.0] — 2026-05-29
 
 ### Added

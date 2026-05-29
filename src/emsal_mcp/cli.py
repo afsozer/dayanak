@@ -22,6 +22,16 @@ from .petition import (
     prepare_drafting_input_pack,
     prepare_petition_outline,
 )
+from .legislation import (
+    format_legislation_citation as format_leg_citation_impl,
+    get_legislation_article_tree as get_leg_article_tree_impl,
+    get_legislation_document as get_leg_doc_impl,
+    get_legislation_gerekce as get_leg_gerekce_impl,
+    get_legislation_source_status as get_leg_status_impl,
+    get_legislation_types as get_leg_types_impl,
+    search_legislation as search_leg_impl,
+    search_legislation_articles as search_leg_articles_impl,
+)
 from .exporter import prepare_docx_export, prepare_export_package_bundle
 from .udf import (
     convert_docx_to_udf_experimental,
@@ -42,12 +52,14 @@ cache_app = typer.Typer(help="Cache v2: istatistik, listeleme, arama, yedekleme,
 research_app = typer.Typer(help="Research workflow: topic search, refresh, quality dashboard")
 cite_app = typer.Typer(help="Citation verification and formatting")
 petition_app = typer.Typer(help="Petition pack: prepare drafting input, inspect packs")
+legislation_app = typer.Typer(help="Mevzuat: ara, belge al, madde ara, gerekçe çıkar")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
 app.add_typer(research_app, name="research")
 app.add_typer(cite_app, name="cite")
 app.add_typer(petition_app, name="petition")
+app.add_typer(legislation_app, name="legislation")
 
 
 def _print(obj, json_out: bool):
@@ -571,6 +583,108 @@ def petition_export_bundle(
         docx_path=str(docx_path) if docx_path else None,
         out_dir=str(out_dir) if out_dir else None,
     )
+    _print(result, json_out)
+
+
+# ── Legislation subcommands ──────────────────────────────────────────
+
+
+@legislation_app.command("search")
+def legislation_search(
+    query: str = typer.Argument(..., help="Arama sorgusu"),
+    legislation_type: Optional[str] = typer.Option(None, help="Mevzuat türü (Kanun, Yönetmelik, ...)"),
+    limit: int = typer.Option(10, help="Maksimum sonuç"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Mevzuat ara."""
+    result = search_leg_impl(query=query, legislation_type=legislation_type, limit=limit)
+    _print(result, json_out)
+
+
+@legislation_app.command("get")
+def legislation_get(
+    document_id: str = typer.Argument(..., help="Mevzuat belge ID"),
+    source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Mevzuat belgesi getir."""
+    result = get_leg_doc_impl(document_id=document_id, source=source)
+    _print(result, json_out)
+
+
+@legislation_app.command("articles")
+def legislation_articles(
+    document_id: str = typer.Argument(..., help="Mevzuat belge ID"),
+    article_number: Optional[str] = typer.Option(None, help="Belirli bir madde numarası"),
+    article_query: Optional[str] = typer.Option(None, help="Madde metninde anahtar kelime"),
+    source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Belge içinde madde ara."""
+    result = search_leg_articles_impl(
+        document_id=document_id,
+        article_number=article_number,
+        article_query=article_query,
+        source=source,
+    )
+    _print(result, json_out)
+
+
+@legislation_app.command("tree")
+def legislation_tree(
+    document_id: str = typer.Argument(..., help="Mevzuat belge ID"),
+    source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Belgenin kısım/bölüm/madde ağacını çıkar."""
+    result = get_leg_article_tree_impl(document_id=document_id, source=source)
+    _print(result, json_out)
+
+
+@legislation_app.command("gerekce")
+def legislation_gerekce(
+    document_id: str = typer.Argument(..., help="Mevzuat belge ID"),
+    source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Genel gerekçe ve madde gerekçelerini çıkar."""
+    result = get_leg_gerekce_impl(document_id=document_id, source=source)
+    _print(result, json_out)
+
+
+@legislation_app.command("status")
+def legislation_status(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Mevzuat kaynak sağlık durumu."""
+    result = get_leg_status_impl()
+    _print(result, json_out)
+
+
+@legislation_app.command("types")
+def legislation_types(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Bilinen mevzuat türlerini listele."""
+    result = get_leg_types_impl()
+    _print(result, json_out)
+
+
+@legislation_app.command("format")
+def legislation_format(
+    title: str = typer.Option("", help="Mevzuat başlığı"),
+    legislation_no: str = typer.Option("", help="Mevzuat numarası"),
+    gazette_date: str = typer.Option("", help="Resmi Gazete tarihi"),
+    style: str = typer.Option("full", help="Stil: full, short, article"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Mevzuat atıf formatla."""
+    doc = {
+        "title": title,
+        "legislation_no": legislation_no,
+        "gazette_date": gazette_date,
+    }
+    result = format_leg_citation_impl(doc, style=style)  # type: ignore[arg-type]
     _print(result, json_out)
 
 

@@ -151,6 +151,94 @@ emsal-mcp cache import <path>   # Import from JSON
 - Cache sync between multiple instances
 - Full-text search index optimization
 
+## v0.10 — Legislation (Mevzuat) Module (current)
+
+### Legislation Search
+
+- **`search_legislation()`**: search Mevzuat source with optional legislation type
+  filter (Kanun, KHK, Yönetmelik, etc.).  Returns structured dict with ok, query,
+  results, total_results, legislation_type, warnings, recommended_next_steps.
+  Uses heuristic classification on title/metadata for result enrichment.
+
+### Document Fetch
+
+- **`get_legislation_document()`**: fetch full legislation document with
+  citation_check integration, article count, and content status.  Returns
+  ok, document fields, citation_check (ok, quote_usable, draft_usable),
+  article_count, text_length.
+
+### Article Search
+
+- **`search_legislation_articles()`**: search articles within a document by
+  article number or keyword query.  Parses MADDE entries from legislation text.
+  Returns ok, matching_articles with number/text/preview, total_articles_found.
+
+### Article Tree
+
+- **`get_legislation_article_tree()`**: builds hierarchical part → section →
+  article tree from legislation text.  Recognizes KISIM (part) and BÖLÜM
+  (section) headers.  Returns tree, flat_article_list, part_count, section_count,
+  article_count.  Flat texts without hierarchy markers produce zero counts.
+
+### Gerekçe (Rationale) Extraction
+
+- **`get_legislation_gerekce()`**: extracts GENEL GEREKÇE (general rationale)
+  and MADDE GEREKÇELERİ (per-article rationales) from legislation text.  Parses
+  individual madde gerekçeleri into structured list.  Returns ok, found,
+  genel_gerekce, madde_gerekceleri.
+
+### Source Health
+
+- **`get_legislation_source_status()`**: aggregate Mevzuat source health via
+  smoke tests.  Returns overall_ok, healthy_sources, degraded_sources.
+
+### Citation Formatting
+
+- **`format_legislation_citation()`**: format legislation citations with styles
+  full, short, article.  Includes legislation_no, gazette_date, title.
+
+### Legislation Types
+
+- **`get_legislation_types()`**: returns list of 11 Turkish legislation types
+  with type_id and display_name (Kanun, KHK, CBK, Yönetmelik, Tebliğ, Genelge,
+  Yönerge, Tüzük, Uluslararası Anlaşma, Anayasa, Diğer).
+
+### Classification
+
+- **`_classify_type()`**: heuristic regex-based classification of legislation
+  documents into types.  Considers title and metadata fields (mevzuatTur,
+  documentType).  Returns type_id, display_name, confidence.  Never fabricates.
+
+### CLI Commands
+
+```
+emsal-mcp legislation search <query> [--legislation-type] [--limit] [--json]
+emsal-mcp legislation get <document_id> [--source] [--json]
+emsal-mcp legislation articles <document_id> [--article-number] [--article-query] [--json]
+emsal-mcp legislation tree <document_id> [--source] [--json]
+emsal-mcp legislation gerekce <document_id> [--source] [--json]
+emsal-mcp legislation status [--json]
+emsal-mcp legislation types [--json]
+emsal-mcp legislation format [--title] [--legislation-no] [--gazette-date] [--style] [--json]
+```
+
+### MCP Tools
+
+- `search_legislation`: search Mevzuat source with type filter
+- `get_legislation_document`: fetch full legislation document
+- `search_legislation_articles`: search articles within document
+- `get_legislation_article_tree`: build part/section/article hierarchy
+- `get_legislation_gerekce`: extract rationale sections
+- `legislation_source_status`: check source health
+- `format_legislation_citation`: format legislation citations
+- `get_legislation_types`: list known legislation types
+
+### Backward Compatibility
+
+- All v0.9 tests pass (442 total tests).
+- New module is additive; no breaking changes.
+- New CLI commands and MCP tools are additive.
+
 ## v0.5 — Research Workflow Bundles (current)
 
 ### Research Pipeline
