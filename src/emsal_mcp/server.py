@@ -61,6 +61,9 @@ from .argument import (
     get_argument_strength_report as get_argument_strength_report_impl,
 )
 from .exporter import (
+    export_plain_text as export_plain_text_impl,
+    export_to_format as export_to_format_impl,
+    get_export_capabilities as get_export_capabilities_impl,
     prepare_docx_export as prepare_docx_export_impl,
     prepare_export_package_bundle as prepare_export_package_bundle_impl,
 )
@@ -642,6 +645,75 @@ def main() -> None:
             pack_dir=pack_dir, draft_dir=draft_dir,
             docx_path=docx_path, out_dir=out_dir,
         )
+
+    # ── Export Format Expansion MCP tools (M-15) ─────────────────────────
+
+    @mcp.tool()
+    def export_plain_text(draft_path: str, out_path: str | None = None) -> dict:
+        """Export a draft.md to plain-text format.
+
+        Strips markdown formatting (headers → uppercase, bold/italic → plain,
+        links → text).  Preserves disclaimer header and {{PLACEHOLDER}} tokens.
+        Always available — no toolkit required.
+
+        Args:
+            draft_path: Path to the draft.md file.
+            out_path: Optional output .txt file path.
+
+        Returns:
+            Dict with ok, out_path, text_length, disclaimer_present,
+            placeholders_preserved.
+        """
+        return export_plain_text_impl(draft_path=draft_path, out_path=out_path)
+
+    @mcp.tool()
+    def export_to_format(
+        draft_path: str,
+        format: str = "docx",
+        out_path: str | None = None,
+        pack_dir: str | None = None,
+        experimental: bool = False,
+    ) -> dict:
+        """Unified export dispatcher supporting multiple formats.
+
+        Formats:
+            - docx: validated DOCX export (always available)
+            - txt: plain-text export (always available)
+            - pdf: PDF via LibreOffice (requires toolkit)
+            - udf: UYAP UDF (requires toolkit + experimental=True)
+
+        Returns structured error dict if toolkit is unavailable or format
+        is invalid.
+
+        Args:
+            draft_path: Path to the draft.md file.
+            format: Export format (docx, txt, pdf, udf).
+            out_path: Optional output file path.
+            pack_dir: Optional pack directory for footnotes.
+            experimental: Required True for UDF format.
+
+        Returns:
+            Format-specific result dict or structured error.
+        """
+        return export_to_format_impl(
+            draft_path=draft_path,
+            format=format,
+            out_path=out_path,
+            pack_dir=pack_dir,
+            experimental=experimental,
+        )
+
+    @mcp.tool()
+    def get_export_capabilities() -> dict:
+        """Report which export formats are currently available.
+
+        Shows availability of docx, txt, pdf, udf formats based on
+        toolkit presence (LibreOffice).
+
+        Returns:
+            Dict with ok, formats list, toolkit_available, toolkit_status.
+        """
+        return get_export_capabilities_impl()
 
     # ── Petition Template Library MCP tools (M-11) ─────────────────────────
 

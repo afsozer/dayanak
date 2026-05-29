@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -657,4 +658,319 @@ def _verify_export_bundle(
         "ok": len(errors) == 0,
         "errors": errors,
         "checks": checks,
+    }
+
+
+# ===========================================================================
+# v1.0: Export Format Expansion — plain text + unified dispatcher
+# ===========================================================================
+
+
+def _strip_markdown(text: str) -> str:
+    """Convert markdown text to plain text.
+
+    - Headers become uppercase
+    - Bold/italic markers stripped
+    - Links rendered as text only
+    - HTML comments removed
+    """
+    lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.rstrip()
+        # Remove HTML comments
+        stripped = re.sub(r"<!--.*?-->", "", stripped).strip()
+        if not stripped:
+            lines.append("")
+            continue
+        # Headers → uppercase
+        m = re.match(r"^(#{1,6})\s+(.*)", stripped)
+        if m:
+            lines.append(m.group(2).upper())
+            continue
+        # Bold/italic markers
+        stripped = re.sub(r"\*\*\*([^*]+)\*\*\*", r"\1", stripped)
+        stripped = re.sub(r"\*\*([^*]+)\*\*", r"\1", stripped)
+        stripped = re.sub(r"\*([^*]+)\*", r"\1", stripped)
+        stripped = re.sub(r"___([^_]+)___", r"\1", stripped)
+        stripped = re.sub(r"__([^_]+)__", r"\1", stripped)
+        stripped = re.sub(r"_([^_]+)_", r"\1", stripped)
+        # Links: [text](url) → text
+        stripped = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", stripped)
+        # Inline code
+        stripped = re.sub(r"`([^`]+)`", r"\1", stripped)
+        # List markers → plain
+        stripped = re.sub(r"^[-*+]\s+", "", stripped)
+        stripped = re.sub(r"^\d+\.\s+", "", stripped)
+        # Blockquotes
+        stripped = re.sub(r"^>\s?", "", stripped)
+        lines.append(stripped)
+    return "\n".join(lines)
+
+
+def export_plain_text(
+    draft_path: str | Path,
+    out_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Export a draft.md to plain text format.
+
+    Converts markdown to plain text by stripping formatting while preserving
+    the disclaimer header and ``{{PLACEHOLDER}}`` tokens.
+
+    Returns:
+        Dict with ok, out_path, text_length, disclaimer_present,
+        placeholders_preserved.
+    """
+    src = Path(draft_path)
+    if not src.exists():
+        return build_error("FILE_NOT_FOUND", f"Draft file not found: {draft_path}")
+
+    markdown_content = src.read_text(encoding="utf-8")
+
+    # Strip markdown formatting
+    plain = _strip_markdown(markdown_content)
+
+    # Ensure disclaimer header is present
+    disclaimer_short = "emsal-mcp tarafından otomatik"
+    disclaimer_present = disclaimer_short.lower() in plain.lower()
+    if not disclaimer_present:
+        # Prepend disclaimer block
+        disclaimer_block = (
+            DISCLAIMER_TEXT
+            + "\n"
+            + "=" * 60
+            + "\n\n"
+        )
+        plain = disclaimer_block + plain
+        disclaimer_present = True
+
+    # Track placeholders from original
+    original_placeholders = set(PLACEHOLDER_RE.findall(markdown_content))
+    plain_placeholders = set(PLACEHOLDER_RE.findall(plain))
+    if original_placeholders:
+        placeholders_preserved = original_placeholders <= plain_placeholders
+    else:
+        placeholders_preserved = True
+
+    # Determine out_path
+    if out_path is None:
+        out_path = src.with_suffix(".txt")
+    else:
+        out_path = Path(out_path)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(plain, encoding="utf-8")
+
+    return {
+        "ok": True,
+        "out_path": str(out_path),
+        "text_length": len(plain),
+        "disclaimer_present": disclaimer_present,
+        "placeholders_preserved": placeholders_preserved,
+    }
+
+
+def _check_toolkit_available() -> dict[str, Any]:
+    """Check if LibreOffice/UDF toolkit is available (returns status dict)."""
+    libreoffice_path = (
+        shutil.which("soffice")
+        or shutil.which("libreoffice")
+        or shutil.which("soffice.exe")
+    )
+    toolkit_dir = None
+    for env_var in ("EMSAL_UDF_TOOLKIT_DIR", "UDF_TOOLKIT_DIR"):
+        val = __import__("os").environ.get(env_var, "").strip()
+        if val:
+            p = Path(val)
+            if p.exists():
+                toolkit_dir = p
+                break
+    return {
+        "available": libreoffice_path is not None or toolkit_dir is not None,
+        "libreoffice_path": libreoffice_path,
+        "toolkit_dir": str(toolkit_dir) if toolkit_dir else None,
+    }
+
+
+def export_to_format(
+    draft_path: str | Path,
+    format: str = "docx",
+    out_path: str | Path | None = None,
+    pack_dir: str | Path | None = None,
+    experimental: bool = False,
+) -> dict[str, Any]:
+    """Unified export dispatcher supporting multiple formats.
+
+    Formats:
+        - ``docx``: validated DOCX export (always available via python-docx)
+        - ``txt``: plain-text export (always available, stdlib only)
+        - ``pdf``: PDF export via LibreOffice (requires toolkit)
+        - ``udf``: UYAP UDF format (requires toolkit + experimental=True)
+
+    When the toolkit is absent for formats that require it, returns a
+    structured error dict (``TOOLKIT_UNAVAILABLE``) — never raises.
+
+    Returns:
+        Format-specific result dict or structured error.
+    """
+    format = format.lower().strip()
+
+    if format == "docx":
+        return prepare_docx_export(
+            draft_path=str(draft_path),
+            out_path=str(out_path) if out_path else None,
+            pack_dir=str(pack_dir) if pack_dir else None,
+        )
+
+    if format == "txt":
+        return export_plain_text(
+            draft_path=str(draft_path),
+            out_path=str(out_path) if out_path else None,
+        )
+
+    if format == "pdf":
+        toolkit = _check_toolkit_available()
+        if not toolkit["available"]:
+            return build_error(
+                "TOOLKIT_UNAVAILABLE",
+                "PDF export requires LibreOffice toolkit. "
+                "Install LibreOffice or set EMSAL_UDF_TOOLKIT_DIR.",
+                recommended_next_steps=[
+                    "Install LibreOffice and ensure soffice is on PATH.",
+                    "Set EMSAL_UDF_TOOLKIT_DIR environment variable.",
+                ],
+                toolkit_status=toolkit,
+            )
+        # Delegate to UDF convert pipeline: draft.md → docx → pdf
+        docx_result = prepare_docx_export(
+            draft_path=str(draft_path),
+            out_path=str(out_path) if out_path else None,
+            pack_dir=str(pack_dir) if pack_dir else None,
+        )
+        if not docx_result.get("ok"):
+            return docx_result
+        docx_path = docx_result["out_path"]
+        # LibreOffice can convert DOCX → PDF directly
+        try:
+            soffice = toolkit["libreoffice_path"]
+            if soffice:
+                import subprocess
+
+                out = Path(out_path) if out_path else Path(docx_path).with_suffix(".pdf")
+                result = subprocess.run(
+                    [soffice, "--headless", "--convert-to", "pdf",
+                     "--outdir", str(out.parent), docx_path],
+                    capture_output=True, text=True, timeout=60,
+                )
+                if result.returncode != 0:
+                    return build_error(
+                        "CONVERSION_FAILED",
+                        result.stderr.strip() or "LibreOffice PDF conversion failed",
+                        stdout=result.stdout.strip(),
+                    )
+                pdf_path = out.parent / (Path(docx_path).stem + ".pdf")
+                return {
+                    "ok": True,
+                    "format": "pdf",
+                    "out_path": str(pdf_path),
+                    "file_size": pdf_path.stat().st_size if pdf_path.exists() else 0,
+                    "source_format": "docx",
+                }
+        except Exception as e:
+            return build_error("CONVERSION_FAILED", str(e))
+
+        return build_error(
+            "TOOLKIT_UNAVAILABLE",
+            "PDF export requires LibreOffice (soffice) on PATH.",
+        )
+
+    if format == "udf":
+        if not experimental:
+            return build_error(
+                "EXPERIMENTAL_REQUIRED",
+                "UDF export requires experimental=True. "
+                "This is a deneysel (experimental) format.",
+                warning=(
+                    "UDF yazımı deneysel kabul edilmeli; resmi kullanım öncesi "
+                    "UYAP Doküman Editörü'nde manuel round-trip doğrulama yapılmalıdır."
+                ),
+            )
+        toolkit = _check_toolkit_available()
+        if not toolkit["available"]:
+            return build_error(
+                "TOOLKIT_UNAVAILABLE",
+                "UDF export requires LibreOffice toolkit.",
+                recommended_next_steps=[
+                    "Install LibreOffice and ensure soffice is on PATH.",
+                    "Set EMSAL_UDF_TOOLKIT_DIR environment variable.",
+                ],
+                toolkit_status=toolkit,
+            )
+        # Export via DOCX → UDF pipeline
+        docx_result = prepare_docx_export(
+            draft_path=str(draft_path),
+            out_path=str(out_path) if out_path else None,
+            pack_dir=str(pack_dir) if pack_dir else None,
+        )
+        if not docx_result.get("ok"):
+            return docx_result
+        docx_path = docx_result["out_path"]
+        try:
+            from .udf import convert_docx_to_udf_experimental
+
+            return convert_docx_to_udf_experimental(
+                docx_path, out_path=str(Path(docx_path).with_suffix(".udf")),
+                experimental=True,
+            )
+        except Exception as e:
+            return build_error("CONVERSION_FAILED", str(e))
+
+    return build_error(
+        "INVALID_FORMAT",
+        f"Unknown export format: {format!r}. "
+        "Supported formats: docx, txt, pdf, udf.",
+        supported_formats=["docx", "txt", "pdf", "udf"],
+    )
+
+
+def get_export_capabilities() -> dict[str, Any]:
+    """Report which export formats are currently available.
+
+    Returns:
+        Dict with formats list, each indicating availability and requirements.
+    """
+    toolkit = _check_toolkit_available()
+    toolkit_available = toolkit["available"]
+
+    formats = [
+        {
+            "format": "docx",
+            "available": True,
+            "requires_toolkit": False,
+            "description": "Validated DOCX export with disclaimer and footnotes.",
+        },
+        {
+            "format": "txt",
+            "available": True,
+            "requires_toolkit": False,
+            "description": "Plain-text export. Strips markdown formatting, preserves disclaimer and placeholders.",
+        },
+        {
+            "format": "pdf",
+            "available": toolkit_available,
+            "requires_toolkit": True,
+            "description": "PDF export via LibreOffice headless conversion.",
+        },
+        {
+            "format": "udf",
+            "available": toolkit_available,
+            "requires_toolkit": True,
+            "description": "UYAP UDF format (experimental). Requires experimental=True flag.",
+        },
+    ]
+
+    return {
+        "ok": True,
+        "formats": formats,
+        "toolkit_available": toolkit_available,
+        "toolkit_status": toolkit,
     }

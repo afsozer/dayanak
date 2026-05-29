@@ -87,7 +87,13 @@ from .dedup import (
     get_dedup_stats as get_dedup_stats_impl,
     merge_cluster as merge_cluster_impl,
 )
-from .exporter import prepare_docx_export, prepare_export_package_bundle
+from .exporter import (
+    export_plain_text,
+    export_to_format,
+    get_export_capabilities,
+    prepare_docx_export,
+    prepare_export_package_bundle,
+)
 from .udf import (
     convert_docx_to_udf_experimental,
     convert_udf_to_docx,
@@ -115,6 +121,7 @@ graph_app = typer.Typer(help="Citation graph: build, show, citing, cited, stats"
 analytics_app = typer.Typer(help="Search analytics: report, empty queries, top queries, source coverage")
 template_app = typer.Typer(help="Petition templates: list, show, render")
 draft_app = typer.Typer(help="Draft diffing, placeholder tracking, versioning")
+export_app = typer.Typer(help="Export formats: plain text, DOCX, PDF, UDF")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -129,6 +136,7 @@ app.add_typer(graph_app, name="graph")
 app.add_typer(analytics_app, name="analytics")
 app.add_typer(template_app, name="template")
 app.add_typer(draft_app, name="draft")
+app.add_typer(export_app, name="export")
 
 
 def _print(obj, json_out: bool):
@@ -1304,6 +1312,51 @@ def draft_save_version(
     """Save a snapshot of current draft state for later diff."""
     result = save_draft_version_impl(draft_dir, version_label=label)
     _print(result, json_out)
+
+
+# ── Export format subcommands (M-15) ────────────────────────────────────────
+
+
+@export_app.command("txt")
+def export_txt(
+    draft_path: Path = typer.Argument(..., help="Path to draft.md"),
+    out_path: Optional[Path] = typer.Option(None, help="Output .txt path"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Export a draft to plain-text format (always available, no toolkit)."""
+    result = export_plain_text(
+        draft_path=str(draft_path),
+        out_path=str(out_path) if out_path else None,
+    )
+    _print(result, json_out)
+
+
+@export_app.command("format")
+def export_format_cmd(
+    draft_path: Path = typer.Argument(..., help="Path to draft.md"),
+    format: str = typer.Option("docx", help="Export format: docx, txt, pdf, udf"),
+    out_path: Optional[Path] = typer.Option(None, help="Output file path"),
+    pack_dir: Optional[Path] = typer.Option(None, help="Pack directory for footnotes"),
+    experimental: bool = typer.Option(False, "--experimental", help="Required for UDF format"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Unified export dispatcher: docx, txt, pdf, udf."""
+    result = export_to_format(
+        draft_path=str(draft_path),
+        format=format,
+        out_path=str(out_path) if out_path else None,
+        pack_dir=str(pack_dir) if pack_dir else None,
+        experimental=experimental,
+    )
+    _print(result, json_out)
+
+
+@export_app.command("capabilities")
+def export_capabilities_cmd(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Show which export formats are currently available."""
+    _print(get_export_capabilities(), json_out)
 
 
 if __name__ == "__main__":
