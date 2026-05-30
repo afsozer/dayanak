@@ -10,6 +10,10 @@ import re
 import tempfile
 from pathlib import Path
 
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 
 # ---------------------------------------------------------------------------
 # Invariant 1: Metadata-only never draft usable

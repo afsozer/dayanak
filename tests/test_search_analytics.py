@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.cache import Cache
 from emsal_mcp.search_analytics import (
     _ensure_search_history,

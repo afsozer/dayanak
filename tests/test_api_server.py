@@ -1,6 +1,10 @@
 """Tests for the HTTP REST API server (M-33)."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import json
 import threading
 import time

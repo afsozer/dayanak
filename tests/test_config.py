@@ -1,6 +1,10 @@
 """Tests for config module."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 from pathlib import Path
 
 import pytest

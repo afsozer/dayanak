@@ -1,6 +1,10 @@
 """Tests for v0.6 Citation Verification + Citation Formatting."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import tempfile
 from pathlib import Path
 

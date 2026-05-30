@@ -12,6 +12,10 @@ Covers:
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import re
 
 from emsal_mcp.petition import DISCLAIMER_HEADER, PLACEHOLDER_PATTERN

@@ -1,6 +1,10 @@
 """Tests for document module — controlled_draft, markdown_to_docx, export_bundle."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 import json
 
 from emsal_mcp.models import ContentStatus, Document

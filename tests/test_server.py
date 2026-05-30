@@ -14,6 +14,8 @@ import importlib
 
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 
 # ── Server Import & Instantiation ──────────────────────────────────
 

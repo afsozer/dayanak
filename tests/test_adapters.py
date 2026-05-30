@@ -25,6 +25,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.models import (
     ContentStatus,
     Document,

@@ -6,6 +6,10 @@ gerekce extraction, source health, citation formatting, types list.
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from typing import Any
 from unittest.mock import patch
 

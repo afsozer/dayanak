@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.cache import Cache
 from emsal_mcp.dedup import find_duplicates
 from emsal_mcp.embeddings import LocalHashProvider

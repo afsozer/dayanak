@@ -1,6 +1,10 @@
 """Tests for v2.5 PII Redaction & Privacy Audit (M-37)."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import tempfile
 from pathlib import Path
 

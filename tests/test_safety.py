@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = [pytest.mark.unit]
+
+import pytest
+
 from emsal_mcp.models import ContentStatus, Document, SafetyState
 from emsal_mcp.safety import build_input_pack, citation_check, exact_quote, verify_document_hash
 

@@ -9,6 +9,10 @@ Covers:
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 import json
 from emsal_mcp.models import SourceCapability, SourceStatus
 from emsal_mcp.sources.registry import capabilities, get_source, registry

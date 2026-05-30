@@ -1,6 +1,10 @@
 """Tests for circuit breaker module (M-17)."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

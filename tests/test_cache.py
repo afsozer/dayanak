@@ -1,6 +1,10 @@
 """Tests for cache hash verification."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from hashlib import sha256
 
 from emsal_mcp.cache import Cache
@@ -60,4 +64,3 @@ class TestCacheHashVerification:
         assert retrieved is not None
         assert retrieved.id == pack.id
         cache.close()
-

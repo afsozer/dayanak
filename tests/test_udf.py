@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.udf import (
     DOCX_TO_UDF_EXPERIMENTAL_WARNING,
     UDF_AUTHORING_WARNING,

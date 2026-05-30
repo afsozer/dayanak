@@ -13,6 +13,10 @@ Covers:
 
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from pathlib import Path
 
 from emsal_mcp.pdf_extractor import (

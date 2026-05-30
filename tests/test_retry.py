@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.sources.base import RateLimiter, RateLimitError, SourceClient
 from emsal_mcp.config import EmsalConfig
 

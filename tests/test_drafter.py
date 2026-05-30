@@ -1,6 +1,10 @@
 """Tests for drafter module — assemble_draft, validate_draft_body."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.models import ContentStatus, Document, InputPack
 from emsal_mcp.drafter import assemble_draft, validate_draft_body
 

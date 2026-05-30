@@ -549,14 +549,14 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 11 | M-43 Cookbook/reçeteler | [x] |
 | 11 | M-44 TR/EN mesaj tutarlılık | [x] |
 | 12 | M-45 Ölü kod süpürme | [x] |
-| 12 | M-46 Edge-case sertleştirme | [ ] |
-| 12 | M-47 Tip açıklama/statik analiz | [ ] |
-| 12 | M-48 Hata kataloğu konsolidasyon | [ ] |
-| 12 | M-49 Determinizm/flaky denetim | [ ] |
+| 12 | M-46 Edge-case sertleştirme | [x] |
+| 12 | M-47 Tip açıklama/statik analiz | [x] |
+| 12 | M-48 Hata kataloğu konsolidasyon | [x] |
+| 12 | M-49 Determinizm/flaky denetim | [x] |
 | 13 | M-50 Cache sorgu/index optim. | [x] |
 | 13 | M-51 Bellek/akış işleme | [x] |
 | 13 | M-52 Başlangıç süresi optim. | [x] |
 | 13 | M-53 Algoritma sıcak-nokta | [x] |
-| 14 | M-54 Test suite hız/organizasyon | [ ] |
-| 14 | M-55 Bağımlılık/güvenlik hijyeni | [ ] |
-| 14 | M-56 Konsolidasyon + v3.1.0 | [ ] |
+| 14 | M-54 Test suite hız/organizasyon | [x] |
+| 14 | M-55 Bağımlılık/güvenlik hijyeni | [x] |
+| 14 | M-56 Konsolidasyon + v3.1.0 | [x] |

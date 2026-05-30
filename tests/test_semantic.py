@@ -13,8 +13,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 
 from emsal_mcp.cache import Cache
+
+pytestmark = [pytest.mark.integration]
 from emsal_mcp.models import ContentStatus, Document
 from emsal_mcp.semantic import (
     SEMANTIC_VERSION,

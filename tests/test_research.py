@@ -12,6 +12,8 @@ from typing import Any
 
 import pytest
 
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.models import ContentStatus, Document, SearchResult
 from emsal_mcp.research import (
     INDEX_MANUAL_END,

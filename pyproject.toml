@@ -1,6 +1,6 @@
 [project]
 name = "emsal-mcp"
-version = "3.0.2"
+version = "3.1.0"
 description = "Citation-safe MCP hukuk araştırma ve belge hazırlık sistemi"
 readme = "README.md"
 license = "MIT"
@@ -26,11 +26,11 @@ where = ["src"]
 
 [project.optional-dependencies]
 api = []
-mcp = ["mcp>=1.0"]
+mcp = ["mcp>=1.0,<2.0"]
 udf = ["python-docx>=1.1"]  # LibreOffice is external
-embeddings = ["fastembed>=0.4"]
-ocr = ["pypdf>=4.0", "pillow>=10.0"]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5", "mypy>=1.0"]
+embeddings = ["fastembed>=0.4,<1.0"]
+ocr = ["pypdf>=4.0,<6.0", "pillow>=10.0,<12.0"]
+dev = ["pytest>=8.0,<9.0", "pytest-cov>=5.0,<7.0", "ruff>=0.5,<1.0", "mypy>=1.0,<2.0"]
 
 [project.scripts]
 emsal-mcp = "emsal_mcp.cli:app"
@@ -39,6 +39,11 @@ emsal-mcp-server = "emsal_mcp.server:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "-v --tb=short"
+markers = [
+    "unit: Fast unit tests (no DB/IO)",
+    "integration: Tests requiring DB setup or network I/O",
+]
 
 [tool.ruff]
 line-length = 100

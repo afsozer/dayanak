@@ -2,6 +2,10 @@
 integrity check, and auto-migration."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import json
 
 from emsal_mcp.cache import Cache, CACHE_SCHEMA_VERSION

@@ -1,6 +1,10 @@
 """Tests for export format expansion (M-15)."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.exporter import (
     DISCLAIMER_TEXT,
     export_plain_text,

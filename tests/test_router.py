@@ -15,6 +15,10 @@ Covers:
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.router import (
     CAPABILITIES,
     get_capable_sources,

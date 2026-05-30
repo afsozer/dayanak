@@ -9,6 +9,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import pytest
+
+pytestmark = [pytest.mark.unit]
+
 from emsal_mcp.citation import (
     extract_citation_candidates,
     format_legal_citation,

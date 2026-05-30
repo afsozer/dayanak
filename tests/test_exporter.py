@@ -1,6 +1,10 @@
 """Tests for exporter module."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from emsal_mcp.exporter import create_bundle, export_draft_to_docx, verify_bundle
 from emsal_mcp.models import ContentStatus, Document, Draft, InputPack
 

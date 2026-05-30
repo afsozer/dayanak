@@ -3,6 +3,20 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.1.0] — 2026-05-30
+
+### Added
+- **M-54: Test Suite Speed & Organization:** Session-scoped cache fixtures, module-level pytest markers (`unit`/`integration`), `conftest.py` with shared fixtures. Unit tests run in ~4s, integration in ~74s.
+- **M-55: Dependency & Security Hygiene:** Pinned version ranges for all optional extras, `docs/LICENSES.md` documenting all 13 dependencies (zero copyleft).
+- **M-56: Consolidation:** Version bumped to 3.1.0.
+
+### Changed
+- **FAZ 11 (Documentation):** Document accuracy audit (M-41), docstring coverage 100% (M-42), usage cookbook with 8 recipes (M-43), TR/EN glossary with 77 terms (M-44).
+- **FAZ 12 (Fixes):** Dead code sweep confirmed clean (M-45), edge-case hardening with 46 tests (M-46), type annotations completed for 121 functions (M-47), error catalog with 76 codes (M-48), determinism audit — no flaky tests found (M-49).
+- **FAZ 13 (Performance):** Cache FTS5 optimization + schema v4 migration (M-50), cursor streaming for memory reduction (M-51), lazy imports — server startup 11x faster (M-52), TF-IDF norm precompute + regex precompile (M-53).
+
+---
+
 ## [3.0.2] — 2026-05-30
 
 ### Fixed

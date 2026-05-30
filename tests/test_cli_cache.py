@@ -1,6 +1,10 @@
 """Tests for CLI cache subcommands and MCP import."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import json
 
 from typer.testing import CliRunner

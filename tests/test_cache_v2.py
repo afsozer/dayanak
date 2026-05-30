@@ -4,7 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 
+import pytest
+
 from emsal_mcp.cache import Cache, CACHE_SCHEMA_VERSION
+
+pytestmark = [pytest.mark.integration]
 from emsal_mcp.models import CachedDocument, ContentStatus, Document
 
 

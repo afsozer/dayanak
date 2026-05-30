@@ -1,6 +1,10 @@
 """Tests for release module — smoke, dashboard, history, command center, version bump."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import json
 from pathlib import Path
 

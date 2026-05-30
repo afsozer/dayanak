@@ -1,6 +1,10 @@
 """Tests for v0.12 Chamber Profiling module."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 from pathlib import Path
 
 from emsal_mcp.chamber import (

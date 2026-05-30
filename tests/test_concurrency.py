@@ -1,6 +1,10 @@
 """Tests for emsal_mcp.concurrency module — M-29 Async Concurrency."""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = [pytest.mark.integration]
+
 import asyncio
 
 from emsal_mcp.concurrency import (
