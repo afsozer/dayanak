@@ -30,7 +30,7 @@ mcp = ["mcp>=1.0"]
 udf = ["python-docx>=1.1"]  # LibreOffice is external
 embeddings = ["fastembed>=0.4"]
 ocr = ["pypdf>=4.0", "pillow>=10.0"]
-dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5", "mypy>=1.0"]
 
 [project.scripts]
 emsal-mcp = "emsal_mcp.cli:app"
@@ -45,3 +45,9 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["D100", "D101", "D103"]  # module, class, function docstrings
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = false
+warn_return_any = false

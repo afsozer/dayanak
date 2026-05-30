@@ -201,7 +201,7 @@ def _print(obj, json_out: bool):
         obj: Object to print (string or JSON-serializable dict).
         json_out: If True, output as formatted JSON.
     """
-    def emit(text: str):
+    def emit(text: str) -> None:
         sys.stdout.buffer.write((text + "\n").encode("utf-8"))
     if json_out:
         emit(json.dumps(obj, ensure_ascii=False, indent=2, default=str))
@@ -210,20 +210,20 @@ def _print(obj, json_out: bool):
 
 
 @app.command()
-def version():
+def version() -> None:
     """Print the current emsal-mcp version."""
     typer.echo(__version__)
 
 
 @app.command()
-def doctor(json_out: bool = typer.Option(False, "--json")):
+def doctor(json_out: bool = typer.Option(False, "--json")) -> None:
     """Run environment diagnostics: Python, cache, sources, UDF toolkit."""
     from .config import config as app_config
     _print(app_config.doctor(), json_out)
 
 
 @app.command()
-def sources(json_out: bool = typer.Option(False, "--json")):
+def sources(json_out: bool = typer.Option(False, "--json")) -> None:
     """List registered data sources and their capabilities."""
     _print(capabilities(), json_out)
 
@@ -233,7 +233,7 @@ def sources_smoke(
     offline: bool = typer.Option(True, help="Run offline smoke checks"),
     online: bool = typer.Option(False, help="Run online connectivity checks"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Run per-source smoke tests (offline by default, online opt-in)."""
     results = smoke_all_sync(online=online)
     summary = {
@@ -246,7 +246,7 @@ def sources_smoke(
 
 
 @app.command()
-def search(source: str, query: str, limit: int = 10, page: int = 1, json_out: bool = typer.Option(False, "--json")):
+def search(source: str, query: str, limit: int = 10, page: int = 1, json_out: bool = typer.Option(False, "--json")) -> None:
     """Search court decisions from a given source."""
     import asyncio
     src = get_source(source)
@@ -258,7 +258,7 @@ def search(source: str, query: str, limit: int = 10, page: int = 1, json_out: bo
 
 
 @app.command()
-def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")):
+def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")) -> None:
     """Fetch a single document by ID from the given source."""
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
@@ -271,7 +271,7 @@ def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--j
 
 
 @app.command("citation-check")
-def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")):
+def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")) -> None:
     """Check citation safety of a document from the given source."""
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
@@ -279,7 +279,7 @@ def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Opt
 
 
 @app.command("build-input-pack")
-def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool = typer.Option(False, "--json")):
+def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Build a citation-safe input pack from a JSON document list."""
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
     pack = build_input_pack(matter, issue, docs)
@@ -287,7 +287,7 @@ def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool = typer.
 
 
 @app.command("draft-document")
-def draft_document(title: str, body_file: Path, docs_json: Optional[Path] = None, out: Optional[Path] = None):
+def draft_document(title: str, body_file: Path, docs_json: Optional[Path] = None, out: Optional[Path] = None) -> None:
     """Generate a citation-safe markdown draft document."""
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))] if docs_json else []
     md = controlled_draft(title, body_file.read_text(encoding="utf-8"), docs)
@@ -300,20 +300,20 @@ def draft_document(title: str, body_file: Path, docs_json: Optional[Path] = None
 
 
 @app.command("export-docx")
-def export_docx(markdown_file: Path, out: Path):
+def export_docx(markdown_file: Path, out: Path) -> None:
     """Export a markdown file to DOCX format."""
     typer.echo(str(markdown_to_docx(markdown_file.read_text(encoding="utf-8"), out)))
 
 
 @app.command("export-bundle")
-def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bool = typer.Option(False, "--json")):
+def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Export a citation-safe bundle with input pack and source documents."""
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
     _print(export_bundle(out_dir, matter=matter, issue=issue, docs=docs), json_out)
 
 
 @app.command("smoke")
-def smoke(offline: bool = True, json_out: bool = typer.Option(False, "--json")):
+def smoke(offline: bool = True, json_out: bool = typer.Option(False, "--json")) -> None:
     """Run release smoke tests (offline by default)."""
     result = release_smoke() | {"offline": offline, "sources": list(registry().keys())}
     _print(result, json_out)
@@ -323,7 +323,7 @@ def smoke(offline: bool = True, json_out: bool = typer.Option(False, "--json")):
 
 
 @cache_app.command("stats")
-def cache_stats(cache_path: Optional[Path] = typer.Option(None, help="Cache DB path")):
+def cache_stats(cache_path: Optional[Path] = typer.Option(None, help="Cache DB path")) -> None:
     """Show cache statistics (document counts, sizes, sources)."""
     cache = Cache(cache_path)
     _print(cache.cache_stats(), json_out=False)
@@ -336,7 +336,7 @@ def cache_list(
     limit: int = typer.Option(50, help="Max results"),
     offset: int = typer.Option(0, help="Offset"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-):
+) -> None:
     """List cached documents."""
     cache = Cache(cache_path)
     docs = cache.list_cached_documents(source=source, limit=limit, offset=offset)
@@ -360,7 +360,7 @@ def cache_search_local(
     sort: str = typer.Option("relevance"),
     limit: int = typer.Option(20),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-):
+) -> None:
     """Search cached documents locally (no network)."""
     cache = Cache(cache_path)
     results = cache.search_local(
@@ -378,7 +378,7 @@ def cache_delete(
     document_id: str = typer.Argument(..., help="Document ID to delete"),
     source: str = typer.Argument(..., help="Source to delete from"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-):
+) -> None:
     """Delete a cached document (explicit, destructive)."""
     cache = Cache(cache_path)
     deleted = cache.delete_cached_document(document_id, source)
@@ -390,7 +390,7 @@ def cache_delete(
 def cache_prune(
     max_age_days: int = typer.Option(30, help="Max age in days for search cache entries"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-):
+) -> None:
     """Prune old search cache entries."""
     cache = Cache(cache_path)
     count = cache.prune_search_cache(max_age_days=max_age_days)
@@ -402,7 +402,7 @@ def cache_prune(
 def cache_backup(
     backup_path: Path = typer.Argument(..., help="Backup destination path"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-):
+) -> None:
     """Backup the cache database."""
     cache = Cache(cache_path)
     result = cache.backup_cache_with_metadata(backup_path)
@@ -415,7 +415,7 @@ def cache_backup(
 def cache_export(
     export_path: Path = typer.Argument(..., help="Export JSON destination"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-):
+) -> None:
     """Export cached documents to JSON."""
     cache = Cache(cache_path)
     result = cache.export_json(export_path)
@@ -428,7 +428,7 @@ def cache_export(
 def cache_import(
     import_path: Path = typer.Argument(..., help="JSON file to import"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-):
+) -> None:
     """Import cached documents from JSON."""
     cache = Cache(cache_path)
     result = cache.import_json(import_path)
@@ -440,7 +440,7 @@ def cache_import(
 def cache_compact(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Run VACUUM to reclaim space and defragment the cache database."""
     cache = Cache(cache_path)
     result = cache.vacuum_cache()
@@ -452,7 +452,7 @@ def cache_compact(
 def cache_cleanup_orphans(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Remove orphan rows from search_vectors and documents_v2_fts."""
     cache = Cache(cache_path)
     result = cache.cleanup_orphans()
@@ -464,7 +464,7 @@ def cache_cleanup_orphans(
 def cache_integrity_check(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Run comprehensive integrity checks on the cache database."""
     cache = Cache(cache_path)
     result = cache.check_integrity_full()
@@ -477,7 +477,7 @@ def cache_sync(
     other_db: Path = typer.Argument(..., help="Path to other cache DB"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Sync documents from another cache database (multi-machine merge)."""
     cache = Cache(cache_path)
     try:
@@ -495,7 +495,7 @@ def cache_find_duplicates(
     dry_run: bool = typer.Option(False, help="Compute plan without modifying DB"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Find duplicate documents across sources (same court+esas_no+karar_no)."""
     cache = Cache(cache_path)
     try:
@@ -511,7 +511,7 @@ def cache_dedup_cluster(
     source: str = typer.Option(None, help="Source filter"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Find which dedup cluster a document belongs to."""
     cache = Cache(cache_path)
     try:
@@ -525,7 +525,7 @@ def cache_dedup_cluster(
 def cache_dedup_stats(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Show deduplication statistics."""
     cache = Cache(cache_path)
     try:
@@ -540,7 +540,7 @@ def cache_merge_cluster(
     cluster_id: str = typer.Argument(..., help="Cluster ID to merge"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Merge a dedup cluster: enrich canonical record with alternative source URLs."""
     cache = Cache(cache_path)
     try:
@@ -557,7 +557,7 @@ def cache_fuzzy_duplicates(
     max_date_diff_days: int = typer.Option(365, help="Max date difference in days"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Find fuzzy duplicate candidates using dense embeddings.
 
     Reports suspected_duplicate pairs — NEVER auto-merges.
@@ -578,7 +578,7 @@ def cache_fuzzy_duplicates(
 def cache_fuzzy_dedup_stats(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Report fuzzy dedup readiness and embedding availability."""
     cache = Cache(cache_path)
     try:
@@ -592,25 +592,25 @@ def cache_fuzzy_dedup_stats(
 
 
 @release_app.command("dashboard")
-def release_dashboard(json_out: bool = typer.Option(False, "--json")):
+def release_dashboard(json_out: bool = typer.Option(False, "--json")) -> None:
     """Show release readiness dashboard."""
     _print(readiness_dashboard(), json_out)
 
 
 @release_app.command("history")
-def release_history(out_dir: Path = Path("exports/release-history"), json_out: bool = typer.Option(False, "--json")):
+def release_history(out_dir: Path = Path("exports/release-history"), json_out: bool = typer.Option(False, "--json")) -> None:
     """Write release history record to output directory."""
     _print(write_history(out_dir), json_out)
 
 
 @release_app.command("compare")
-def release_compare(left: Path, right: Path, json_out: bool = typer.Option(False, "--json")):
+def release_compare(left: Path, right: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Compare two release history records and report score delta."""
     _print(compare_history(left, right), json_out)
 
 
 @release_app.command("notes")
-def release_notes_cmd(out: Optional[Path] = None):
+def release_notes_cmd(out: Optional[Path] = None) -> None:
     """Generate markdown release notes."""
     notes = release_notes()
     if out:
@@ -622,7 +622,7 @@ def release_notes_cmd(out: Optional[Path] = None):
 
 
 @release_app.command("archive")
-def release_archive(out_dir: Path = Path("exports/release-archive"), json_out: bool = typer.Option(False, "--json")):
+def release_archive(out_dir: Path = Path("exports/release-archive"), json_out: bool = typer.Option(False, "--json")) -> None:
     """Create a release archive with dashboard, notes, and history."""
     _print(archive_release(out_dir), json_out)
 
@@ -630,7 +630,7 @@ def release_archive(out_dir: Path = Path("exports/release-archive"), json_out: b
 @release_app.command("command-center")
 def release_cmd_center(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Comprehensive release verification - all checks."""
     _print(cmd_center_impl(), json_out)
 
@@ -641,7 +641,7 @@ def release_version_bump(
     minor: bool = typer.Option(False, "--minor"),
     patch: bool = typer.Option(True, "--patch"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Compute next version (does NOT modify files)."""
     _print(version_bump_impl(major=major, minor=minor, patch=patch), json_out)
 
@@ -649,7 +649,7 @@ def release_version_bump(
 @release_app.command("v1-readiness")
 def release_v1_readiness(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Final v1.0.0 readiness gate."""
     _print(final_v1_readiness_impl(), json_out)
 
@@ -657,7 +657,7 @@ def release_v1_readiness(
 @release_app.command("summary")
 def release_summary(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Human-readable release summary."""
     _print(generate_summary_impl(), json_out)
 
@@ -666,19 +666,19 @@ def release_summary(
 
 
 @udf_app.command("probe")
-def udf_probe(path: Path, json_out: bool = typer.Option(False, "--json")):
+def udf_probe(path: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Probe a UDF file for structure and content metadata."""
     _print(probe_udf(path), json_out)
 
 
 @udf_app.command("read")
-def udf_read(path: Path):
+def udf_read(path: Path) -> None:
     """Read and print text content from a UDF file."""
     sys.stdout.buffer.write((read_udf(path) + "\n").encode("utf-8"))
 
 
 @udf_app.command("to-md")
-def udf_md(path: Path, out: Optional[Path] = None):
+def udf_md(path: Path, out: Optional[Path] = None) -> None:
     """Convert a UDF file to markdown format."""
     md = udf_to_markdown(path)
     if out:
@@ -689,13 +689,13 @@ def udf_md(path: Path, out: Optional[Path] = None):
 
 
 @udf_app.command("write")
-def udf_write(text_file: Path, out: Path, title_centered: bool = False):
+def udf_write(text_file: Path, out: Path, title_centered: bool = False) -> None:
     """Write a UYAP UDF file from a text file."""
     typer.echo(str(write_udf(text_file.read_text(encoding="utf-8"), out, title_centered=title_centered)))
 
 
 @udf_app.command("status")
-def udf_status(json_out: bool = typer.Option(False, "--json")):
+def udf_status(json_out: bool = typer.Option(False, "--json")) -> None:
     """Show UDF toolkit availability status."""
     _print(get_udf_toolkit_status(), json_out)
 
@@ -704,7 +704,7 @@ def udf_status(json_out: bool = typer.Option(False, "--json")):
 def udf_authoring_instructions(
     format: str = typer.Option("json", help="Output format: json or markdown"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Show UDF authoring instructions and warnings."""
     _print(get_udf_authoring_instructions(format=format), json_out)
 
@@ -714,7 +714,7 @@ def udf_to_docx_cmd(
     path: Path = typer.Argument(..., help="UDF file to convert"),
     out_path: Optional[Path] = typer.Option(None, help="Output DOCX path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Convert UDF to DOCX (requires toolkit)."""
     _print(convert_udf_to_docx(path, out_path), json_out)
 
@@ -724,7 +724,7 @@ def udf_to_pdf_cmd(
     path: Path = typer.Argument(..., help="UDF file to convert"),
     out_path: Optional[Path] = typer.Option(None, help="Output PDF path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Convert UDF to PDF (requires toolkit)."""
     _print(convert_udf_to_pdf(path, out_path), json_out)
 
@@ -735,7 +735,7 @@ def udf_docx_to_udf_cmd(
     out_path: Optional[Path] = typer.Option(None, help="Output UDF path"),
     experimental: bool = typer.Option(False, "--experimental", help="Must be True to proceed"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Convert DOCX to UDF (experimental, requires toolkit)."""
     _print(convert_docx_to_udf_experimental(path, out_path, experimental=experimental), json_out)
 
@@ -750,7 +750,7 @@ def research_topic_cmd(
     fetch_count: int = typer.Option(5, help="Max docs to fetch"),
     output_dir: Optional[Path] = typer.Option(None, help="Output directory"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Search sources, fetch documents, build research bundle."""
     src_list = [s.strip() for s in sources.split(",")] if sources else None
     result = research_topic(query, src_list, fetch_count=fetch_count, output_dir=output_dir)
@@ -762,7 +762,7 @@ def research_refresh_cmd(
     bundle_path: Path = typer.Argument(..., help="Path to bundle.json"),
     dry_run: bool = typer.Option(False, help="Compute diff without writing"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Re-run research from an existing bundle, detect new/changed documents."""
     result = refresh_research_bundle(bundle_path, dry_run=dry_run)
     _print(result, json_out)
@@ -772,7 +772,7 @@ def research_refresh_cmd(
 def research_dashboard_cmd(
     bundle_path: Path = typer.Argument(..., help="Path to bundle.json"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Compute quality metrics for a research bundle."""
     result = research_quality_dashboard(bundle_path)
     _print(result, json_out)
@@ -787,7 +787,7 @@ def cite_format(
     source: str = typer.Option("bedesten", help="Source to look up document"),
     style: str = typer.Option("petition", help="Format style: petition, parenthetical, short"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Format a legal citation from cached document metadata."""
     cache = Cache()
     try:
@@ -815,7 +815,7 @@ def cite_verify(
     min_score: float = typer.Option(1.0, help="Minimum match score"),
     strategy_debug: bool = typer.Option(False, help="Include strategy debug info"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Verify legal citations in text or file."""
     result = verify_legal_citation(
         text=text,
@@ -843,7 +843,7 @@ def petition_pack(
     strict: bool = typer.Option(True, help="Strict mode: exclude hash-mismatch docs"),
     template: Optional[str] = typer.Option(None, help="Template name (e.g. dava_dilekcesi)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Prepare a petition drafting input pack."""
     docs = []
     if docs_json:
@@ -864,7 +864,7 @@ def petition_pack(
 def petition_inspect(
     pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Inspect and validate a petition pack directory."""
     result = inspect_petition_pack(pack_dir)
     _print(result, json_out)
@@ -875,7 +875,7 @@ def petition_outline(
     pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
     out_dir: Optional[Path] = typer.Option(None, help="Output directory for outline"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Generate a structured petition outline from a pack."""
     result = prepare_petition_outline(
         pack_dir=pack_dir,
@@ -890,7 +890,7 @@ def petition_draft(
     outline_path: Optional[Path] = typer.Option(None, help="Pre-computed outline.json path"),
     out_dir: Optional[Path] = typer.Option(None, help="Output directory for draft"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Generate a controlled petition draft from a pack."""
     result = prepare_controlled_petition_draft(
         pack_dir=pack_dir,
@@ -907,7 +907,7 @@ def petition_export_docx(
     out_path: Optional[Path] = typer.Option(None, help="Output DOCX path"),
     pack_dir: Optional[Path] = typer.Option(None, help="Pack directory for footnotes"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Create a validated DOCX export from a controlled draft."""
     draft_json = None
     if draft_json_path and draft_json_path.exists():
@@ -928,7 +928,7 @@ def petition_export_bundle(
     docx_path: Optional[Path] = typer.Option(None, help="Path to draft.docx"),
     out_dir: Optional[Path] = typer.Option(None, help="Output bundle directory"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Create a complete export package bundle with verification."""
     result = prepare_export_package_bundle(
         pack_dir=pack_dir,
@@ -946,7 +946,7 @@ def petition_multi_pack(
     docs_json: Optional[Path] = typer.Option(None, help="JSON file with shared Document list"),
     out_dir: Optional[Path] = typer.Option(None, help="Output directory for multi-issue pack"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Build a multi-issue petition pack with isolated citation banks."""
     issues = json.loads(issues_json.read_text(encoding="utf-8"))
     docs = []
@@ -965,7 +965,7 @@ def petition_multi_pack(
 def petition_multi_inspect(
     pack_dir: Path = typer.Argument(..., help="Path to multi-issue petition pack directory"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Inspect and validate a multi-issue petition pack directory."""
     result = inspect_multi_issue_pack(pack_dir)
     _print(result, json_out)
@@ -978,7 +978,7 @@ def petition_multi_inspect(
 def argument_build(
     pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Build structured argument chains from a petition pack."""
     result = build_argument_chain(pack_dir=pack_dir)
     _print(result, json_out)
@@ -988,7 +988,7 @@ def argument_build(
 def argument_score(
     pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Score argument strength for a petition pack."""
     result = get_argument_strength_report(pack_dir=pack_dir)
     _print(result, json_out)
@@ -999,7 +999,7 @@ def argument_render(
     pack_dir: Path = typer.Argument(..., help="Path to petition pack directory"),
     out_path: Optional[Path] = typer.Option(None, help="Output markdown file path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Render argument chains as markdown."""
     md = render_arguments_to_markdown(pack_dir=pack_dir, out_path=out_path)
     if out_path:
@@ -1017,7 +1017,7 @@ def legislation_search(
     legislation_type: Optional[str] = typer.Option(None, help="Mevzuat türü (Kanun, Yönetmelik, ...)"),
     limit: int = typer.Option(10, help="Maksimum sonuç"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Mevzuat ara."""
     result = search_leg_impl(query=query, legislation_type=legislation_type, limit=limit)
     _print(result, json_out)
@@ -1028,7 +1028,7 @@ def legislation_get(
     document_id: str = typer.Argument(..., help="Mevzuat belge ID"),
     source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Mevzuat belgesi getir."""
     result = get_leg_doc_impl(document_id=document_id, source=source)
     _print(result, json_out)
@@ -1041,7 +1041,7 @@ def legislation_articles(
     article_query: Optional[str] = typer.Option(None, help="Madde metninde anahtar kelime"),
     source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Belge içinde madde ara."""
     result = search_leg_articles_impl(
         document_id=document_id,
@@ -1057,7 +1057,7 @@ def legislation_tree(
     document_id: str = typer.Argument(..., help="Mevzuat belge ID"),
     source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Belgenin kısım/bölüm/madde ağacını çıkar."""
     result = get_leg_article_tree_impl(document_id=document_id, source=source)
     _print(result, json_out)
@@ -1068,7 +1068,7 @@ def legislation_gerekce(
     document_id: str = typer.Argument(..., help="Mevzuat belge ID"),
     source: Optional[str] = typer.Option(None, help="Kaynak (varsayılan: mevzuat)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Genel gerekçe ve madde gerekçelerini çıkar."""
     result = get_leg_gerekce_impl(document_id=document_id, source=source)
     _print(result, json_out)
@@ -1077,7 +1077,7 @@ def legislation_gerekce(
 @legislation_app.command("status")
 def legislation_status(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Mevzuat kaynak sağlık durumu."""
     result = get_leg_status_impl()
     _print(result, json_out)
@@ -1086,7 +1086,7 @@ def legislation_status(
 @legislation_app.command("types")
 def legislation_types(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Bilinen mevzuat türlerini listele."""
     result = get_leg_types_impl()
     _print(result, json_out)
@@ -1099,7 +1099,7 @@ def legislation_format(
     gazette_date: str = typer.Option("", help="Resmi Gazete tarihi"),
     style: str = typer.Option("full", help="Stil: full, short, article"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Mevzuat atıf formatla."""
     doc = {
         "title": title,
@@ -1117,7 +1117,7 @@ def legislation_format(
 def semantic_index(
     force_rebuild: bool = typer.Option(False, "--force-rebuild", help="Drop and recreate indices"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Build FTS5 + TF-IDF search indices."""
     result = build_semantic_impl(force_rebuild=force_rebuild)
     _print(result, json_out)
@@ -1131,7 +1131,7 @@ def semantic_search_cmd(
     court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
     chamber: Optional[str] = typer.Option(None, help="Daire filtresi"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """TF-IDF cosine similarity search. Supports --source, --court, --chamber filters."""
     filters = {}
     if source:
@@ -1155,7 +1155,7 @@ def semantic_hybrid(
     court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
     chamber: Optional[str] = typer.Option(None, help="Daire filtresi"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """FTS5 BM25 + TF-IDF cosine hybrid search with optional dense embeddings."""
     filters = {}
     if source:
@@ -1176,7 +1176,7 @@ def semantic_hybrid(
 @semantic_app.command("status")
 def semantic_status(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Check index health and statistics."""
     result = index_status_impl()
     _print(result, json_out)
@@ -1185,7 +1185,7 @@ def semantic_status(
 @semantic_app.command("rebuild")
 def semantic_rebuild(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Force rebuild all search indices."""
     result = rebuild_impl()
     _print(result, json_out)
@@ -1196,7 +1196,7 @@ def semantic_embed_index(
     provider: Optional[str] = typer.Option(None, help="Provider: local-hash-v1 or fastembed-minilm-l6-v2"),
     force_rebuild: bool = typer.Option(False, "--force-rebuild"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Build dense embedding index."""
     result = build_embedding_impl(provider=provider, force_rebuild=force_rebuild)
     _print(result, json_out)
@@ -1208,7 +1208,7 @@ def semantic_embed_search(
     provider: Optional[str] = typer.Option(None),
     limit: int = typer.Option(10),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Dense embedding similarity search."""
     result = embedding_search_impl(query=query, limit=limit, provider=provider)
     _print(result, json_out)
@@ -1217,7 +1217,7 @@ def semantic_embed_search(
 @semantic_app.command("providers")
 def semantic_providers(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """List available embedding providers."""
     from .embeddings import list_embedding_providers
 
@@ -1227,7 +1227,7 @@ def semantic_providers(
 @semantic_app.command("embedding-status")
 def semantic_embedding_status(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Check dense embedding index status."""
     result = embedding_status_impl()
     _print(result, json_out)
@@ -1237,7 +1237,7 @@ def semantic_embedding_status(
 def semantic_update_indexes(
     provider: Optional[str] = typer.Option(None, help="Embedding provider for dense index"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Incrementally update indexes (new/changed docs only)."""
     result = update_indexes_impl(provider=provider)
     _print(result, json_out)
@@ -1246,7 +1246,7 @@ def semantic_update_indexes(
 @semantic_app.command("sync-status")
 def semantic_sync_status(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Check index sync status."""
     result = sync_status_impl()
     _print(result, json_out)
@@ -1259,7 +1259,7 @@ def semantic_sync_status(
 def chamber_overview(
     court: Optional[str] = typer.Option(None, help="Mahkeme filtresi (örn: Yargitay)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Chamber overview with document counts and date ranges."""
     result = chamber_overview_impl(court=court)
     _print(result, json_out)
@@ -1270,7 +1270,7 @@ def chamber_profile(
     chamber: str = typer.Argument(..., help="Daire adı (örn: '3. Hukuk Dairesi')"),
     court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Detailed profile of a specific chamber."""
     result = profile_chamber_impl(chamber=chamber, court=court)
     _print(result, json_out)
@@ -1283,7 +1283,7 @@ def chamber_timeline_cmd(
     start_year: Optional[int] = typer.Option(None, help="Başlangıç yılı"),
     end_year: Optional[int] = typer.Option(None, help="Bitiş yılı"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Decision timeline grouped by year."""
     result = chamber_timeline_impl(
         chamber=chamber, court=court,
@@ -1298,7 +1298,7 @@ def chamber_similar(
     court: Optional[str] = typer.Option(None, help="Mahkeme filtresi"),
     limit: int = typer.Option(5, help="Maksimum benzer daire sayısı"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Find chambers with similar topic profiles."""
     result = find_similar_impl(chamber=chamber, court=court, limit=limit)
     _print(result, json_out)
@@ -1311,7 +1311,7 @@ def chamber_similar(
 def graph_build(
     limit_docs: int = typer.Option(100, help="Maksimum işlenecek belge sayısı"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Build citation graph from cached documents."""
     result = build_citation_graph_impl(limit_docs=limit_docs)
     _print(result, json_out)
@@ -1323,7 +1323,7 @@ def graph_show(
     source: str = typer.Option("bedesten", help="Kaynak"),
     direction: str = typer.Option("both", help="Yön: both, citing, cited"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Show citation relationships for a document."""
     result = get_citation_graph_impl(document_id=document_id, source=source, direction=direction)
     _print(result, json_out)
@@ -1335,7 +1335,7 @@ def graph_citing(
     source: str = typer.Option("bedesten", help="Kaynak"),
     limit: int = typer.Option(20, help="Maksimum sonuç"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Find documents that cite the given document."""
     result = find_citing_documents_impl(document_id=document_id, source=source, limit=limit)
     _print(result, json_out)
@@ -1347,7 +1347,7 @@ def graph_cited(
     source: str = typer.Option("bedesten", help="Kaynak"),
     limit: int = typer.Option(20, help="Maksimum sonuç"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Find documents that the given document cites."""
     result = find_cited_documents_impl(document_id=document_id, source=source, limit=limit)
     _print(result, json_out)
@@ -1356,7 +1356,7 @@ def graph_cited(
 @graph_app.command("stats")
 def graph_stats(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Citation graph istatistikleri."""
     result = get_citation_graph_stats_impl()
     _print(result, json_out)
@@ -1369,7 +1369,7 @@ def graph_export(
     source: Optional[str] = typer.Option(None, help="Source filter for sub-graph"),
     max_depth: int = typer.Option(2, help="Max traversal depth for sub-graph"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Export citation graph in various formats (json, dot, mermaid)."""
     result = export_graph_impl(
         format=format,
@@ -1388,7 +1388,7 @@ def analytics_report(
     days: int = typer.Option(30, help="Number of days to include"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Comprehensive search analytics report."""
     from .search_analytics import get_search_analytics
 
@@ -1405,7 +1405,7 @@ def analytics_empty_queries(
     limit: int = typer.Option(20, help="Max results"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """List queries that returned 0 results."""
     from .search_analytics import get_empty_queries
 
@@ -1422,7 +1422,7 @@ def analytics_top_queries(
     limit: int = typer.Option(20, help="Max results"),
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Most frequent queries."""
     from .search_analytics import get_top_queries
 
@@ -1438,7 +1438,7 @@ def analytics_top_queries(
 def analytics_source_coverage(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Source coverage: doc counts and full_text percentage."""
     from .search_analytics import get_source_coverage
 
@@ -1454,7 +1454,7 @@ def analytics_source_coverage(
 
 
 @template_app.command("list")
-def template_list(json_out: bool = typer.Option(False, "--json")):
+def template_list(json_out: bool = typer.Option(False, "--json")) -> None:
     """List all available petition templates."""
     _print(list_templates_impl(), json_out)
 
@@ -1463,7 +1463,7 @@ def template_list(json_out: bool = typer.Option(False, "--json")):
 def template_show(
     name: str = typer.Argument(..., help="Template name (e.g. dava_dilekcesi)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Show details of a specific petition template."""
     _print(get_template_impl(name), json_out)
 
@@ -1472,7 +1472,7 @@ def template_show(
 def template_render(
     name: str = typer.Argument(..., help="Template name (e.g. dava_dilekcesi)"),
     out_path: Optional[Path] = typer.Option(None, help="Output file path (default: stdout)"),
-):
+) -> None:
     """Render a template as a draft-skeleton.md compatible markdown."""
     try:
         md = render_template_impl(name)
@@ -1495,7 +1495,7 @@ def draft_diff(
     draft_a: Path = typer.Argument(..., help="Path to first (older) draft"),
     draft_b: Path = typer.Argument(..., help="Path to second (newer) draft"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Compare two draft files and show changes."""
     result = diff_drafts_impl(draft_a, draft_b)
     _print(result, json_out)
@@ -1505,7 +1505,7 @@ def draft_diff(
 def draft_placeholders(
     draft_path: Path = typer.Argument(..., help="Path to draft file"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Analyze placeholder fill status in a draft."""
     result = track_placeholders_impl(draft_path)
     _print(result, json_out)
@@ -1516,7 +1516,7 @@ def draft_fill_report(
     draft_path: Path = typer.Argument(..., help="Path to draft file"),
     pack_dir: Optional[Path] = typer.Option(None, help="Petition pack directory for source suggestions"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Generate a fill report: what still needs attention."""
     result = get_fill_report_impl(draft_path, pack_dir=str(pack_dir) if pack_dir else None)
     _print(result, json_out)
@@ -1527,7 +1527,7 @@ def draft_save_version(
     draft_dir: Path = typer.Argument(..., help="Directory containing draft files"),
     label: Optional[str] = typer.Option(None, help="Human-readable version label"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Save a snapshot of current draft state for later diff."""
     result = save_draft_version_impl(draft_dir, version_label=label)
     _print(result, json_out)
@@ -1541,7 +1541,7 @@ def export_txt(
     draft_path: Path = typer.Argument(..., help="Path to draft.md"),
     out_path: Optional[Path] = typer.Option(None, help="Output .txt path"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Export a draft to plain-text format (always available, no toolkit)."""
     result = export_plain_text(
         draft_path=str(draft_path),
@@ -1558,7 +1558,7 @@ def export_format_cmd(
     pack_dir: Optional[Path] = typer.Option(None, help="Pack directory for footnotes"),
     experimental: bool = typer.Option(False, "--experimental", help="Required for UDF format"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Unified export dispatcher: docx, txt, pdf, udf."""
     result = export_to_format(
         draft_path=str(draft_path),
@@ -1573,7 +1573,7 @@ def export_format_cmd(
 @export_app.command("capabilities")
 def export_capabilities_cmd(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Show which export formats are currently available."""
     _print(get_export_capabilities(), json_out)
 
@@ -1585,7 +1585,7 @@ def export_capabilities_cmd(
 def circuit_status_cmd(
     source: Optional[str] = typer.Option(None, help="Filter by source_id"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Show circuit breaker status for one or all sources."""
     if source:
         health = get_source_health(source)
@@ -1599,7 +1599,7 @@ def circuit_status_cmd(
 def circuit_health_cmd(
     source: Optional[str] = typer.Option(None, help="Filter by source_id"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Show source health metrics (uptime, failure counts, circuit state)."""
     if source:
         health = get_source_health(source)
@@ -1613,7 +1613,7 @@ def circuit_health_cmd(
 def circuit_reset_cmd(
     source: str = typer.Argument(..., help="Source ID to reset"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Manually reset a circuit breaker to CLOSED state."""
     result = reset_circuit(source)
     _print(result, json_out)
@@ -1626,7 +1626,7 @@ def circuit_reset_cmd(
 def router_capable_sources(
     capability: str = typer.Argument(..., help="Capability name (e.g. full_text, search, pdf_link)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """List source_ids that support a given capability."""
     _print(get_capable_sources_impl(capability), json_out)
 
@@ -1638,7 +1638,7 @@ def router_search_cmd(
     prefer: Optional[str] = typer.Option(None, help="Comma-separated preferred sources"),
     exclude: Optional[str] = typer.Option(None, help="Comma-separated sources to exclude"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Route a search request to capable sources."""
     required = [c.strip() for c in require.split(",")] if require else None
     preferred = [s.strip() for s in prefer.split(",")] if prefer else None
@@ -1652,7 +1652,7 @@ def router_get_document_cmd(
     require: Optional[str] = typer.Option(None, help="Comma-separated required capabilities"),
     preferred_source: Optional[str] = typer.Option(None, help="Preferred source"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Route a get_document request to capable sources."""
     required = [c.strip() for c in require.split(",")] if require else None
     _print(route_get_document_impl(document_id, required_capabilities=required, preferred_source=preferred_source), json_out)
@@ -1666,7 +1666,7 @@ def pdf_extract(
     path: Path = typer.Argument(..., help="Path to PDF file"),
     ocr: bool = typer.Option(False, "--ocr", help="Enable OCR (opt-in, low confidence)"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Extract text layer from a PDF file."""
     _print(extract_pdf_text_from_file(str(path), ocr_enabled=ocr), json_out)
 
@@ -1674,7 +1674,7 @@ def pdf_extract(
 @pdf_app.command("toolkit-status")
 def pdf_toolkit(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Check PDF extraction toolkit availability."""
     _print(get_pdf_toolkit_status(), json_out)
 
@@ -1684,7 +1684,7 @@ def pdf_promote(
     document_json: str = typer.Argument(..., help="Document JSON string"),
     ocr: bool = typer.Option(False, "--ocr", help="Enable OCR"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Try to promote a pdf_only Document to full_text."""
     import json as json_mod
     doc = json_mod.loads(document_json)
@@ -1699,7 +1699,7 @@ def calibrate_source_cmd(
     source_id: str = typer.Argument(..., help="Source ID to calibrate"),
     online: bool = typer.Option(False, "--online", help="Make actual HTTP calls"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Measure safe request rate for a source."""
     _print(calibrate_source_impl(source_id, online=online), json_out)
 
@@ -1708,7 +1708,7 @@ def calibrate_source_cmd(
 def calibrate_all_cmd(
     online: bool = typer.Option(False, "--online", help="Make actual HTTP calls"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Calibrate all registered sources."""
     _print(calibrate_all_impl(online=online), json_out)
 
@@ -1721,7 +1721,7 @@ def api_serve(
     host: str = typer.Option("127.0.0.1", help="Bind address"),
     port: int = typer.Option(8765, help="Bind port"),
     token: Optional[str] = typer.Option(None, help="Auth token (overrides EMSAL_API_TOKEN env)"),
-):
+) -> None:
     """Start HTTP REST API server (read-only, stdlib only)."""
     from .api_server import run_api_server
 
@@ -1735,7 +1735,7 @@ def api_serve(
 def benchmark_cmd(
     corpus_size: int = typer.Option(50, help="Synthetic corpus size"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Run micro-benchmark suite (deterministic corpus)."""
     _print(run_benchmarks_impl(corpus_size=corpus_size), json_out)
 
@@ -1743,7 +1743,7 @@ def benchmark_cmd(
 @app.command("error-catalog")
 def error_catalog(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """List all known error codes used in the codebase."""
     from .server_utils import get_error_codes
 
@@ -1761,7 +1761,7 @@ def watch_add(
     fetch_count: int = typer.Option(5, help="Max docs to fetch per run"),
     interval_hours: int = typer.Option(24, help="Suggested interval in hours"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Register a watch for periodic research."""
     src_list = [s.strip() for s in sources.split(",")] if sources else None
     result = add_watch_impl(
@@ -1774,7 +1774,7 @@ def watch_add(
 @watch_app.command("list")
 def watch_list(
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """List all registered watches."""
     _print(list_watches_impl(), json_out)
 
@@ -1783,7 +1783,7 @@ def watch_list(
 def watch_run(
     name: str = typer.Argument(..., help="Watch name to execute"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Execute a watch: re-search, detect new/changed docs."""
     _print(run_watch_impl(name), json_out)
 
@@ -1792,7 +1792,7 @@ def watch_run(
 def watch_remove(
     name: str = typer.Argument(..., help="Watch name to remove"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Remove a watch."""
     _print(remove_watch_impl(name), json_out)
 
@@ -1804,7 +1804,7 @@ def watch_remove(
 def privacy_scan(
     text: str = typer.Argument(..., help="Text to scan for PII"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Scan text for potential PII (TCKN, phone, email)."""
     _print(scan_pii_impl(text), json_out)
 
@@ -1813,7 +1813,7 @@ def privacy_scan(
 def privacy_redact(
     text: str = typer.Argument(..., help="Text to redact PII from"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Redact PII from text. Returns copy — original unchanged."""
     _print(redact_pii_impl(text), json_out)
 
@@ -1822,7 +1822,7 @@ def privacy_redact(
 def privacy_audit(
     path: Path = typer.Argument(..., help="File or directory to audit for PII"),
     json_out: bool = typer.Option(False, "--json"),
-):
+) -> None:
     """Audit a file or directory for PII presence."""
     _print(audit_privacy_impl(path), json_out)
 

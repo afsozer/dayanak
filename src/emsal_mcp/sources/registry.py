@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .base import SourceClient
 from .bedesten import BedestenClient
 from .mevzuat import MevzuatClient
 from .simple_public import (
@@ -469,7 +470,7 @@ def capabilities() -> list[dict[str, Any]]:
     return out
 
 
-def get_source(source: str):
+def get_source(source: str) -> SourceClient:
     """Return a client for *source*, including structured unavailable clients.
 
     Extra (plugin/test) adapters registered via ``register_adapter()``

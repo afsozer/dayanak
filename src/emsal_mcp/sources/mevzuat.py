@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from emsal_mcp.models import Document, SearchResult
+
 from .bedesten import BedestenClient
 
 
@@ -8,7 +10,7 @@ class MevzuatClient(BedestenClient):
     name = "Mevzuat/Bedesten"
     base = "https://bedesten.adalet.gov.tr"
 
-    async def search(self, query: str, limit: int = 10, **filters):
+    async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
         from .base import check_http_response, client
         from emsal_mcp.models import ContentStatus, SearchResult
         body = {
@@ -57,7 +59,7 @@ class MevzuatClient(BedestenClient):
             ))
         return out
 
-    async def get_document(self, document_id: str, **kwargs):
+    async def get_document(self, document_id: str, **kwargs) -> Document:
         from .base import check_http_response, client, decode_b64, html_to_text, sha
         from emsal_mcp.models import ContentStatus, Document, finalize_document
         payload = {"data": {"documentId": document_id}, "applicationName": "UyapMevzuat"}
