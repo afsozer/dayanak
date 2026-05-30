@@ -42,3 +42,6 @@ pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+select = ["D100", "D101", "D103"]  # module, class, function docstrings

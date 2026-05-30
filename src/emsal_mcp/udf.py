@@ -120,6 +120,17 @@ def get_udf_authoring_instructions(format: str = "json") -> dict:
 
 
 def read_udf(path: str | Path) -> str:
+    """Read and extract text content from a UYAP UDF file.
+
+    Args:
+        path: Path to the UDF file (ZIP archive with content.xml).
+
+    Returns:
+        Extracted text content from the UDF.
+
+    Raises:
+        UdfError: If the file is missing, not a valid ZIP, or lacks content.xml.
+    """
     p = Path(path)
     if not p.exists():
         raise UdfError(f"UDF bulunamadı: {p}")
@@ -138,6 +149,14 @@ def read_udf(path: str | Path) -> str:
 
 
 def udf_to_markdown(path: str | Path) -> str:
+    """Convert a UDF file content to formatted markdown with paragraph breaks.
+
+    Args:
+        path: Path to the UDF file.
+
+    Returns:
+        Markdown string with paragraphs separated by double newlines.
+    """
     lines = [ln.strip() for ln in read_udf(path).splitlines()]
     paragraphs: list[str] = []
     cur: list[str] = []

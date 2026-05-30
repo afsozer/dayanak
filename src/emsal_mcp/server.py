@@ -112,6 +112,11 @@ from .release import (
 
 
 def main() -> None:
+    """Launch the MCP server with all registered tools.
+
+    Imports FastMCP from the mcp package and registers all tool functions.
+    Exits with an error message if the MCP extra is not installed.
+    """
     try:
         from mcp.server.fastmcp import FastMCP
     except Exception as exc:  # pragma: no cover

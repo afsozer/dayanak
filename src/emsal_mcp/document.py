@@ -11,6 +11,16 @@ from .safety import build_input_pack, citation_check
 
 
 def controlled_draft(title: str, body: str, docs: Iterable[Document]) -> str:
+    """Build a citation-safe markdown draft with verified authorities.
+
+    Args:
+        title: Draft title.
+        body: Draft body text.
+        docs: Iterable of Document objects to classify for citation safety.
+
+    Returns:
+        Markdown string with safe citations appended as a bibliography.
+    """
     safe_docs = [d for d in docs if citation_check(d).ok]
     lines = [f"# {title}", "", body.strip(), "", "## Güvenli Atıf Adayları"]
     if not safe_docs:
@@ -22,6 +32,15 @@ def controlled_draft(title: str, body: str, docs: Iterable[Document]) -> str:
 
 
 def markdown_to_docx(markdown: str, out_path: str | Path) -> Path:
+    """Convert markdown text to a DOCX file.
+
+    Args:
+        markdown: Markdown content string.
+        out_path: Output file path for the DOCX.
+
+    Returns:
+        Path to the created DOCX file.
+    """
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     doc = DocxDocument()
@@ -41,6 +60,17 @@ def markdown_to_docx(markdown: str, out_path: str | Path) -> Path:
 
 
 def export_bundle(out_dir: str | Path, *, matter: str, issue: str, docs: list[Document]) -> dict:
+    """Export a citation-safe bundle with input pack and source documents.
+
+    Args:
+        out_dir: Output directory for the bundle.
+        matter: Legal matter description.
+        issue: Legal issue description.
+        docs: List of Document objects to include.
+
+    Returns:
+        Dict with out_dir, safe_count, excluded_count.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     pack = build_input_pack(matter, issue, docs)

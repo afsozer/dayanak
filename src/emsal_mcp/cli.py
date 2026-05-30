@@ -195,6 +195,12 @@ app.add_typer(privacy_app, name="privacy")
 
 
 def _print(obj, json_out: bool):
+    """Print output as JSON or plain text to stdout.
+
+    Args:
+        obj: Object to print (string or JSON-serializable dict).
+        json_out: If True, output as formatted JSON.
+    """
     def emit(text: str):
         sys.stdout.buffer.write((text + "\n").encode("utf-8"))
     if json_out:
@@ -205,6 +211,7 @@ def _print(obj, json_out: bool):
 
 @app.command()
 def version():
+    """Print the current emsal-mcp version."""
     typer.echo(__version__)
 
 
@@ -217,6 +224,7 @@ def doctor(json_out: bool = typer.Option(False, "--json")):
 
 @app.command()
 def sources(json_out: bool = typer.Option(False, "--json")):
+    """List registered data sources and their capabilities."""
     _print(capabilities(), json_out)
 
 
@@ -239,6 +247,7 @@ def sources_smoke(
 
 @app.command()
 def search(source: str, query: str, limit: int = 10, page: int = 1, json_out: bool = typer.Option(False, "--json")):
+    """Search court decisions from a given source."""
     import asyncio
     src = get_source(source)
     results = asyncio.run(src.search(query, limit=limit, page=page))
@@ -250,6 +259,7 @@ def search(source: str, query: str, limit: int = 10, page: int = 1, json_out: bo
 
 @app.command()
 def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")):
+    """Fetch a single document by ID from the given source."""
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
     cache = Cache()
@@ -262,6 +272,7 @@ def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--j
 
 @app.command("citation-check")
 def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")):
+    """Check citation safety of a document from the given source."""
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
     _print(citation_check(doc).model_dump(mode="json"), json_out)
@@ -269,6 +280,7 @@ def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Opt
 
 @app.command("build-input-pack")
 def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool = typer.Option(False, "--json")):
+    """Build a citation-safe input pack from a JSON document list."""
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
     pack = build_input_pack(matter, issue, docs)
     _print(pack.model_dump(mode="json"), json_out)
@@ -276,6 +288,7 @@ def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool = typer.
 
 @app.command("draft-document")
 def draft_document(title: str, body_file: Path, docs_json: Optional[Path] = None, out: Optional[Path] = None):
+    """Generate a citation-safe markdown draft document."""
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))] if docs_json else []
     md = controlled_draft(title, body_file.read_text(encoding="utf-8"), docs)
     if out:
@@ -288,17 +301,20 @@ def draft_document(title: str, body_file: Path, docs_json: Optional[Path] = None
 
 @app.command("export-docx")
 def export_docx(markdown_file: Path, out: Path):
+    """Export a markdown file to DOCX format."""
     typer.echo(str(markdown_to_docx(markdown_file.read_text(encoding="utf-8"), out)))
 
 
 @app.command("export-bundle")
 def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bool = typer.Option(False, "--json")):
+    """Export a citation-safe bundle with input pack and source documents."""
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
     _print(export_bundle(out_dir, matter=matter, issue=issue, docs=docs), json_out)
 
 
 @app.command("smoke")
 def smoke(offline: bool = True, json_out: bool = typer.Option(False, "--json")):
+    """Run release smoke tests (offline by default)."""
     result = release_smoke() | {"offline": offline, "sources": list(registry().keys())}
     _print(result, json_out)
 
@@ -577,21 +593,25 @@ def cache_fuzzy_dedup_stats(
 
 @release_app.command("dashboard")
 def release_dashboard(json_out: bool = typer.Option(False, "--json")):
+    """Show release readiness dashboard."""
     _print(readiness_dashboard(), json_out)
 
 
 @release_app.command("history")
 def release_history(out_dir: Path = Path("exports/release-history"), json_out: bool = typer.Option(False, "--json")):
+    """Write release history record to output directory."""
     _print(write_history(out_dir), json_out)
 
 
 @release_app.command("compare")
 def release_compare(left: Path, right: Path, json_out: bool = typer.Option(False, "--json")):
+    """Compare two release history records and report score delta."""
     _print(compare_history(left, right), json_out)
 
 
 @release_app.command("notes")
 def release_notes_cmd(out: Optional[Path] = None):
+    """Generate markdown release notes."""
     notes = release_notes()
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -603,6 +623,7 @@ def release_notes_cmd(out: Optional[Path] = None):
 
 @release_app.command("archive")
 def release_archive(out_dir: Path = Path("exports/release-archive"), json_out: bool = typer.Option(False, "--json")):
+    """Create a release archive with dashboard, notes, and history."""
     _print(archive_release(out_dir), json_out)
 
 
@@ -646,16 +667,19 @@ def release_summary(
 
 @udf_app.command("probe")
 def udf_probe(path: Path, json_out: bool = typer.Option(False, "--json")):
+    """Probe a UDF file for structure and content metadata."""
     _print(probe_udf(path), json_out)
 
 
 @udf_app.command("read")
 def udf_read(path: Path):
+    """Read and print text content from a UDF file."""
     sys.stdout.buffer.write((read_udf(path) + "\n").encode("utf-8"))
 
 
 @udf_app.command("to-md")
 def udf_md(path: Path, out: Optional[Path] = None):
+    """Convert a UDF file to markdown format."""
     md = udf_to_markdown(path)
     if out:
         out.write_text(md, encoding="utf-8")
@@ -666,6 +690,7 @@ def udf_md(path: Path, out: Optional[Path] = None):
 
 @udf_app.command("write")
 def udf_write(text_file: Path, out: Path, title_centered: bool = False):
+    """Write a UYAP UDF file from a text file."""
     typer.echo(str(write_udf(text_file.read_text(encoding="utf-8"), out, title_centered=title_centered)))
 
 

@@ -13,6 +13,14 @@ from .verification import check_cache_integrity, smoke_test_offline
 
 
 def release_smoke() -> dict[str, Any]:
+    """Run release smoke tests combining offline, cache, and source checks.
+
+    Performs offline smoke tests, cache integrity verification, and per-source
+    smoke tests. Returns aggregated pass/fail status.
+
+    Returns:
+        Dict with ok, version, generated_at, checks (offline, cache, source status).
+    """
     offline = smoke_test_offline()
     cache = check_cache_integrity()
     source_smoke = smoke_all_sync(online=False)
@@ -38,6 +46,14 @@ def release_smoke() -> dict[str, Any]:
 
 
 def readiness_dashboard() -> dict[str, Any]:
+    """Compute release readiness score from smoke tests and source capabilities.
+
+    Aggregates risk factors (e.g. unavailable sources) and produces a
+    ship/review decision based on the readiness score.
+
+    Returns:
+        Dict with ok, version, readiness_score, release_decision, smoke, risks.
+    """
     smoke = release_smoke()
     risks = []
     for cap in capabilities():
@@ -48,6 +64,15 @@ def readiness_dashboard() -> dict[str, Any]:
 
 
 def write_history(out_dir: str | Path, dashboard: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Write a release history record with SHA256 integrity hash.
+
+    Args:
+        out_dir: Output directory for the history JSON file.
+        dashboard: Optional pre-computed dashboard dict (runs readiness_dashboard if None).
+
+    Returns:
+        Dict with path to the written record and the record content.
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     record = {"version": __version__, "generated_at": _now(), "dashboard": dashboard or readiness_dashboard()}
@@ -58,6 +83,15 @@ def write_history(out_dir: str | Path, dashboard: dict[str, Any] | None = None) 
 
 
 def compare_history(left: str | Path, right: str | Path) -> dict[str, Any]:
+    """Compare two release history records and report score delta.
+
+    Args:
+        left: Path to the older (left) history JSON file.
+        right: Path to the newer (right) history JSON file.
+
+    Returns:
+        Dict with ok, score_delta, regression flag, left_score, right_score.
+    """
     left_data = json.loads(Path(left).read_text(encoding="utf-8"))
     right_data = json.loads(Path(right).read_text(encoding="utf-8"))
     lscore = left_data.get("dashboard", {}).get("readiness_score", 0)
@@ -66,12 +100,25 @@ def compare_history(left: str | Path, right: str | Path) -> dict[str, Any]:
 
 
 def release_notes() -> str:
+    """Generate markdown release notes from the current readiness dashboard.
+
+    Returns:
+        Markdown string with version, readiness, scope, and risk summary.
+    """
     dash = readiness_dashboard()
     risks = "\n".join(f"- {r}" for r in dash["risks"]) or "- Bilinen bloklayıcı risk yok."
     return f"# Emsal-mcp {__version__} Release Notes\n\nReadiness: {dash['release_decision']} ({dash['readiness_score']}/100)\n\n## Kapsam\n- Resmi/public kaynak adapterları\n- Citation-safe input pack ve kontrollü taslak\n- DOCX/export bundle\n- UDF read/write\n- Smoke/dashboard/history/regression/archive\n\n## Riskler\n{risks}\n"
 
 
 def archive_release(out_dir: str | Path) -> dict[str, Any]:
+    """Create a release archive with dashboard, notes, and history.
+
+    Args:
+        out_dir: Output directory for the release archive.
+
+    Returns:
+        Dict with ok, out_dir, manifest (version, files list).
+    """
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     dashboard = readiness_dashboard()
