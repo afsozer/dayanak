@@ -198,6 +198,10 @@ FAZ 7 (M-25..M-28)  → arama/bilgi kalitesi  [M-24'e dayanır]
 FAZ 8 (M-29..M-32)  → performans/ölçeklenebilirlik
 FAZ 9 (M-33..M-36)  → erişim/entegrasyon
 FAZ 10 (M-37..M-40) → gizlilik/üretim olgunluğu  → v3.0.0
+FAZ 11 (M-41..M-44) → dokümantasyon & içerik (text-ağırlıklı)
+FAZ 12 (M-45..M-49) → fix & sağlamlaştırma
+FAZ 13 (M-50..M-53) → performans & optimizasyon
+FAZ 14 (M-54..M-56) → sürdürülebilirlik → v3.1.0
 ```
 
 - Fazlar sıralı; faz içi milestone'lar çoğunlukla sıralı (M-08 M-06/M-07'ye dayanır).
@@ -387,6 +391,115 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 
 ---
 
+# v3.x SONRASI — Cila, Sağlamlaştırma & Optimizasyon (M-41 → M-56)
+
+> Bu blok özellik genişletmeden çok **mevcut yüzeyi olgunlaştırmaya** odaklanır: dokümantasyon, hata düzeltme, performans ve kod sağlığı. Ralph-loop için **düşük riskli, yüksek doğrulanabilirlik** — her milestone küçük, additive ve test-geçitli. Çoğu `mimo-worker`/`explore` ağırlıklı; `controller` yalnızca tasarım/riskli noktalarda. Bu faz boyunca **yeni runtime bağımlılığı eklenmez**.
+
+## FAZ 11 — Dokümantasyon & İçerik (M-41 → M-44)
+
+### M-41 — Doküman Doğruluk Denetimi & Drift Düzeltme
+- **Boşluk:** 40 milestone sonrası dokümanlar (README, INSTALL, JSON/MCP_CONTRACTS, docs/INDEX) koddan sapmış olabilir; araç/komut sayıları, slug'lar, örnekler eskimiş olabilir.
+- **Görevler:** Koddaki gerçek CLI komutlarını, MCP araçlarını, env değişkenlerini ve fonksiyon imzalarını otomatik tara; dokümanla karşılaştır; her tutarsızlığı düzelt. Araç/komut sayılarını gerçek sayımla güncelle. Kırık iç-bağlantıları onar.
+- **Bitti sayılır:** Dokümandaki her CLI/MCP/env referansı kodda mevcut (doğrulayan script/test); sayımlar gerçek; kırık link yok; geçit yeşil.
+- **Worker:** `mimo-worker` / `explore`.
+
+### M-42 — Docstring & API Referans Tutarlılığı
+- **Boşluk:** Public fonksiyonların docstring'leri eksik/tutarsız olabilir; dönüş sözleşmeleri belgelenmemiş.
+- **Görevler:** Tüm public fonksiyonlara tutarlı docstring (özet, parametreler, dönüş dict anahtarları, `raises` yok-ilkesi). Otomatik üretilen API referansı (`docs/API.md`, salt-stdlib introspection ile; ağır doc aracı yok). Docstring stil denetimi (ruff pydocstyle kuralları opt-in).
+- **Bitti sayılır:** Public yüzeyin docstring kapsamı ölçülüp raporlandı; API.md üretilebilir; ruff docstring kuralları (seçili) geçiyor.
+- **Worker:** `mimo-worker`.
+
+### M-43 — Kullanım Kılavuzu & Reçeteler (Cookbook)
+- **Boşluk:** Uçtan-uca kullanım senaryoları (araştırma→pack→draft→export) dağınık; yeni kullanıcı için rehber yok.
+- **Görevler:** `docs/COOKBOOK.md` — gerçek-şekilli, kopyala-çalıştır senaryolar (sentetik veriyle). En sık 8-10 iş akışı adım adım. Her reçete bir smoke-test'le bağlanır (kopuk örnek kalmaz).
+- **Bitti sayılır:** Cookbook senaryoları çalıştırılabilir/test-bağlı; örnekler sentetik veri kullanır; geçit yeşil.
+- **Worker:** `mimo-worker`.
+
+### M-44 — Türkçe/İngilizce Mesaj Tutarlılığı & Sözlük
+- **Boşluk:** Warning/error/`recommended_next_steps` mesajları TR/EN karışık ve tutarsız ton/terim içerebilir.
+- **Görevler:** Kullanıcıya-dönük tüm string'leri envanterle; tutarlı dil/ton kararı (terim sözlüğü, `docs/GLOSSARY.md`). Mesajları normalize et (hukuki terimler TR, teknik anahtarlar EN gibi bir kural). Kontrat anahtarları (JSON key) değişmez — yalnızca insan-okunur metin.
+- **Bitti sayılır:** Mesaj envanteri + sözlük mevcut; JSON anahtarları değişmedi (regresyon); ton tutarlı; geçit yeşil.
+- **Worker:** `controller` (kontrat-anahtar dokunulmazlığı), `mimo-worker`.
+
+## FAZ 12 — Fix & Sağlamlaştırma (M-45 → M-49)
+
+### M-45 — Ölü Kod & Duplikasyon Süpürmesi
+- **Boşluk:** Hızlı milestone üretiminde `pdf_extract` gibi yetim/duplike modüller oluşmuş olabilir (zaten bir tanesi temizlendi).
+- **Görevler:** Tüm modülleri import-grafiğiyle tara; hiç import edilmeyen public sembolleri, ölü dalları, kopya yardımcıları tespit et. Güvenli olanları kaldır veya birleştir. `vulture`-benzeri analiz (stdlib AST ile, ağır araç eklemeden).
+- **Bitti sayılır:** Ölü-kod raporu üretildi; güvenli kaldırmalar yapıldı; her kaldırma sonrası tam test paketi yeşil; davranış değişmedi.
+- **Worker:** `controller` (kaldırma güvenliği), `mimo-worker`.
+
+### M-46 — Edge-Case & Hata-Yolu Sertleştirme
+- **Boşluk:** Mutlu-yol testleri güçlü ama bozuk girdi/sınır durumları (boş string, dev belge, bozuk JSON, unicode aşırılık) eksik olabilir.
+- **Görevler:** Her modül için fuzz-benzeri sınır testleri (boş/None, çok büyük, hatalı kodlama, kötü-biçimli tarih/numara). Keşfedilen her çökmeyi structured `build_error`'a çevir (graceful degradation değişmezi). Property-based testler (stdlib `random` seed'li, deterministik).
+- **Bitti sayılır:** Sınır testleri eklendi; hiçbir girdi exception fırlatmıyor (hepsi build_error); deterministik; geçit yeşil.
+- **Worker:** `controller` (hata sınıflandırma), `mimo-worker`.
+
+### M-47 — Tip Açıklamaları & Statik Analiz Geçidi
+- **Boşluk:** Tip ipuçları kısmi olabilir; statik tip denetimi CI'da yok.
+- **Görevler:** Public imzalara eksik tip ipuçlarını tamamla; opsiyonel `mypy`/`pyright` (dev-only) geçidini ekle ve mevcut hataları sıfırla. CI'a opsiyonel tip-check job'ı. Runtime davranışı değişmez.
+- **Bitti sayılır:** Tip denetimi temiz (seçilen sıkılıkta); dev bağımlılığı, runtime'a sızmıyor; CI job opsiyonel.
+- **Worker:** `controller` (tip tasarımı), `mimo-worker`.
+
+### M-48 — Bilinen Sınırlamalar & Hata Kataloğu Konsolidasyonu
+- **Boşluk:** `KNOWN_ERROR_CODES` ve per-source `known_limitations` dağınık; tek bir referans yok.
+- **Görevler:** Tüm hata kodlarını + kaynak sınırlamalarını tek yerde topla (`docs/ERROR_CATALOG.md`, koddan üretilen). Her kod için anlam + önerilen aksiyon. `emsal-mcp error-catalog` CLI ile koddan canlı üretim. Yetim/kullanılmayan kodları ayıkla.
+- **Bitti sayılır:** Katalog koddan üretiliyor (elle-senkron değil); her kod dokümante; kullanılmayan kod yok; geçit yeşil.
+- **Worker:** `mimo-worker`.
+
+### M-49 — Determinizm & Flaky-Test Denetimi
+- **Boşluk:** Zaman/sıralama/hash'e bağlı testler ara sıra flaky olabilir; tekrar-çalıştırma kararlılığı doğrulanmadı.
+- **Görevler:** Test paketini çok-seed/çok-tekrar (ör. `pytest -p randomly`-benzeri, deterministik seed listesiyle) koştur; sıralama-bağımlı veya zaman-bağımlı flaky testleri tespit et ve sabitle. Zaman/UUID/rastgele kaynaklarını enjekte-edilebilir yap.
+- **Bitti sayılır:** Test paketi N farklı sırada/seed'de yeşil; flaky kaynak kalmadı (rapor); geçit yeşil.
+- **Worker:** `controller` (determinizm tasarımı), `mimo-worker`.
+
+## FAZ 13 — Performans & Optimizasyon (M-50 → M-53)
+
+### M-50 — Cache Sorgu & İndeks Optimizasyonu
+- **Boşluk:** SQLite sorguları büyük cache'te yavaşlayabilir; eksik index'ler, N+1 erişimler olabilir.
+- **Görevler:** Sık sorguları `EXPLAIN QUERY PLAN` ile profille; eksik index'leri ekle (migration ile, additive); N+1 erişimleri toplu-sorguya çevir. M-31 benchmark ile öncesi/sonrası ölç.
+- **Bitti sayılır:** Hedef sorgularda ölçülen iyileşme (benchmark kanıtı); migration idempotent; sonuçlar bit-aynı (regresyon yok); geçit yeşil.
+- **Worker:** `controller` (şema/index), `mimo-worker`.
+
+### M-51 — Bellek & Büyük-Belge Akış İşleme
+- **Boşluk:** Büyük belgeler/bundle'lar tamamen belleğe yükleniyor olabilir; çok-belge işlemde tepe bellek yüksek.
+- **Görevler:** Büyük metin işleme yollarını (semantic index, export, citation extraction) akışlı/parça-parça yap; gereksiz tam-kopyaları azalt. Tepe-bellek ölçümü benchmark'a eklenir.
+- **Bitti sayılır:** Büyük-girdi senaryosunda tepe bellek ölçülüp düşürüldü; çıktı bit-aynı; geçit yeşil.
+- **Worker:** `controller`, `mimo-worker`.
+
+### M-52 — Başlangıç (Import) Süresi Optimizasyonu
+- **Boşluk:** `server.py`/`cli.py` modül yükünde ağır/opsiyonel modülleri eager import edip başlangıcı yavaşlatıyor olabilir.
+- **Görevler:** Import grafiğini ölç; opsiyonel/ağır modülleri (embeddings, pdf, api) lazy import'a çevir; CLI ilk-yanıt süresini düşür. Soğuk-başlangıç benchmark'ı.
+- **Bitti sayılır:** `emsal-mcp --help` ve server import süresi ölçülüp iyileşti; lazy import'lar davranışı bozmuyor; geçit yeşil.
+- **Worker:** `mimo-worker`.
+
+### M-53 — Algoritma Sıcak-Nokta Optimizasyonu
+- **Boşluk:** Saf-Python TF-IDF/cosine, citation regex, dedup gruplaması büyük korpusta sıcak-nokta olabilir.
+- **Görevler:** M-31 benchmark'la sıcak-noktaları belirle; algoritmik iyileştir (önceden-hesap, daha iyi veri yapısı, gereksiz tekrar eleme) — **stdlib içinde kalarak**. Mikro-optimizasyon değil, ölçülen darboğaz.
+- **Bitti sayılır:** Hedef fonksiyonlarda ölçülen hızlanma (benchmark); sonuçlar regresyonsuz; geçit yeşil.
+- **Worker:** `controller` (algoritma), `mimo-worker`.
+
+## FAZ 14 — Sürdürülebilirlik & v3.1.0 (M-54 → M-56)
+
+### M-54 — Test Suite Hız & Organizasyon Optimizasyonu
+- **Boşluk:** 1400+ test ~75 sn; bazıları gereksiz yavaş (gerçek-şekilli I/O, tekrar kurulum) olabilir.
+- **Görevler:** Yavaş testleri profille (`--durations`); ortak fixture'ları paylaş (session-scope); gereksiz disk/DB kurulumlarını azalt; testleri mantıklı işaretle (`unit`/`integration` marker). Paralel-çalıştırma uyumu.
+- **Bitti sayılır:** Test süresi ölçülüp düşürüldü; kapsam aynı/arttı; marker'lar mevcut; geçit yeşil.
+- **Worker:** `mimo-worker`.
+
+### M-55 — Bağımlılık & Güvenlik Hijyeni
+- **Boşluk:** Opsiyonel extra'lar (embeddings/ocr/api) sürüm-kilitsiz olabilir; bilinen-zafiyet taraması yok.
+- **Görevler:** Tüm extra'lara makul alt-sınır + uyumlu üst-sınır; `pip-audit`-benzeri kontrol (dev/CI opsiyonel). Lisans uyumu notu (`docs/LICENSES.md`). Core'un hâlâ sıfır-runtime-bağımlılık olduğunu doğrula.
+- **Bitti sayılır:** Extra sürüm aralıkları tanımlı; denetim CI'da opsiyonel; core bağımlılıksızlığı testle kanıtlı; geçit yeşil.
+- **Worker:** `controller`, `mimo-worker`.
+
+### M-56 — Konsolidasyon & v3.1.0 Release
+- **Görevler:** FAZ 11-14 çıktısını gözden geçir; `CHANGELOG.md`'ye toplu özet; doküman tutarlılığını son-denetle; `version_bump --minor` ile 3.0.x → 3.1.0; release notes üret.
+- **Bitti sayılır:** Tüm M-41→M-55 tamam; changelog güncel; v-readiness yeşil; sürüm 3.1.0. **NOT: commit/tag kullanıcı onayı ister.**
+- **Worker:** `controller`.
+
+---
+
 ## İlerleme Takibi
 
 | Faz | Milestone | Durum |
@@ -431,3 +544,19 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 10 | M-38 Golden corpus testleri | [x] |
 | 10 | M-39 Atıf grafiği export | [x] |
 | 10 | M-40 Docs sitesi + v3.0.0 | [x] |
+| 11 | M-41 Doküman doğruluk/drift | [ ] |
+| 11 | M-42 Docstring/API referans | [ ] |
+| 11 | M-43 Cookbook/reçeteler | [ ] |
+| 11 | M-44 TR/EN mesaj tutarlılık | [ ] |
+| 12 | M-45 Ölü kod süpürme | [ ] |
+| 12 | M-46 Edge-case sertleştirme | [ ] |
+| 12 | M-47 Tip açıklama/statik analiz | [ ] |
+| 12 | M-48 Hata kataloğu konsolidasyon | [ ] |
+| 12 | M-49 Determinizm/flaky denetim | [ ] |
+| 13 | M-50 Cache sorgu/index optim. | [ ] |
+| 13 | M-51 Bellek/akış işleme | [ ] |
+| 13 | M-52 Başlangıç süresi optim. | [ ] |
+| 13 | M-53 Algoritma sıcak-nokta | [ ] |
+| 14 | M-54 Test suite hız/organizasyon | [ ] |
+| 14 | M-55 Bağımlılık/güvenlik hijyeni | [ ] |
+| 14 | M-56 Konsolidasyon + v3.1.0 | [ ] |
