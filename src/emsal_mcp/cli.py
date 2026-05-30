@@ -1740,6 +1740,16 @@ def benchmark_cmd(
     _print(run_benchmarks_impl(corpus_size=corpus_size), json_out)
 
 
+@app.command("error-catalog")
+def error_catalog(
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """List all known error codes used in the codebase."""
+    from .server_utils import get_error_codes
+
+    _print(get_error_codes(), json_out)
+
+
 # ── Research Watchlist subcommands (M-36) ─────────────────────────────────
 
 

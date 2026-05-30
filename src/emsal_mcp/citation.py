@@ -359,7 +359,7 @@ def extract_citation_candidates(
     conf_order = {"high": 0, "medium": 1, "low": 2}
     unique.sort(key=lambda c: (conf_order.get(c.confidence, 3), -sum(1 for f in [c.court, c.chamber, c.date, c.esas_no, c.karar_no] if f)))
 
-    return unique[:limit]
+    return unique[:int(limit)]
 
 
 # ---------------------------------------------------------------------------
