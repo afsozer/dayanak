@@ -548,7 +548,7 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 11 | M-42 Docstring/API referans | [x] |
 | 11 | M-43 Cookbook/reçeteler | [x] |
 | 11 | M-44 TR/EN mesaj tutarlılık | [x] |
-| 12 | M-45 Ölü kod süpürme | [ ] |
+| 12 | M-45 Ölü kod süpürme | [x] |
 | 12 | M-46 Edge-case sertleştirme | [ ] |
 | 12 | M-47 Tip açıklama/statik analiz | [ ] |
 | 12 | M-48 Hata kataloğu konsolidasyon | [ ] |
