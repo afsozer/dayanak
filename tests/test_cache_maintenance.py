@@ -428,7 +428,7 @@ class TestMCPSchemaVersionInStats:
         assert hasattr(Cache, "_ensure_schema_version")
 
     def test_cache_schema_version_constant(self):
-        assert CACHE_SCHEMA_VERSION == 3
+        assert CACHE_SCHEMA_VERSION == 4
 
 
 class TestCLIExecution:

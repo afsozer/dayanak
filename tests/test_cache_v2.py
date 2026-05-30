@@ -357,7 +357,7 @@ class TestCacheMaintenance:
                        full_text="text", content_status=ContentStatus.FULL_TEXT)
         cache.store_document(doc)
         stats = cache.cache_stats()
-        assert stats["schema_version"] == 3
+        assert stats["schema_version"] == 4
         assert stats["documents_v2"] == 1
         assert stats["documents_legacy"] == 1
         assert stats["db_path"] == str(tmp_path / "test.sqlite3")

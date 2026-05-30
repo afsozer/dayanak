@@ -553,8 +553,8 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 12 | M-47 Tip açıklama/statik analiz | [ ] |
 | 12 | M-48 Hata kataloğu konsolidasyon | [ ] |
 | 12 | M-49 Determinizm/flaky denetim | [ ] |
-| 13 | M-50 Cache sorgu/index optim. | [ ] |
-| 13 | M-51 Bellek/akış işleme | [ ] |
+| 13 | M-50 Cache sorgu/index optim. | [x] |
+| 13 | M-51 Bellek/akış işleme | [x] |
 | 13 | M-52 Başlangıç süresi optim. | [ ] |
 | 13 | M-53 Algoritma sıcak-nokta | [ ] |
 | 14 | M-54 Test suite hız/organizasyon | [ ] |

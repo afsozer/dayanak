@@ -235,26 +235,25 @@ def _ensure_search_vectors(db: sqlite3.Connection) -> bool:
 def _compute_tfidf_vectors(db: sqlite3.Connection, limit: int = 1000) -> int:
     """Compute TF-IDF vectors for all documents with text content.
 
-    Reads documents from documents_v2, tokenizes their text, computes IDF
-    across the corpus, builds per-document TF-IDF vectors, and stores them
-    in the search_vectors table.
+    Reads documents from documents_v2 using cursor iteration (one row at a time)
+    to minimize peak memory, tokenizes their text, computes IDF across the
+    corpus, builds per-document TF-IDF vectors, and stores them in the
+    search_vectors table.
 
     Returns the number of documents indexed.
     """
-    rows = db.execute(
+    # M-51: Use cursor iteration instead of fetchall() to reduce peak memory.
+    # First pass: tokenize and build document frequency (DF).
+    cursor = db.execute(
         "SELECT document_id, source, full_text, markdown FROM documents_v2 LIMIT ?",
         (limit,),
-    ).fetchall()
+    )
 
-    if not rows:
-        return 0
-
-    # Step 1: tokenize all documents and compute document frequency
     doc_tokens: list[tuple[str, str, Counter]] = []  # (doc_id, source, token_counter)
     df: Counter = Counter()  # document frequency per term
     n_docs = 0
 
-    for row in rows:
+    for row in cursor:
         doc_id, source, full_text, markdown = row
         text = full_text or markdown or ""
         if not text.strip():
@@ -448,16 +447,21 @@ def _load_idf_from_vectors(db: sqlite3.Connection) -> dict[str, float]:
     Uses the stored vector norms and term frequencies to derive an approximate
     IDF.  For a small corpus this is good enough; for larger ones the exact IDF
     from _compute_tfidf_vectors is preferred (and already stored in vectors).
+    M-51: uses cursor iteration to reduce peak memory.
     """
-    rows = db.execute("SELECT vector_json FROM search_vectors").fetchall()
-    if not rows:
-        return {}
-    n_docs = len(rows)
+    cursor = db.execute("SELECT vector_json FROM search_vectors")
+    n_docs = 0
     df: Counter = Counter()
-    for (vjson,) in rows:
-        vec = json.loads(vjson)
+    for (vjson,) in cursor:
+        try:
+            vec = json.loads(vjson)
+        except (json.JSONDecodeError, TypeError):
+            continue
         for term in vec:
             df[term] += 1
+        n_docs += 1
+    if n_docs == 0:
+        return {}
     idf: dict[str, float] = {}
     for term, freq in df.items():
         idf[term] = math.log(n_docs / freq) if freq > 0 else 0.0
@@ -597,12 +601,12 @@ def semantic_search(
                 "version": SEMANTIC_VERSION,
             }
 
-        # Load all vectors
-        rows = db.execute("SELECT document_id, source, vector_json FROM search_vectors").fetchall()
+        # Load all vectors — M-51: use cursor iteration
+        cursor = db.execute("SELECT document_id, source, vector_json FROM search_vectors")
 
         scored: list[dict[str, Any]] = []
         any_highlighted = False
-        for row in rows:
+        for row in cursor:
             doc_id, source, vjson = row
             doc_vec = json.loads(vjson)
             cosine_score = _cosine_similarity(query_vec, doc_vec)
@@ -797,8 +801,8 @@ def hybrid_search(
             idf = _load_idf_from_vectors(db)
             query_vec = _build_query_vector(query, idf)
             if query_vec:
-                rows = db.execute("SELECT document_id, source, vector_json FROM search_vectors").fetchall()
-                for row in rows:
+                cursor = db.execute("SELECT document_id, source, vector_json FROM search_vectors")
+                for row in cursor:
                     doc_id, source, vjson = row
                     doc_vec = json.loads(vjson)
                     cs = _cosine_similarity(query_vec, doc_vec)
@@ -1131,17 +1135,18 @@ def build_embedding_index(
                 "Install fastembed or use local-hash-v1.",
             )
 
-        # Get documents with text content
-        rows = db.execute(
+        # Get documents with text content — M-51: use cursor iteration
+        cursor = db.execute(
             """
             SELECT document_id, source, full_text, markdown, content_hash
             FROM documents_v2
             WHERE (full_text IS NOT NULL AND full_text != '')
                OR (markdown IS NOT NULL AND markdown != '')
         """
-        ).fetchall()
+        )
 
-        if not rows:
+        first_row = cursor.fetchone()
+        if not first_row:
             return {
                 "ok": True,
                 "documents_indexed": 0,
@@ -1153,7 +1158,9 @@ def build_embedding_index(
         indexed = 0
         skipped = 0
         t0 = time.time()
-        for row in rows:
+
+        def _process_emb_row(row: Any) -> None:
+            nonlocal indexed, skipped
             doc_id = row["document_id"]
             source = row["source"]
             text = row["full_text"] or row["markdown"] or ""
@@ -1167,7 +1174,7 @@ def build_embedding_index(
                 ).fetchone()
                 if existing and existing["content_hash"] == content_hash:
                     skipped += 1
-                    continue
+                    return
 
             # Embed
             vec = prov.embed_text(text)
@@ -1183,6 +1190,11 @@ def build_embedding_index(
                 (doc_id, source, prov.id, prov.dimensions, blob, norm, content_hash),
             )
             indexed += 1
+
+        # M-51: process first row, then iterate remaining via cursor
+        _process_emb_row(first_row)
+        for row in cursor:
+            _process_emb_row(row)
 
         db.commit()
         elapsed = round(time.time() - t0, 3)
@@ -1258,14 +1270,14 @@ def embedding_search(
                 "version": EMBEDDING_VERSION,
             }
 
-        # Load all embeddings for this provider (brute force)
-        rows = db.execute(
+        # Load all embeddings for this provider (brute force) — M-51: cursor iteration
+        cursor = db.execute(
             "SELECT document_id, source, vector, norm, dim FROM embedding_vectors WHERE provider_id=?",
             (prov.id,),
-        ).fetchall()
+        )
 
         scores: list[dict[str, Any]] = []
-        for row in rows:
+        for row in cursor:
             vec = unpack_vector(row["vector"], row["dim"])
             dot = sum(q_vec[i] * vec[i] for i in range(min(len(q_vec), len(vec))))
             denom = q_norm * row["norm"]

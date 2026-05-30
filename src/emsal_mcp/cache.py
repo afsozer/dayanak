@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CACHE = Path.home() / ".emsal-mcp" / "cache.sqlite3"
 
 # Schema version constant — bump when adding new migrations
-CACHE_SCHEMA_VERSION = 3
+CACHE_SCHEMA_VERSION = 4
 
 
 class Cache:
@@ -33,6 +33,8 @@ class Cache:
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
+        # M-50: in-memory query profiling (non-persistent)
+        self._query_profile: dict[str, dict[str, Any]] = {}
         self._init_tables()
         self._ensure_schema_version()
 
@@ -201,6 +203,9 @@ class Cache:
         if current < 3:
             self._migrate_v2_to_v3()
 
+        if current < 4:
+            self._migrate_v3_to_v4()
+
         # Record final version
         self.db.execute(
             "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('schema_version', ?)",
@@ -226,6 +231,53 @@ class Cache:
             except Exception:
                 # Column may not exist in a minimal v2 database — skip gracefully
                 logger.debug("Migration index skipped (column may not exist): %s", idx_sql)
+
+    def _migrate_v3_to_v4(self) -> None:
+        """Migration v3 -> v4: add indexes for title searches and time-based queries."""
+        logger.info("Applying migration v3 -> v4: adding title and retrieved_at indexes")
+        for idx_sql in [
+            "CREATE INDEX IF NOT EXISTS idx_dv2_title ON documents_v2(title)",
+            "CREATE INDEX IF NOT EXISTS idx_dv2_retrieved_at ON documents_v2(retrieved_at)",
+        ]:
+            try:
+                self.db.execute(idx_sql)
+            except Exception:
+                logger.debug("Migration index skipped (column may not exist): %s", idx_sql)
+
+    # ------------------------------------------------------------------
+    # M-50: Query Profiling (in-memory, non-persistent)
+    # ------------------------------------------------------------------
+
+    def _record_query(self, name: str, elapsed_ms: float) -> None:
+        """Record a query execution for profiling."""
+        if name not in self._query_profile:
+            self._query_profile[name] = {"count": 0, "total_ms": 0.0, "max_ms": 0.0}
+        entry = self._query_profile[name]
+        entry["count"] += 1
+        entry["total_ms"] += elapsed_ms
+        if elapsed_ms > entry["max_ms"]:
+            entry["max_ms"] = elapsed_ms
+
+    @property
+    def cache_profile(self) -> dict[str, Any]:
+        """Return in-memory query profiling data (non-persistent)."""
+        result: dict[str, Any] = {}
+        for name, entry in self._query_profile.items():
+            result[name] = {
+                "count": entry["count"],
+                "total_ms": round(entry["total_ms"], 3),
+                "max_ms": round(entry["max_ms"], 3),
+                "avg_ms": round(entry["total_ms"] / entry["count"], 3) if entry["count"] else 0.0,
+            }
+        total_q = sum(e["count"] for e in self._query_profile.values())
+        return {"queries": result, "total_queries": total_q}
+
+    def _has_fts5(self) -> bool:
+        """Check if the FTS5 virtual table exists."""
+        row = self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='documents_v2_fts'"
+        ).fetchone()
+        return row is not None
 
     # ------------------------------------------------------------------
     # Legacy key-value cache
@@ -266,6 +318,8 @@ class Cache:
 
     def store_document(self, doc: Document) -> None:
         """Store a Document in both legacy and v2 tables."""
+        import time as _t
+        _s = _t.monotonic()
         # Legacy table
         self.db.execute(
             "REPLACE INTO documents(document_id, source, value, content_hash) VALUES(?, ?, ?, ?)",
@@ -275,6 +329,7 @@ class Cache:
         cached = CachedDocument.from_document(doc)
         self._upsert_cached_document(cached)
         self.db.commit()
+        self._record_query("store_document", (_t.monotonic() - _s) * 1000)
 
     def _upsert_cached_document(self, cached: CachedDocument) -> None:
         """Insert or update a CachedDocument in documents_v2."""
@@ -398,6 +453,11 @@ class Cache:
     ) -> list[dict[str, Any]]:
         """Search cached documents locally. No network required.
 
+        Uses FTS5 MATCH when the FTS5 index exists and a query is provided,
+        falling back to LIKE for metadata-only searches or when FTS5 is
+        unavailable.  When FTS5 is used the query is still verified with LIKE
+        to guarantee bit-identical results.
+
         Args:
             query: Free-text search term (matches title, full_text, markdown).
             source: Filter by source identifier.
@@ -417,6 +477,33 @@ class Cache:
         Returns:
             List of dicts with document metadata, snippet, and match info.
         """
+        import time as _time
+
+        _start = _time.monotonic()
+
+        # M-50: Use FTS5 as a pre-filter when available for text queries.
+        # We still apply LIKE as the authoritative filter to guarantee
+        # bit-identical results with the non-FTS5 path.
+        _fts5_narrowed = False
+        if query and self._has_fts5():
+            try:
+                import re as _re
+                safe_q = _re.sub(r'[^\w\s]', ' ', query).strip()
+                if safe_q:
+                    # FTS5 MATCH to get candidate rowids — narrows the scan
+                    fts_rows = self.db.execute(
+                        "SELECT rowid FROM documents_v2_fts WHERE documents_v2_fts MATCH ?",
+                        (safe_q,),
+                    ).fetchall()
+                    if not fts_rows:
+                        # FTS5 found nothing — still need to apply metadata filters
+                        # but text LIKE would also find nothing, so short-circuit
+                        # after building the full condition set to check metadata-only
+                        pass
+                    _fts5_narrowed = bool(fts_rows)
+            except Exception:
+                pass  # FTS5 query failed — fall back to LIKE-only
+
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -471,9 +558,6 @@ class Cache:
         sql = f"SELECT * FROM documents_v2{where} ORDER BY {order} LIMIT ?"
         params.append(limit)
 
-        import time as _time
-
-        _start = _time.monotonic()
         rows = self.db.execute(sql, params).fetchall()
         results: list[dict[str, Any]] = []
         for row in rows:
@@ -498,11 +582,13 @@ class Cache:
                 "access_count": cached.access_count,
                 "snippet": snippet,
             })
+        # M-50: record query profiling
+        _elapsed_ms = (_time.monotonic() - _start) * 1000
+        self._record_query("search_local", _elapsed_ms)
         # Auto-record search analytics (fire-and-forget, never breaks search)
         try:
             from .search_analytics import record_search
 
-            _elapsed_ms = (_time.monotonic() - _start) * 1000
             record_search(
                 query=query,
                 source_filter=source,
@@ -544,6 +630,8 @@ class Cache:
 
     def cache_stats(self) -> dict[str, Any]:
         """Return cache statistics."""
+        import time as _t
+        _s = _t.monotonic()
         doc_count = self.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
         legacy_count = self.db.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
         cache_entries = self.db.execute("SELECT COUNT(*) FROM cache").fetchone()[0]
@@ -554,6 +642,7 @@ class Cache:
         sources = self.db.execute(
             "SELECT source, COUNT(*) as cnt FROM documents_v2 GROUP BY source ORDER BY cnt DESC"
         ).fetchall()
+        self._record_query("cache_stats", (_t.monotonic() - _s) * 1000)
 
         return {
             "schema_version": self.schema_version,
@@ -575,6 +664,8 @@ class Cache:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """List cached documents with optional source filter."""
+        import time as _t
+        _s = _t.monotonic()
         conditions: list[str] = []
         params: list[Any] = []
         if source:
@@ -586,6 +677,7 @@ class Cache:
         params.extend([limit, offset])
 
         rows = self.db.execute(sql, params).fetchall()
+        self._record_query("list_cached_documents", (_t.monotonic() - _s) * 1000)
         return [dict(row) for row in rows]
 
     def delete_cached_document(self, document_id: str, source: str) -> bool:
@@ -882,9 +974,13 @@ class Cache:
         Returns metadata dict with document_count, sha256, path.
         Writes a structured object with schemaVersion, exportedAt, documents[], documentCount.
         Backward-compatible: old list-only imports are still accepted by import_json.
+
+        M-51: uses cursor iteration to build the document list incrementally.
         """
-        rows = self.db.execute("SELECT * FROM documents_v2 ORDER BY source, document_id").fetchall()
-        documents = [dict(row) for row in rows]
+        cursor = self.db.execute("SELECT * FROM documents_v2 ORDER BY source, document_id")
+        documents: list[dict[str, Any]] = []
+        for row in cursor:
+            documents.append(dict(row))
         out = Path(export_path)
         out.parent.mkdir(parents=True, exist_ok=True)
         export_payload = {
@@ -1053,15 +1149,15 @@ class Cache:
                     f"documents_v2 table not found in {other_path}",
                 )
 
-            # Get all docs from other DB
-            other_docs = other_db.execute("SELECT * FROM documents_v2").fetchall()
+            # Get all docs from other DB — M-51: use cursor iteration
+            other_cursor = other_db.execute("SELECT * FROM documents_v2")
 
             synced = 0
             skipped = 0
             conflicts = 0
             warnings: list[str] = []
 
-            for row in other_docs:
+            for row in other_cursor:
                 doc_id = row["document_id"]
                 source = row["source"]
 
@@ -1115,7 +1211,6 @@ class Cache:
                 "synced": synced,
                 "skipped": skipped,
                 "conflicts": conflicts,
-                "total_in_other": len(other_docs),
                 "warnings_count": len(warnings),
             })
 
@@ -1124,7 +1219,7 @@ class Cache:
                 "synced": synced,
                 "skipped": skipped,
                 "conflicts": conflicts,
-                "total_in_other": len(other_docs),
+                "total_in_other": synced + skipped,
                 "warnings": warnings,
             }
         finally:

@@ -173,8 +173,8 @@ def build_citation_graph(
     try:
         _ensure_edge_table(c)
 
-        # 1. Select documents with content
-        rows = c.db.execute(
+        # 1. Select documents with content — M-51: use cursor iteration
+        cursor = c.db.execute(
             """SELECT document_id, source, title, court, chamber, decision_date,
                       esas_no, karar_no, full_text, markdown
                FROM documents_v2
@@ -182,9 +182,10 @@ def build_citation_graph(
                ORDER BY last_accessed_at DESC
                LIMIT ?""",
             (limit_docs,),
-        ).fetchall()
+        )
 
-        if not rows:
+        first_row = cursor.fetchone()
+        if not first_row:
             return {
                 "ok": True,
                 "edges_created": 0,
@@ -199,14 +200,18 @@ def build_citation_graph(
         edges_created = 0
         citations_found = 0
         matches_found = 0
+        docs_processed = 0
         conf_dist: dict[str, int] = {"high": 0, "medium": 0, "low": 0}
 
-        for row in rows:
+        def _process_row(row: Any) -> None:
+            nonlocal edges_created, citations_found, matches_found, docs_processed
             doc_id = row["document_id"]
             source = row["source"]
             text = row["full_text"] or row["markdown"] or ""
             if not text or len(text.strip()) < 20:
-                continue
+                return
+
+            docs_processed += 1
 
             # Extract citation candidates
             candidates = extract_citation_candidates(text, limit=10)
@@ -239,9 +244,14 @@ def build_citation_graph(
                     )
                     edges_created += 1
 
+        # M-51: process first row, then iterate remaining via cursor
+        _process_row(first_row)
+        for row in cursor:
+            _process_row(row)
+
         c.db.commit()
         c.log("build_citation_graph", {
-            "docs_processed": len(rows),
+            "docs_processed": docs_processed,
             "citations_found": citations_found,
             "matches_found": matches_found,
             "edges_created": edges_created,
@@ -250,7 +260,7 @@ def build_citation_graph(
         return {
             "ok": True,
             "edges_created": edges_created,
-            "docs_processed": len(rows),
+            "docs_processed": docs_processed,
             "citations_found": citations_found,
             "matches_found": matches_found,
             "confidence_distribution": conf_dist,
