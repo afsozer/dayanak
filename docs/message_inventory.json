@@ -1,0 +1,656 @@
+{
+  "generated_by": "scripts/inventory_messages.py",
+  "source_dir": "C:\\Users\\Sozer\\Emsal-mcp\\src\\emsal_mcp",
+  "module_count": 18,
+  "total_unique_messages": 101,
+  "category_counts": {
+    "warning": 62,
+    "user_message": 21,
+    "recommended_next_step": 17,
+    "error_message": 1
+  },
+  "modules": {
+    "argument": [
+      {
+        "line": 322,
+        "context": "warnings.append",
+        "message": "No arguments found in argument-map.md",
+        "category": "warning"
+      },
+      {
+        "line": 327,
+        "context": "warnings.append",
+        "message": "No petition_ready authorities in pack; all claims lack support",
+        "category": "warning"
+      },
+      {
+        "line": 397,
+        "context": "warnings dict",
+        "message": "No supporting authorities provided",
+        "category": "warning"
+      }
+    ],
+    "cache": [
+      {
+        "line": 1037,
+        "context": "f-string message",
+        "message": "Cache database not found: {...}",
+        "category": "user_message"
+      }
+    ],
+    "chamber": [
+      {
+        "line": 167,
+        "context": "recommended_next_steps",
+        "message": "Use store_document() to add documents.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 238,
+        "context": "recommended_next_steps",
+        "message": "Check database accessibility.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 316,
+        "context": "recommended_next_steps",
+        "message": "Check that documents exist with this chamber metadata.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 578,
+        "context": "recommended_next_steps",
+        "message": "Ensure the target chamber exists in cached documents.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 592,
+        "context": "recommended_next_steps",
+        "message": "Ensure the target chamber has documents with title text.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 605,
+        "context": "recommended_next_steps",
+        "message": "No chambers available for comparison.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 372,
+        "context": "warnings.append",
+        "message": "No documents with full content available for this chamber.",
+        "category": "warning"
+      },
+      {
+        "line": 375,
+        "context": "warnings.append",
+        "message": "No meaningful keywords could be extracted from document titles.",
+        "category": "warning"
+      },
+      {
+        "line": 480,
+        "context": "warnings.append",
+        "message": "Could not parse any years from decision_date fields.",
+        "category": "warning"
+      },
+      {
+        "line": 585,
+        "context": "warnings.append",
+        "message": "Target chamber has no extractable keywords for comparison.",
+        "category": "warning"
+      },
+      {
+        "line": 647,
+        "context": "warnings.append",
+        "message": "No similar chambers found based on keyword overlap.",
+        "category": "warning"
+      }
+    ],
+    "citation": [
+      {
+        "line": 706,
+        "context": "recommended_next_steps",
+        "message": "Dosya yolunu kontrol edin.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 721,
+        "context": "recommended_next_steps",
+        "message": "text veya file_path parametresi verin.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 263,
+        "context": "warnings.append",
+        "message": "Mahkeme bilgisi tespit edilemedi.",
+        "category": "warning"
+      },
+      {
+        "line": 265,
+        "context": "warnings.append",
+        "message": "Daire/bölüm bilgisi tespit edilemedi.",
+        "category": "warning"
+      },
+      {
+        "line": 267,
+        "context": "warnings.append",
+        "message": "Karar tarihi tespit edilemedi.",
+        "category": "warning"
+      },
+      {
+        "line": 269,
+        "context": "warnings.append",
+        "message": "Esas numarası tespit edilemedi.",
+        "category": "warning"
+      },
+      {
+        "line": 271,
+        "context": "warnings.append",
+        "message": "Karar numarası tespit edilemedi.",
+        "category": "warning"
+      },
+      {
+        "line": 452,
+        "context": "warnings.append",
+        "message": "Mahkeme bilgisi eksik; kaynaktan doğrulayın.",
+        "category": "warning"
+      },
+      {
+        "line": 454,
+        "context": "warnings.append",
+        "message": "Daire bilgisi eksik.",
+        "category": "warning"
+      },
+      {
+        "line": 456,
+        "context": "warnings.append",
+        "message": "Karar tarihi eksik.",
+        "category": "warning"
+      },
+      {
+        "line": 458,
+        "context": "warnings.append",
+        "message": "Esas numarası eksik.",
+        "category": "warning"
+      },
+      {
+        "line": 460,
+        "context": "warnings.append",
+        "message": "Karar numarası eksik.",
+        "category": "warning"
+      },
+      {
+        "line": 462,
+        "context": "warnings.append",
+        "message": "Kaynak URL eksik; resmi doğrulama yapılamaz.",
+        "category": "warning"
+      },
+      {
+        "line": 738,
+        "context": "warnings dict",
+        "message": "Metinde hukuki referans kalıbı bulunamadı.",
+        "category": "warning"
+      },
+      {
+        "line": 698,
+        "context": "f-string message",
+        "message": "Dosya bulunamadı: {...}",
+        "category": "user_message"
+      }
+    ],
+    "citation_graph": [
+      {
+        "line": 195,
+        "context": "warnings dict",
+        "message": "Cached document bulunamadı; graf oluşturulamadı.",
+        "category": "warning"
+      },
+      {
+        "line": 345,
+        "context": "f-string message",
+        "message": "Belge bulunamadı: {...}:{...}",
+        "category": "user_message"
+      },
+      {
+        "line": 808,
+        "context": "f-string message",
+        "message": "Graf dışa aktarılamadı: {...}",
+        "category": "user_message"
+      }
+    ],
+    "dedup": [
+      {
+        "line": 498,
+        "context": "warnings dict",
+        "message": "No embedding vectors found. Run build_embedding_index() first.",
+        "category": "warning"
+      },
+      {
+        "line": 509,
+        "context": "warnings dict",
+        "message": "No embedding provider available. ",
+        "category": "warning"
+      },
+      {
+        "line": 509,
+        "context": "warnings dict",
+        "message": "Build dense index first with build_embedding_index().",
+        "category": "warning"
+      },
+      {
+        "line": 532,
+        "context": "warnings dict",
+        "message": "Need at least 2 indexed documents for fuzzy comparison.",
+        "category": "warning"
+      },
+      {
+        "line": 631,
+        "context": "warnings dict",
+        "message": "EMBEDDING-BASED SUGGESTIONS ONLY — merge requires explicit user confirmation.",
+        "category": "warning"
+      }
+    ],
+    "draft_diff": [
+      {
+        "line": 174,
+        "context": "warnings.append",
+        "message": "No differences found between the two drafts.",
+        "category": "warning"
+      }
+    ],
+    "embeddings": [
+      {
+        "line": 267,
+        "context": "warnings.append",
+        "message": "Cross-encoder not available (install fastembed for reranking)",
+        "category": "warning"
+      }
+    ],
+    "exporter": [
+      {
+        "line": 837,
+        "context": "recommended_next_steps",
+        "message": "Install LibreOffice and ensure soffice is on PATH.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 837,
+        "context": "recommended_next_steps",
+        "message": "Set EMSAL_UDF_TOOLKIT_DIR environment variable.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 323,
+        "context": "warnings.append",
+        "message": "word/document.xml missing from DOCX ZIP",
+        "category": "warning"
+      },
+      {
+        "line": 342,
+        "context": "warnings.append",
+        "message": "Could not verify disclaimer presence in DOCX",
+        "category": "warning"
+      },
+      {
+        "line": 552,
+        "context": "f-string message",
+        "message": "Dosya Sayısı: {manifest[",
+        "category": "user_message"
+      }
+    ],
+    "legislation": [
+      {
+        "line": 423,
+        "context": "recommended_next_steps",
+        "message": "Belgenin tam metnini resmi kaynaktan edinin.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 518,
+        "context": "recommended_next_steps",
+        "message": "Belge içeriği mevcut değil.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 410,
+        "context": "warnings.append",
+        "message": "Belge içeriği mevcut değil; madde araması yapılamaz.",
+        "category": "warning"
+      },
+      {
+        "line": 429,
+        "context": "warnings.append",
+        "message": "Belge metadata_only durumunda; içerik sınırlı olabilir.",
+        "category": "warning"
+      },
+      {
+        "line": 505,
+        "context": "warnings.append",
+        "message": "Belge içeriği mevcut değil.",
+        "category": "warning"
+      },
+      {
+        "line": 640,
+        "context": "warnings.append",
+        "message": "Metinde GENEL GEREKÇE veya MADDE GEREKÇELERİ bulunamadı.",
+        "category": "warning"
+      },
+      {
+        "line": 760,
+        "context": "warnings.append",
+        "message": "Mevzuat başlığı eksik.",
+        "category": "warning"
+      },
+      {
+        "line": 762,
+        "context": "warnings.append",
+        "message": "Mevzuat numarası eksik.",
+        "category": "warning"
+      },
+      {
+        "line": 764,
+        "context": "warnings.append",
+        "message": "Resmi Gazete tarihi eksik.",
+        "category": "warning"
+      },
+      {
+        "line": 129,
+        "context": "f-string message",
+        "message": "Kaynak bulunamadı: {source or ",
+        "category": "user_message"
+      },
+      {
+        "line": 135,
+        "context": "f-string message",
+        "message": "Belge alınamadı: {...}",
+        "category": "user_message"
+      },
+      {
+        "line": 243,
+        "context": "f-string message",
+        "message": "Kaynak bulunamadı: {...}",
+        "category": "user_message"
+      },
+      {
+        "line": 754,
+        "context": "assigned message",
+        "message": "Geçersiz belge formatı; Document modeli veya dict gerekli.",
+        "category": "user_message"
+      }
+    ],
+    "models": [
+      {
+        "line": 303,
+        "context": "assigned message",
+        "message": "Bu kayıt PDF bağlantısı içerir; alıntı için PDF metni ayrıca doğrulanmalıdır.",
+        "category": "user_message"
+      },
+      {
+        "line": 305,
+        "context": "assigned message",
+        "message": "Bu kayıtta tam metin yok; dilekçede kullanmadan önce resmi kaynaktan doğrulayın.",
+        "category": "user_message"
+      },
+      {
+        "line": 307,
+        "context": "assigned message",
+        "message": "Bu kaynak için okunabilir içerik alınamadı.",
+        "category": "user_message"
+      }
+    ],
+    "pdf_extractor": [
+      {
+        "line": 108,
+        "context": "warnings.append",
+        "message": "PDF has no pages.",
+        "category": "warning"
+      },
+      {
+        "line": 229,
+        "context": "warnings.append",
+        "message": "OCR produced no recognizable text from this PDF.",
+        "category": "warning"
+      },
+      {
+        "line": 290,
+        "context": "warnings dict",
+        "message": "OCR used because text layer was empty.",
+        "category": "warning"
+      },
+      {
+        "line": 290,
+        "context": "warnings dict",
+        "message": "warnings",
+        "category": "warning"
+      },
+      {
+        "line": 413,
+        "context": "warnings dict",
+        "message": "PDF text extracted, content upgraded to full_text. ",
+        "category": "warning"
+      },
+      {
+        "line": 413,
+        "context": "warnings dict",
+        "message": "Confidence set to 'low' — verify before quoting.",
+        "category": "warning"
+      },
+      {
+        "line": 690,
+        "context": "warnings dict",
+        "message": "PDF text extracted. Confidence set to 'low' — verify before quoting.",
+        "category": "warning"
+      },
+      {
+        "line": 87,
+        "context": "f-string message",
+        "message": "PDF content exceeds maximum size of {...} bytes.",
+        "category": "user_message"
+      },
+      {
+        "line": 88,
+        "context": "f-string message",
+        "message": "PDF size: {...} bytes.",
+        "category": "user_message"
+      },
+      {
+        "line": 216,
+        "context": "f-string message",
+        "message": "OCR text truncated at {...} chars.",
+        "category": "user_message"
+      },
+      {
+        "line": 247,
+        "context": "f-string message",
+        "message": "OCR extraction failed: {...}",
+        "category": "user_message"
+      },
+      {
+        "line": 596,
+        "context": "f-string message",
+        "message": "PDF file not found: {...}",
+        "category": "user_message"
+      }
+    ],
+    "petition": [
+      {
+        "line": 555,
+        "context": "warnings.append",
+        "message": "All documents excluded; pack contains no usable authorities.",
+        "category": "warning"
+      },
+      {
+        "line": 770,
+        "context": "warnings.append",
+        "message": "citation-bank.md references excluded documents",
+        "category": "warning"
+      },
+      {
+        "line": 1173,
+        "context": "warnings.append",
+        "message": "Hiçbir petition_ready belge yok; kullanılamaz draft oluşturulamaz.",
+        "category": "warning"
+      },
+      {
+        "line": 1177,
+        "context": "warnings.append",
+        "message": "Tüm belgeler excluded; geçerli kaynak bulunmamaktadır.",
+        "category": "warning"
+      }
+    ],
+    "release": [
+      {
+        "line": 246,
+        "context": "f-string message",
+        "message": "UDF toolkit not available: {udf_status.get(",
+        "category": "user_message"
+      },
+      {
+        "line": 308,
+        "context": "assigned message",
+        "message": "Yalnızca bir bump tipi seçin (--major, --minor, --patch).",
+        "category": "user_message"
+      }
+    ],
+    "research": [
+      {
+        "line": 361,
+        "context": "message dict key",
+        "message": "Dry run: no files changed.",
+        "category": "error_message"
+      }
+    ],
+    "safety": [
+      {
+        "line": 48,
+        "context": "warnings.append",
+        "message": "Bu pack yalnızca citation-safe belgeleri içerir; eksik metadata uydurulmaz.",
+        "category": "warning"
+      }
+    ],
+    "semantic": [
+      {
+        "line": 527,
+        "context": "recommended_next_steps",
+        "message": "Check database permissions and schema.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 722,
+        "context": "recommended_next_steps",
+        "message": "Set hybrid_weight to a value between 0.0 and 1.0.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 1045,
+        "context": "recommended_next_steps",
+        "message": "Check database accessibility.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 493,
+        "context": "warnings.append",
+        "message": "Existing FTS5 and vector indices were dropped for rebuild.",
+        "category": "warning"
+      },
+      {
+        "line": 503,
+        "context": "warnings.append",
+        "message": "No documents with text content found; vectors table is empty.",
+        "category": "warning"
+      },
+      {
+        "line": 785,
+        "context": "warnings.append",
+        "message": "FTS5 query failed; falling back to cosine-only scoring.",
+        "category": "warning"
+      },
+      {
+        "line": 793,
+        "context": "warnings.append",
+        "message": "No text content available for TF-IDF indexing.",
+        "category": "warning"
+      },
+      {
+        "line": 819,
+        "context": "warnings.append",
+        "message": "Dense embedding search failed; proceeding without dense signal.",
+        "category": "warning"
+      },
+      {
+        "line": 1002,
+        "context": "warnings.append",
+        "message": "FTS5 virtual table does not exist.",
+        "category": "warning"
+      },
+      {
+        "line": 1011,
+        "context": "warnings.append",
+        "message": "search_vectors table does not exist.",
+        "category": "warning"
+      },
+      {
+        "line": 574,
+        "context": "warnings dict",
+        "message": "No indexed documents found. Call build_semantic_index() first.",
+        "category": "warning"
+      },
+      {
+        "line": 594,
+        "context": "warnings dict",
+        "message": "Query produced no meaningful tokens.",
+        "category": "warning"
+      },
+      {
+        "line": 754,
+        "context": "warnings dict",
+        "message": "No documents in cache. Store documents first.",
+        "category": "warning"
+      },
+      {
+        "line": 1150,
+        "context": "warnings dict",
+        "message": "No documents with text content.",
+        "category": "warning"
+      }
+    ],
+    "udf": [
+      {
+        "line": 249,
+        "context": "recommended_next_steps",
+        "message": "Set EMSAL_UDF_TOOLKIT_DIR environment variable.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 249,
+        "context": "recommended_next_steps",
+        "message": "Install LibreOffice and ensure soffice is on PATH.",
+        "category": "recommended_next_step"
+      },
+      {
+        "line": 61,
+        "context": "warnings.append",
+        "message": "LibreOffice (soffice) PATH'te bulunamadi.",
+        "category": "warning"
+      },
+      {
+        "line": 63,
+        "context": "warnings.append",
+        "message": "unoconv PATH'te bulunamadi.",
+        "category": "warning"
+      },
+      {
+        "line": 136,
+        "context": "f-string message",
+        "message": "UDF bulunamadı: {...}",
+        "category": "user_message"
+      },
+      {
+        "line": 269,
+        "context": "f-string message",
+        "message": "UDF file not found: {...}",
+        "category": "user_message"
+      }
+    ]
+  }
+}
