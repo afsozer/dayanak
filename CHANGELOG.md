@@ -3,6 +3,115 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.0.0] — 2026-05-29
+
+### Added
+- **Golden Corpus & Snapshot Tests (`tests/fixtures/sample_decisions.json`, `tests/test_snapshots.py`):** 5 synthetic Turkish legal decisions for deterministic regression testing of citation extraction, petition pack, hybrid search, and legislation parsing.
+- **Documentation Index (`docs/INDEX.md`):** Comprehensive index of all 11 project documents.
+- **Version bumped to 3.0.0.**
+
+### Changed
+- All M-24 → M-40 milestones complete (17 milestones, 249 new tests).
+- Final test count: 1423 passed, 0 lint errors.
+
+---
+
+## [2.5.0] — 2026-05-29
+
+### Added
+- **PII Detection & Privacy (`privacy.py`):** TCKN, phone, email scanning with `scan_pii()`, `redact_pii()` (copy-safe, original unmodified), and `audit_privacy()` for file/directory scanning. MCP tools: `privacy_scan`, `privacy_redact`, `privacy_audit`. CLI: `emsal-mcp privacy scan/redact/audit`.
+- **Citation Graph Export (`citation_graph.py`):** `export_graph()` supporting JSON (node-link), DOT (Graphviz), and Mermaid formats with optional sub-graph export by document_id + BFS traversal. CLI: `emsal-mcp graph export --format json/dot/mermaid`. MCP tool: `export_citation_graph`.
+
+---
+
+## [2.4.0] — 2026-05-29
+
+### Added
+- **Multi-Machine Cache Sync (`cache.py`):** `sync_cache()` with additive merge, conflict resolution (newest `retrieved_at` wins), content hash mismatch detection. CLI: `emsal-mcp cache sync`. MCP tool: `sync_cache`.
+- **Adapter SDK (`docs/ADAPTER_SDK.md`, `sources/example_adapter.py`):** Documentation and example for creating custom source adapters. Plugin registry: `register_adapter()` for runtime adapter injection.
+- **Research Watchlist (`research_watch.py`):** `add_watch()`, `list_watches()`, `run_watch()` (diff report on new/changed docs), `remove_watch()`. Stores in `watch_configs` SQLite table. CLI: `emsal-mcp watch add/list/run/remove`. MCP: 4 tools.
+
+---
+
+## [2.3.0] — 2026-05-29
+
+### Added
+- **HTTP REST API Server (`api_server.py`):** stdlib `http.server`-based API with read-only endpoints: `/version`, `/health`, `/sources`, `/sources/smoke`, `/release/readiness`, `/cache/stats`. Optional auth via `EMSAL_API_TOKEN`. CORS headers. CLI: `emsal-mcp api serve`. Optional extra: `[api]`.
+- **Fuzzy Dedup v2 (`dedup.py`):** `find_fuzzy_duplicates()` using M-24 dense embedding cosine similarity + date proximity. Embedding similarity only SUGGESTS candidates — never auto-merges. Excludes M-09 cluster members. CLI: `emsal-mcp cache fuzzy-duplicates`.
+- **Async Concurrency (`concurrency.py`):** Semaphore-based limited parallelism for `research_topic` and batch fetches with configurable `max_concurrency`. Compatible with M-17 circuit breaker + M-18 retry.
+- **Adaptive Throttle & Calibrate (`calibrate.py`):** `calibrate_source()` measures safe request rate per source, returns config suggestions. CLI: `emsal-mcp calibrate <source>`.
+- **Benchmark Suite (`benchmark.py`):** Deterministic micro-benchmark for index build, hybrid search, dense search latency on synthetic static corpus. CLI: `emsal-mcp benchmark run --json`.
+- **Embedding Cache (`embeddings.py`):** `content_hash`-keyed embedding cache; same content embedded once. Provider change invalidates cache. Disk usage reporting via `index_sync_status()`.
+
+---
+
+## [2.2.0] — 2026-05-29
+
+### Added
+- **Cross-Encoder Reranker (`embeddings.py`):** `rerank_results()` — optional re-ranking of top-k hybrid results using fastembed cross-encoder (model: `ms-marco-MiniLM-L-6-v2`). Graceful passthrough when unavailable. CLI: `--rerank` flag on `hybrid_search`. MCP: `rerank` parameter.
+- **Incremental Index (`semantic.py`):** `update_indexes()` — content-hash-based delta indexing for both TF-IDF (`search_vectors`) and dense (`embedding_vectors`) stores. `get_index_sync_status()` reports out-of-sync counts. CLI: `emsal-mcp semantic update-indexes` / `sync-status`.
+- **PDF/OCR Content Extraction (`pdf_extract.py`):** `extract_pdf_text()` with optional `pypdf` text-layer extraction. OCR opt-in only with `metadata_confidence=low` warning. `promote_pdf_to_full_text()` — promotes `pdf_only` documents to `full_text` when text extractable. Optional extra: `[ocr]`.
+
+---
+
+## [2.1.0] — 2026-05-29
+
+### Added
+- **Dense Embedding Semantic Search (`embeddings.py`):** Pluggable `EmbeddingProvider` ABC ported from local-yargi.
+  - **`LocalHashProvider`** (id=`local-hash-v1`, 128 dims): Deterministic hash-based embedding — zero deps, always available. Always the default. SHA-256 token hashing + pseudo-random vector indices + trigram sub-word similarity + L2 normalization.
+  - **`FastEmbedProvider`** (id=`fastembed-minilm-l6-v2`, 384 dims, model `all-MiniLM-L6-v2`): Lazy import fastembed. `MAX_TEXT_CHARS=8000`, batch_size configurable. Graceful `EMBEDDING_BACKEND_UNAVAILABLE` when not installed.
+  - **Provider Factory:** Priority: CLI arg > `EMSAL_EMBEDDING_PROVIDER` env > `local-hash-v1` default.
+  - **BLOB Vector Storage:** `embedding_vectors` table with float32-packed BLOBs (not JSON), separate from TF-IDF `search_vectors`. Content-hash dedup on re-index.
+- **Hybrid v3 (`semantic.py`):** 3-signal merge: `w_bm25·BM25norm + w_tfidf·cosine + w_dense·dense_score`. Weights from config (`EMSAL_HYBRID_W_*`). `w_dense=0` → exact v2 regression (test-proven). `build_embedding_index()`, `embedding_search()`, `get_embedding_index_status()`. CLI: `emsal-mcp semantic embed-index/embed-search/providers/embedding-status`. MCP: 4 tools. Optional extra: `[embeddings]`.
+- **Version bumped to 0.10.3 → 2.1.0.**
+
+---
+
+## [2.0.0] — 2026-05-29
+
+### Added (M-06 → M-23, FAZ 2-5)
+
+**Data & Search (FAZ 2 — M-06→M-10):**
+- **Cache Maintenance (`cache.py`):** `vacuum_cache()`, `cleanup_orphans()` (orphan `search_vectors`/FTS5 rows), `check_integrity_full()` (PRAGMA + orphan + schema + hash + row counts). Schema migration v2→v3 with `schema_meta` table. `CACHE_SCHEMA_VERSION=3`. CLI: `emsal-mcp cache compact/cleanup-orphans/integrity-check`.
+- **Semantic Search v2 (`semantic.py`):** Turkish suffix-stripping query expansion (10 rules), snippet highlighting with `**markers**`, per-source filter support in hybrid search, `hybrid_weight` validation (0.0–1.0).
+- **Citation Graph (`citation_graph.py`):** `build_citation_graph()` — extract cross-document references, match against cache (confidence: high/medium/low), store edges in `citation_edges` table. `get_citation_graph()`, `find_citing_documents()`, `find_cited_documents()`, `get_citation_graph_stats()`. CLI: `emsal-mcp graph`. Never fabricates — only detectable verified references.
+- **Cross-Source Dedup (`dedup.py`):** `find_duplicates()` clusters by `(court, esas_no, karar_no)`. Deterministic canonical selection: `full_text` > `html_markdown` > `metadata_only`. False-merge prevention: no title-only grouping. `dedup_clusters` + `dedup_members` tables. CLI: `emsal-mcp cache find-duplicates/dedup-cluster/dedup-stats/merge-cluster`.
+- **Search Analytics (`search_analytics.py`):** `search_history` table with auto-recording from `search_local()`. `get_search_analytics()` — empty_result_rate, cache_hit_rate, top_queries, daily_activity. `get_source_coverage()`. CLI: `emsal-mcp analytics`.
+
+**Petition & Document (FAZ 3 — M-11→M-15, controller-heavy):**
+- **Template Library (`templates.py`):** 4 petition templates (Dava, Cevap, Temyiz, İstinaf) with `{{PLACEHOLDER}}` convention. `render_template_to_skeleton()` with DISCLAIMER_HEADER. `prepare_drafting_input_pack(template_name=...)`. CLI: `emsal-mcp template`.
+- **Argument Builder (`argument.py`):** `build_argument_chain()` — claim → supporting authority → counter-argument. Only `petition_ready` in `supporting_authorities` (metadata-only leak invariant). `score_argument()` (0.0–1.0). CLI: `emsal-mcp argument`.
+- **Multi-Issue Pack (`petition.py`):** `build_multi_issue_pack()` with isolated per-issue `citation-bank.md` + `argument-map.md`. Shared source documents, hash-manifest across all issues. Backward compatible single-issue API.
+- **Draft Diff (`draft_diff.py`):** Unified diff via stdlib `difflib`, `track_placeholders()` with fill status, `get_fill_report()`, `save_draft_version()` for version snapshots. CLI: `emsal-mcp draft`.
+- **Export Format Expansion (`exporter.py`):** `export_plain_text()`, `export_to_format()` unified dispatcher (docx/txt always, pdf/udf toolkit-gated), `get_export_capabilities()`. Disclaimer preserved in all formats.
+
+**Sources (FAZ 4 — M-16→M-19):**
+- **KİK Adapter (`sources/registry.py`):** Optional token auth via `KIK_API_TOKEN`/`EKAP_API_TOKEN` env vars. Token present → `EXPERIMENTAL`, absent → `UNAVAILABLE` (existing behavior preserved). `docs/KIK_RESEARCH.md`.
+- **Circuit Breaker (`circuit.py`):** State machine (CLOSED→OPEN→HALF_OPEN→CLOSED) with configurable threshold (default 5 failures) and recovery timeout (300s). `circuit_state` SQLite table. `_with_circuit()` opt-in wrapper on `SourceClient`. CLI: `emsal-mcp circuit`.
+- **Retry & Rate-Limit (`sources/base.py`):** `_with_retry()` exponential backoff (1s, 2s, 4s...). `RateLimiter` token-bucket (default OFF — single-user preserved). Config: `EMSAL_RETRY_MAX`, `EMSAL_RETRY_DELAY`, `EMSAL_RATE_LIMIT_ENABLED`.
+- **Capability Routing (`router.py`):** `get_capable_sources()`, `route_search()`, `route_get_document()` — auto-select sources by capability matrix. Deterministic: same input → same routing. CLI: `emsal-mcp router`.
+
+**Packaging & v2 (FAZ 5 — M-20→M-23):**
+- **Packaging:** `pyproject.toml` hygiene, `INSTALL.md` (6 methods), optional extras `[mcp]`, `[udf]`, `[dev]`, `[embeddings]`.
+- **CI Pipeline:** `.github/workflows/ci.yml` (Python 3.11/3.12 matrix, lint+test+smoke), `Makefile`.
+- **MCP Hardening (`server_utils.py`):** Input validation decorator on 5 critical tools, 48 error code catalog, `_track_request` concurrency counter, server-level smoke test.
+- **`build_error()` helper (`models.py`):** Canonical error dict shape across all modules — 51 ad-hoc error dicts normalized.
+- **Invariant Test Suite (`test_invariants.py`):** 47 tests covering metadata-only→draft_usable, citation no-fabrication, graceful degradation, placeholder preservation, sources_override safety.
+
+---
+
+## [1.0.0] — 2026-05-29
+
+### Added (M-01 → M-05, FAZ 1)
+
+- **Config System (`config.py`):** `EmsalConfig` class with env-override for cache path, user agent, UDF toolkit, log level, HTTP timeout, KIK token, circuit breaker, retry, rate-limit.
+- **`emsal-mcp doctor` command:** Environment diagnostics (Python version, cache access, toolkit status, source smoke summary).
+- **Coverage measurement (`pytest-cov`):** Coverage baseline established (76%→84%).
+- **Documentation sync:** `CHANGELOG.md` updated for v0.11–v0.13, `ROADMAP.md` section order fixed, contract docs expanded to 54 tools, `README.md` updated.
+- **Version bumped to 1.0.0.** `RELEASE_NOTES_v1.0.0.md` generated. `final_v1_readiness` gate green.
+
+---
+
 ## [0.13.0] — 2026-05-29
 
 ### Added
