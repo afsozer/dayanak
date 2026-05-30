@@ -1,6 +1,6 @@
-# docs/JSON_CONTRACTS.md — Canonical JSON Contracts
+﻿# docs/JSON_CONTRACTS.md — Canonical JSON Contracts
 
-> **emsal-mcp v1.0.0** — 54 MCP tools, 65+ CLI commands, 18 source modules.
+> **emsal-mcp v1.0.0** — 113 MCP tools, 127 CLI commands, 10 source modules.
 > All JSON contracts below are the canonical shapes returned by CLI `--json`
 > output and MCP tool responses.
 

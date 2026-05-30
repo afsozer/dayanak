@@ -544,7 +544,7 @@ Amaç: hukuk verisiyle çalışan bir araçta kritik olan gizlilik, doğrulanabi
 | 10 | M-38 Golden corpus testleri | [x] |
 | 10 | M-39 Atıf grafiği export | [x] |
 | 10 | M-40 Docs sitesi + v3.0.0 | [x] |
-| 11 | M-41 Doküman doğruluk/drift | [ ] |
+| 11 | M-41 Doküman doğruluk/drift | [x] |
 | 11 | M-42 Docstring/API referans | [ ] |
 | 11 | M-43 Cookbook/reçeteler | [ ] |
 | 11 | M-44 TR/EN mesaj tutarlılık | [ ] |

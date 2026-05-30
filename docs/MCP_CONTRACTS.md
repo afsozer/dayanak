@@ -1,6 +1,6 @@
-# docs/MCP_CONTRACTS.md — MCP Tool Contracts
+﻿# docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
-> **emsal-mcp v1.0.0** — 54 MCP tools across 10 modules.
+> **emsal-mcp v1.0.0** — 113 MCP tools across 10 modules.
 > Input parameters use Python type hints; output shapes are documented per tool.
 
 ## Core Tools (v0.1–0.4)

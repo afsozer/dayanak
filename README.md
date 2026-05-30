@@ -1,6 +1,6 @@
-# Emsal-mcp
+﻿# Emsal-mcp
 
-> **v1.0.0** — 54 MCP tools · 65+ CLI commands · 650 tests · 10 source modules
+> **v1.0.0** — 113 MCP tools · 127 CLI commands · 42 test files · 10 source modules
 
 Fatih Sözer'in yerel makinesinde çalışan, resmi/public hukuk kaynak odaklı, citation-safe MCP araştırma ve belge hazırlık sistemi.
 
@@ -57,4 +57,4 @@ emsal-mcp-server
 | **Chamber Profiling** | v0.12 | 4 | Daire analizi, profil, zaman çizelgesi, benzerlik |
 | **Release Management** | v0.13 | 4 | Komuta merkezi, sürüm, v1 hazırlık, özet |
 
-**Toplam:** 54 MCP tool · 65+ CLI komutu · 513 test
+**Toplam:** 113 MCP tool · 127 CLI komutu · 42 test dosyası
