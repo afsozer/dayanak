@@ -3,6 +3,16 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.0.1] — 2026-05-30
+
+### Fixed
+- **Removed dead duplicate PDF module:** deleted orphan `pdf_extract.py` (151 lines) and its test `test_pdf_extract.py`. The wired-in production module is `pdf_extractor.py` (imported by `server.py` and `cli.py`); the duplicate was unused leftover from an earlier M-27 iteration, referenced only by its own test.
+
+### Changed
+- Version bumped to 3.0.1.
+
+---
+
 ## [3.0.0] — 2026-05-29
 
 ### Added
