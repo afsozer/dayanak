@@ -124,6 +124,23 @@ def _cosine_similarity(vec_a: dict[str, float], vec_b: dict[str, float]) -> floa
     return dot / denom if denom > 0 else 0.0
 
 
+def _cosine_similarity_with_norm(
+    vec_a: dict[str, float], vec_b: dict[str, float], norm_b: float,
+) -> float:
+    """Cosine similarity using pre-computed norm for vec_b (optimization).
+
+    Avoids recomputing the L2 norm of vec_b when it's already stored
+    (e.g. in the search_vectors table).  norm_a is still computed from
+    vec_a (the query vector) since it changes per query.
+    """
+    if not vec_a or not vec_b:
+        return 0.0
+    dot = sum(vec_a.get(k, 0.0) * vec_b.get(k, 0.0) for k in set(vec_a) | set(vec_b))
+    norm_a = math.sqrt(sum(v * v for v in vec_a.values()))
+    denom = norm_a * norm_b
+    return dot / denom if denom > 0 else 0.0
+
+
 # ---------------------------------------------------------------------------
 # DB Connection Helper
 # ---------------------------------------------------------------------------
@@ -602,14 +619,22 @@ def semantic_search(
             }
 
         # Load all vectors — M-51: use cursor iteration
-        cursor = db.execute("SELECT document_id, source, vector_json FROM search_vectors")
+        # M-53: fetch pre-computed norm to avoid recomputing per-vector L2 norm
+        cursor = db.execute(
+            "SELECT document_id, source, vector_json, norm FROM search_vectors"
+        )
 
         scored: list[dict[str, Any]] = []
         any_highlighted = False
         for row in cursor:
-            doc_id, source, vjson = row
+            doc_id, source, vjson, stored_norm = row
             doc_vec = json.loads(vjson)
-            cosine_score = _cosine_similarity(query_vec, doc_vec)
+            stored_norm = stored_norm or 0.0
+            cosine_score = (
+                _cosine_similarity_with_norm(query_vec, doc_vec, stored_norm)
+                if stored_norm > 0
+                else _cosine_similarity(query_vec, doc_vec)
+            )
 
             if cosine_score <= 0:
                 continue
@@ -801,11 +826,19 @@ def hybrid_search(
             idf = _load_idf_from_vectors(db)
             query_vec = _build_query_vector(query, idf)
             if query_vec:
-                cursor = db.execute("SELECT document_id, source, vector_json FROM search_vectors")
+                # M-53: fetch pre-computed norm to skip per-vector L2 recomputation
+                cursor = db.execute(
+                    "SELECT document_id, source, vector_json, norm FROM search_vectors"
+                )
                 for row in cursor:
-                    doc_id, source, vjson = row
+                    doc_id, source, vjson, stored_norm = row
                     doc_vec = json.loads(vjson)
-                    cs = _cosine_similarity(query_vec, doc_vec)
+                    stored_norm = stored_norm or 0.0
+                    cs = (
+                        _cosine_similarity_with_norm(query_vec, doc_vec, stored_norm)
+                        if stored_norm > 0
+                        else _cosine_similarity(query_vec, doc_vec)
+                    )
                     if cs > 0:
                         cosine_results[(doc_id, source)] = cs
 

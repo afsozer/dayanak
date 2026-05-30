@@ -8,144 +8,10 @@ from typing import Optional
 import typer
 
 from . import __version__
-from .cache import Cache
-from .citation import format_legal_citation, verify_legal_citation
-from .document import controlled_draft, export_bundle, markdown_to_docx
-from .models import Document
-from .release import (
-    archive_release,
-    compare_history,
-    final_v1_readiness as final_v1_readiness_impl,
-    generate_release_summary as generate_summary_impl,
-    readiness_dashboard,
-    release_command_center as cmd_center_impl,
-    release_notes,
-    release_smoke,
-    version_bump as version_bump_impl,
-    write_history,
-)
-from .research import refresh_research_bundle, research_quality_dashboard, research_topic
-from .safety import build_input_pack, citation_check
-from .sources.registry import capabilities, get_source, registry, smoke_all_sync
-from .petition import (
-    build_multi_issue_pack,
-    inspect_multi_issue_pack,
-    inspect_petition_pack,
-    prepare_controlled_petition_draft,
-    prepare_drafting_input_pack,
-    prepare_petition_outline,
-)
-from .argument import (
-    build_argument_chain,
-    get_argument_strength_report,
-    render_arguments_to_markdown,
-)
-from .draft_diff import (
-    diff_drafts as diff_drafts_impl,
-    get_fill_report as get_fill_report_impl,
-    save_draft_version as save_draft_version_impl,
-    track_placeholders as track_placeholders_impl,
-)
-from .templates import (
-    get_template as get_template_impl,
-    list_templates as list_templates_impl,
-    render_template_to_skeleton as render_template_impl,
-)
-from .legislation import (
-    format_legislation_citation as format_leg_citation_impl,
-    get_legislation_article_tree as get_leg_article_tree_impl,
-    get_legislation_document as get_leg_doc_impl,
-    get_legislation_gerekce as get_leg_gerekce_impl,
-    get_legislation_source_status as get_leg_status_impl,
-    get_legislation_types as get_leg_types_impl,
-    search_legislation as search_leg_impl,
-    search_legislation_articles as search_leg_articles_impl,
-)
-from .semantic import (
-    build_semantic_index as build_semantic_impl,
-    get_index_status as index_status_impl,
-    hybrid_search as hybrid_search_impl,
-    rebuild_index as rebuild_impl,
-    semantic_search as semantic_search_cli_impl,
-    build_embedding_index as build_embedding_impl,
-    embedding_search as embedding_search_impl,
-    get_embedding_index_status as embedding_status_impl,
-    update_indexes as update_indexes_impl,
-    get_index_sync_status as sync_status_impl,
-)
-from .chamber import (
-    chamber_timeline as chamber_timeline_impl,
-    find_similar_chambers as find_similar_impl,
-    get_chamber_overview as chamber_overview_impl,
-    profile_chamber as profile_chamber_impl,
-)
-from .citation_graph import (
-    build_citation_graph as build_citation_graph_impl,
-    export_graph as export_graph_impl,
-    find_cited_documents as find_cited_documents_impl,
-    find_citing_documents as find_citing_documents_impl,
-    get_citation_graph as get_citation_graph_impl,
-    get_citation_graph_stats as get_citation_graph_stats_impl,
-)
-from .privacy import (
-    scan_pii as scan_pii_impl,
-    redact_pii as redact_pii_impl,
-    audit_privacy as audit_privacy_impl,
-)
-from .dedup import (
-    find_duplicates as find_duplicates_impl,
-    find_fuzzy_duplicates as find_fuzzy_duplicates_impl,
-    get_dedup_cluster as get_dedup_cluster_impl,
-    get_dedup_stats as get_dedup_stats_impl,
-    get_fuzzy_dedup_stats as get_fuzzy_dedup_stats_impl,
-    merge_cluster as merge_cluster_impl,
-)
-from .exporter import (
-    export_plain_text,
-    export_to_format,
-    get_export_capabilities,
-    prepare_docx_export,
-    prepare_export_package_bundle,
-)
-from .udf import (
-    convert_docx_to_udf_experimental,
-    convert_udf_to_docx,
-    convert_udf_to_pdf,
-    get_udf_authoring_instructions,
-    get_udf_toolkit_status,
-    probe_udf,
-    read_udf,
-    udf_to_markdown,
-    write_udf,
-)
-from .circuit import (
-    get_all_sources_health,
-    get_source_health,
-    reset_circuit,
-)
-from .router import (
-    get_capable_sources as get_capable_sources_impl,
-    route_get_document as route_get_document_impl,
-    route_search as route_search_impl,
-)
-from .calibrate import (
-    calibrate_source as calibrate_source_impl,
-    calibrate_all as calibrate_all_impl,
-)
-from .benchmark import (
-    run_benchmarks as run_benchmarks_impl,
-)
-from .pdf_extractor import (
-    extract_pdf_text_from_file,
-    get_pdf_toolkit_status,
-    promote_pdf_to_full_text as promote_pdf_impl,
-)
-from .research_watch import (
-    add_watch as add_watch_impl,
-    list_watches as list_watches_impl,
-    remove_watch as remove_watch_impl,
-    run_watch as run_watch_impl,
-)
+
+# M-52: All domain imports moved to lazy (inside command functions) for
+# faster startup.  Only stdlib + typer + __version__ are imported at
+# module level so that `emsal-mcp --help` is fast.
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
 api_app = typer.Typer(help="HTTP REST API server")
@@ -225,6 +91,7 @@ def doctor(json_out: bool = typer.Option(False, "--json")) -> None:
 @app.command()
 def sources(json_out: bool = typer.Option(False, "--json")) -> None:
     """List registered data sources and their capabilities."""
+    from .sources.registry import capabilities
     _print(capabilities(), json_out)
 
 
@@ -235,6 +102,7 @@ def sources_smoke(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Run per-source smoke tests (offline by default, online opt-in)."""
+    from .sources.registry import smoke_all_sync
     results = smoke_all_sync(online=online)
     summary = {
         "ok": all(r.get("offline_ok", False) for r in results),
@@ -248,6 +116,8 @@ def sources_smoke(
 @app.command()
 def search(source: str, query: str, limit: int = 10, page: int = 1, json_out: bool = typer.Option(False, "--json")) -> None:
     """Search court decisions from a given source."""
+    from .cache import Cache
+    from .sources.registry import get_source
     import asyncio
     src = get_source(source)
     results = asyncio.run(src.search(query, limit=limit, page=page))
@@ -260,6 +130,9 @@ def search(source: str, query: str, limit: int = 10, page: int = 1, json_out: bo
 @app.command()
 def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")) -> None:
     """Fetch a single document by ID from the given source."""
+    from .cache import Cache
+    from .sources.registry import get_source
+    from .models import Document
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
     cache = Cache()
@@ -273,6 +146,8 @@ def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--j
 @app.command("citation-check")
 def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Option(False, "--json")) -> None:
     """Check citation safety of a document from the given source."""
+    from .safety import citation_check
+    from .sources.registry import get_source
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
     _print(citation_check(doc).model_dump(mode="json"), json_out)
@@ -281,6 +156,8 @@ def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Opt
 @app.command("build-input-pack")
 def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Build a citation-safe input pack from a JSON document list."""
+    from .models import Document
+    from .safety import build_input_pack
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
     pack = build_input_pack(matter, issue, docs)
     _print(pack.model_dump(mode="json"), json_out)
@@ -289,6 +166,8 @@ def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool = typer.
 @app.command("draft-document")
 def draft_document(title: str, body_file: Path, docs_json: Optional[Path] = None, out: Optional[Path] = None) -> None:
     """Generate a citation-safe markdown draft document."""
+    from .document import controlled_draft
+    from .models import Document
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))] if docs_json else []
     md = controlled_draft(title, body_file.read_text(encoding="utf-8"), docs)
     if out:
@@ -302,12 +181,15 @@ def draft_document(title: str, body_file: Path, docs_json: Optional[Path] = None
 @app.command("export-docx")
 def export_docx(markdown_file: Path, out: Path) -> None:
     """Export a markdown file to DOCX format."""
+    from .document import markdown_to_docx
     typer.echo(str(markdown_to_docx(markdown_file.read_text(encoding="utf-8"), out)))
 
 
 @app.command("export-bundle")
 def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Export a citation-safe bundle with input pack and source documents."""
+    from .document import export_bundle
+    from .models import Document
     docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
     _print(export_bundle(out_dir, matter=matter, issue=issue, docs=docs), json_out)
 
@@ -315,6 +197,8 @@ def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bo
 @app.command("smoke")
 def smoke(offline: bool = True, json_out: bool = typer.Option(False, "--json")) -> None:
     """Run release smoke tests (offline by default)."""
+    from .release import release_smoke
+    from .sources.registry import registry
     result = release_smoke() | {"offline": offline, "sources": list(registry().keys())}
     _print(result, json_out)
 
@@ -325,6 +209,7 @@ def smoke(offline: bool = True, json_out: bool = typer.Option(False, "--json")) 
 @cache_app.command("stats")
 def cache_stats(cache_path: Optional[Path] = typer.Option(None, help="Cache DB path")) -> None:
     """Show cache statistics (document counts, sizes, sources)."""
+    from .cache import Cache
     cache = Cache(cache_path)
     _print(cache.cache_stats(), json_out=False)
     cache.close()
@@ -338,6 +223,7 @@ def cache_list(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
 ) -> None:
     """List cached documents."""
+    from .cache import Cache
     cache = Cache(cache_path)
     docs = cache.list_cached_documents(source=source, limit=limit, offset=offset)
     _print(docs, json_out=False)
@@ -362,6 +248,7 @@ def cache_search_local(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
 ) -> None:
     """Search cached documents locally (no network)."""
+    from .cache import Cache
     cache = Cache(cache_path)
     results = cache.search_local(
         query=query, source=source, court=court, chamber=chamber, date=date,
@@ -380,6 +267,7 @@ def cache_delete(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
 ) -> None:
     """Delete a cached document (explicit, destructive)."""
+    from .cache import Cache
     cache = Cache(cache_path)
     deleted = cache.delete_cached_document(document_id, source)
     typer.echo(f"Deleted: {deleted}")
@@ -392,6 +280,7 @@ def cache_prune(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
 ) -> None:
     """Prune old search cache entries."""
+    from .cache import Cache
     cache = Cache(cache_path)
     count = cache.prune_search_cache(max_age_days=max_age_days)
     typer.echo(f"Pruned {count} old search cache entries")
@@ -404,6 +293,7 @@ def cache_backup(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
 ) -> None:
     """Backup the cache database."""
+    from .cache import Cache
     cache = Cache(cache_path)
     result = cache.backup_cache_with_metadata(backup_path)
     typer.echo(f"Backup created: {result['backup_path']}")
@@ -417,6 +307,7 @@ def cache_export(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
 ) -> None:
     """Export cached documents to JSON."""
+    from .cache import Cache
     cache = Cache(cache_path)
     result = cache.export_json(export_path)
     typer.echo(f"Exported {result['document_count']} documents to: {result['path']}")
@@ -430,6 +321,7 @@ def cache_import(
     cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
 ) -> None:
     """Import cached documents from JSON."""
+    from .cache import Cache
     cache = Cache(cache_path)
     result = cache.import_json(import_path)
     typer.echo(f"Imported: {result['imported']}, Skipped: {result['skipped']}, Errors: {result['errors']}")
@@ -442,6 +334,7 @@ def cache_compact(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Run VACUUM to reclaim space and defragment the cache database."""
+    from .cache import Cache
     cache = Cache(cache_path)
     result = cache.vacuum_cache()
     _print(result, json_out)
@@ -454,6 +347,7 @@ def cache_cleanup_orphans(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Remove orphan rows from search_vectors and documents_v2_fts."""
+    from .cache import Cache
     cache = Cache(cache_path)
     result = cache.cleanup_orphans()
     _print(result, json_out)
@@ -466,6 +360,7 @@ def cache_integrity_check(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Run comprehensive integrity checks on the cache database."""
+    from .cache import Cache
     cache = Cache(cache_path)
     result = cache.check_integrity_full()
     _print(result, json_out)
@@ -479,6 +374,7 @@ def cache_sync(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Sync documents from another cache database (multi-machine merge)."""
+    from .cache import Cache
     cache = Cache(cache_path)
     try:
         result = cache.sync_cache(other_db)
@@ -497,6 +393,8 @@ def cache_find_duplicates(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Find duplicate documents across sources (same court+esas_no+karar_no)."""
+    from .cache import Cache
+    from .dedup import find_duplicates as find_duplicates_impl
     cache = Cache(cache_path)
     try:
         result = find_duplicates_impl(cache=cache, dry_run=dry_run)
@@ -513,6 +411,7 @@ def cache_dedup_cluster(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Find which dedup cluster a document belongs to."""
+    from .dedup import get_dedup_cluster as get_dedup_cluster_impl
     cache = Cache(cache_path)
     try:
         result = get_dedup_cluster_impl(document_id=document_id, source=source or "", cache=cache)
@@ -527,6 +426,8 @@ def cache_dedup_stats(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show deduplication statistics."""
+    from .cache import Cache
+    from .dedup import get_dedup_stats as get_dedup_stats_impl
     cache = Cache(cache_path)
     try:
         result = get_dedup_stats_impl(cache=cache)
@@ -542,6 +443,7 @@ def cache_merge_cluster(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Merge a dedup cluster: enrich canonical record with alternative source URLs."""
+    from .dedup import merge_cluster as merge_cluster_impl
     cache = Cache(cache_path)
     try:
         result = merge_cluster_impl(cluster_id=cluster_id, cache=cache)
@@ -563,6 +465,8 @@ def cache_fuzzy_duplicates(
     Reports suspected_duplicate pairs — NEVER auto-merges.
     Uses embedding vectors (M-24). Requires build_embedding_index() first.
     """
+    from .cache import Cache
+    from .dedup import find_fuzzy_duplicates as find_fuzzy_duplicates_impl
     cache = Cache(cache_path)
     try:
         result = find_fuzzy_duplicates_impl(
@@ -580,6 +484,8 @@ def cache_fuzzy_dedup_stats(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Report fuzzy dedup readiness and embedding availability."""
+    from .cache import Cache
+    from .dedup import get_fuzzy_dedup_stats as get_fuzzy_dedup_stats_impl
     cache = Cache(cache_path)
     try:
         result = get_fuzzy_dedup_stats_impl(cache=cache)
@@ -594,24 +500,28 @@ def cache_fuzzy_dedup_stats(
 @release_app.command("dashboard")
 def release_dashboard(json_out: bool = typer.Option(False, "--json")) -> None:
     """Show release readiness dashboard."""
+    from .release import readiness_dashboard
     _print(readiness_dashboard(), json_out)
 
 
 @release_app.command("history")
 def release_history(out_dir: Path = Path("exports/release-history"), json_out: bool = typer.Option(False, "--json")) -> None:
     """Write release history record to output directory."""
+    from .release import write_history
     _print(write_history(out_dir), json_out)
 
 
 @release_app.command("compare")
 def release_compare(left: Path, right: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Compare two release history records and report score delta."""
+    from .release import compare_history
     _print(compare_history(left, right), json_out)
 
 
 @release_app.command("notes")
 def release_notes_cmd(out: Optional[Path] = None) -> None:
     """Generate markdown release notes."""
+    from .release import release_notes
     notes = release_notes()
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -624,6 +534,7 @@ def release_notes_cmd(out: Optional[Path] = None) -> None:
 @release_app.command("archive")
 def release_archive(out_dir: Path = Path("exports/release-archive"), json_out: bool = typer.Option(False, "--json")) -> None:
     """Create a release archive with dashboard, notes, and history."""
+    from .release import archive_release
     _print(archive_release(out_dir), json_out)
 
 
@@ -632,6 +543,7 @@ def release_cmd_center(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Comprehensive release verification - all checks."""
+    from .release import release_command_center as cmd_center_impl
     _print(cmd_center_impl(), json_out)
 
 
@@ -643,6 +555,7 @@ def release_version_bump(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Compute next version (does NOT modify files)."""
+    from .release import version_bump as version_bump_impl
     _print(version_bump_impl(major=major, minor=minor, patch=patch), json_out)
 
 
@@ -651,6 +564,7 @@ def release_v1_readiness(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Final v1.0.0 readiness gate."""
+    from .release import final_v1_readiness as final_v1_readiness_impl
     _print(final_v1_readiness_impl(), json_out)
 
 
@@ -659,6 +573,7 @@ def release_summary(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Human-readable release summary."""
+    from .release import generate_release_summary as generate_summary_impl
     _print(generate_summary_impl(), json_out)
 
 
@@ -668,18 +583,21 @@ def release_summary(
 @udf_app.command("probe")
 def udf_probe(path: Path, json_out: bool = typer.Option(False, "--json")) -> None:
     """Probe a UDF file for structure and content metadata."""
+    from .udf import probe_udf
     _print(probe_udf(path), json_out)
 
 
 @udf_app.command("read")
 def udf_read(path: Path) -> None:
     """Read and print text content from a UDF file."""
+    from .udf import read_udf
     sys.stdout.buffer.write((read_udf(path) + "\n").encode("utf-8"))
 
 
 @udf_app.command("to-md")
 def udf_md(path: Path, out: Optional[Path] = None) -> None:
     """Convert a UDF file to markdown format."""
+    from .udf import udf_to_markdown
     md = udf_to_markdown(path)
     if out:
         out.write_text(md, encoding="utf-8")
@@ -691,12 +609,14 @@ def udf_md(path: Path, out: Optional[Path] = None) -> None:
 @udf_app.command("write")
 def udf_write(text_file: Path, out: Path, title_centered: bool = False) -> None:
     """Write a UYAP UDF file from a text file."""
+    from .udf import write_udf
     typer.echo(str(write_udf(text_file.read_text(encoding="utf-8"), out, title_centered=title_centered)))
 
 
 @udf_app.command("status")
 def udf_status(json_out: bool = typer.Option(False, "--json")) -> None:
     """Show UDF toolkit availability status."""
+    from .udf import get_udf_toolkit_status
     _print(get_udf_toolkit_status(), json_out)
 
 
@@ -706,6 +626,7 @@ def udf_authoring_instructions(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show UDF authoring instructions and warnings."""
+    from .udf import get_udf_authoring_instructions
     _print(get_udf_authoring_instructions(format=format), json_out)
 
 
@@ -716,6 +637,7 @@ def udf_to_docx_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Convert UDF to DOCX (requires toolkit)."""
+    from .udf import convert_udf_to_docx
     _print(convert_udf_to_docx(path, out_path), json_out)
 
 
@@ -726,6 +648,7 @@ def udf_to_pdf_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Convert UDF to PDF (requires toolkit)."""
+    from .udf import convert_udf_to_pdf
     _print(convert_udf_to_pdf(path, out_path), json_out)
 
 
@@ -737,6 +660,7 @@ def udf_docx_to_udf_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Convert DOCX to UDF (experimental, requires toolkit)."""
+    from .udf import convert_docx_to_udf_experimental
     _print(convert_docx_to_udf_experimental(path, out_path, experimental=experimental), json_out)
 
 
@@ -752,6 +676,7 @@ def research_topic_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Search sources, fetch documents, build research bundle."""
+    from .research import research_topic
     src_list = [s.strip() for s in sources.split(",")] if sources else None
     result = research_topic(query, src_list, fetch_count=fetch_count, output_dir=output_dir)
     _print(result, json_out)
@@ -764,6 +689,7 @@ def research_refresh_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Re-run research from an existing bundle, detect new/changed documents."""
+    from .research import refresh_research_bundle
     result = refresh_research_bundle(bundle_path, dry_run=dry_run)
     _print(result, json_out)
 
@@ -774,6 +700,7 @@ def research_dashboard_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Compute quality metrics for a research bundle."""
+    from .research import research_quality_dashboard
     result = research_quality_dashboard(bundle_path)
     _print(result, json_out)
 
@@ -789,6 +716,8 @@ def cite_format(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Format a legal citation from cached document metadata."""
+    from .cache import Cache
+    from .citation import format_legal_citation
     cache = Cache()
     try:
         # Look up from cache v2
@@ -817,6 +746,7 @@ def cite_verify(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Verify legal citations in text or file."""
+    from .citation import verify_legal_citation
     result = verify_legal_citation(
         text=text,
         file_path=file_path,
@@ -845,6 +775,8 @@ def petition_pack(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Prepare a petition drafting input pack."""
+    from .models import Document
+    from .petition import prepare_drafting_input_pack
     docs = []
     if docs_json:
         docs = [Document.model_validate(x) for x in json.loads(docs_json.read_text(encoding="utf-8"))]
@@ -866,6 +798,7 @@ def petition_inspect(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Inspect and validate a petition pack directory."""
+    from .petition import inspect_petition_pack
     result = inspect_petition_pack(pack_dir)
     _print(result, json_out)
 
@@ -877,6 +810,7 @@ def petition_outline(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Generate a structured petition outline from a pack."""
+    from .petition import prepare_petition_outline
     result = prepare_petition_outline(
         pack_dir=pack_dir,
         out_dir=str(out_dir) if out_dir else None,
@@ -892,6 +826,7 @@ def petition_draft(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Generate a controlled petition draft from a pack."""
+    from .petition import prepare_controlled_petition_draft
     result = prepare_controlled_petition_draft(
         pack_dir=pack_dir,
         outline_path=str(outline_path) if outline_path else None,
@@ -909,6 +844,7 @@ def petition_export_docx(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Create a validated DOCX export from a controlled draft."""
+    from .exporter import prepare_docx_export
     draft_json = None
     if draft_json_path and draft_json_path.exists():
         draft_json = json.loads(draft_json_path.read_text(encoding="utf-8"))
@@ -930,6 +866,7 @@ def petition_export_bundle(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Create a complete export package bundle with verification."""
+    from .exporter import prepare_export_package_bundle
     result = prepare_export_package_bundle(
         pack_dir=pack_dir,
         draft_dir=str(draft_dir) if draft_dir else None,
@@ -948,6 +885,8 @@ def petition_multi_pack(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build a multi-issue petition pack with isolated citation banks."""
+    from .models import Document
+    from .petition import build_multi_issue_pack
     issues = json.loads(issues_json.read_text(encoding="utf-8"))
     docs = []
     if docs_json:
@@ -967,6 +906,7 @@ def petition_multi_inspect(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Inspect and validate a multi-issue petition pack directory."""
+    from .petition import inspect_multi_issue_pack
     result = inspect_multi_issue_pack(pack_dir)
     _print(result, json_out)
 
@@ -980,6 +920,7 @@ def argument_build(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build structured argument chains from a petition pack."""
+    from .argument import build_argument_chain
     result = build_argument_chain(pack_dir=pack_dir)
     _print(result, json_out)
 
@@ -990,6 +931,7 @@ def argument_score(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Score argument strength for a petition pack."""
+    from .argument import get_argument_strength_report
     result = get_argument_strength_report(pack_dir=pack_dir)
     _print(result, json_out)
 
@@ -1001,6 +943,7 @@ def argument_render(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Render argument chains as markdown."""
+    from .argument import render_arguments_to_markdown
     md = render_arguments_to_markdown(pack_dir=pack_dir, out_path=out_path)
     if out_path:
         _print({"ok": True, "out_path": str(out_path), "length": len(md)}, json_out)
@@ -1019,6 +962,7 @@ def legislation_search(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Mevzuat ara."""
+    from .legislation import search_legislation as search_leg_impl
     result = search_leg_impl(query=query, legislation_type=legislation_type, limit=limit)
     _print(result, json_out)
 
@@ -1030,6 +974,7 @@ def legislation_get(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Mevzuat belgesi getir."""
+    from .legislation import get_legislation_document as get_leg_doc_impl
     result = get_leg_doc_impl(document_id=document_id, source=source)
     _print(result, json_out)
 
@@ -1043,6 +988,7 @@ def legislation_articles(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Belge içinde madde ara."""
+    from .legislation import search_legislation_articles as search_leg_articles_impl
     result = search_leg_articles_impl(
         document_id=document_id,
         article_number=article_number,
@@ -1059,6 +1005,7 @@ def legislation_tree(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Belgenin kısım/bölüm/madde ağacını çıkar."""
+    from .legislation import get_legislation_article_tree as get_leg_article_tree_impl
     result = get_leg_article_tree_impl(document_id=document_id, source=source)
     _print(result, json_out)
 
@@ -1070,6 +1017,7 @@ def legislation_gerekce(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Genel gerekçe ve madde gerekçelerini çıkar."""
+    from .legislation import get_legislation_gerekce as get_leg_gerekce_impl
     result = get_leg_gerekce_impl(document_id=document_id, source=source)
     _print(result, json_out)
 
@@ -1079,6 +1027,7 @@ def legislation_status(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Mevzuat kaynak sağlık durumu."""
+    from .legislation import get_legislation_source_status as get_leg_status_impl
     result = get_leg_status_impl()
     _print(result, json_out)
 
@@ -1088,6 +1037,7 @@ def legislation_types(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Bilinen mevzuat türlerini listele."""
+    from .legislation import get_legislation_types as get_leg_types_impl
     result = get_leg_types_impl()
     _print(result, json_out)
 
@@ -1101,6 +1051,7 @@ def legislation_format(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Mevzuat atıf formatla."""
+    from .legislation import format_legislation_citation as format_leg_citation_impl
     doc = {
         "title": title,
         "legislation_no": legislation_no,
@@ -1119,6 +1070,7 @@ def semantic_index(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build FTS5 + TF-IDF search indices."""
+    from .semantic import build_semantic_index as build_semantic_impl
     result = build_semantic_impl(force_rebuild=force_rebuild)
     _print(result, json_out)
 
@@ -1133,6 +1085,7 @@ def semantic_search_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """TF-IDF cosine similarity search. Supports --source, --court, --chamber filters."""
+    from .semantic import semantic_search as semantic_search_cli_impl
     filters = {}
     if source:
         filters["source"] = source
@@ -1157,6 +1110,7 @@ def semantic_hybrid(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """FTS5 BM25 + TF-IDF cosine hybrid search with optional dense embeddings."""
+    from .semantic import hybrid_search as hybrid_search_impl
     filters = {}
     if source:
         filters["source"] = source
@@ -1178,6 +1132,7 @@ def semantic_status(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Check index health and statistics."""
+    from .semantic import get_index_status as index_status_impl
     result = index_status_impl()
     _print(result, json_out)
 
@@ -1187,6 +1142,7 @@ def semantic_rebuild(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Force rebuild all search indices."""
+    from .semantic import rebuild_index as rebuild_impl
     result = rebuild_impl()
     _print(result, json_out)
 
@@ -1198,6 +1154,7 @@ def semantic_embed_index(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build dense embedding index."""
+    from .semantic import build_embedding_index as build_embedding_impl
     result = build_embedding_impl(provider=provider, force_rebuild=force_rebuild)
     _print(result, json_out)
 
@@ -1210,6 +1167,7 @@ def semantic_embed_search(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Dense embedding similarity search."""
+    from .semantic import embedding_search as embedding_search_impl
     result = embedding_search_impl(query=query, limit=limit, provider=provider)
     _print(result, json_out)
 
@@ -1220,6 +1178,7 @@ def semantic_providers(
 ) -> None:
     """List available embedding providers."""
     from .embeddings import list_embedding_providers
+    from .embeddings import list_embedding_providers
 
     _print(list_embedding_providers(), json_out)
 
@@ -1229,6 +1188,7 @@ def semantic_embedding_status(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Check dense embedding index status."""
+    from .semantic import get_embedding_index_status as embedding_status_impl
     result = embedding_status_impl()
     _print(result, json_out)
 
@@ -1239,6 +1199,7 @@ def semantic_update_indexes(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Incrementally update indexes (new/changed docs only)."""
+    from .semantic import update_indexes as update_indexes_impl
     result = update_indexes_impl(provider=provider)
     _print(result, json_out)
 
@@ -1248,6 +1209,7 @@ def semantic_sync_status(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Check index sync status."""
+    from .semantic import get_index_sync_status as sync_status_impl
     result = sync_status_impl()
     _print(result, json_out)
 
@@ -1261,6 +1223,7 @@ def chamber_overview(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Chamber overview with document counts and date ranges."""
+    from .chamber import get_chamber_overview as chamber_overview_impl
     result = chamber_overview_impl(court=court)
     _print(result, json_out)
 
@@ -1272,6 +1235,7 @@ def chamber_profile(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Detailed profile of a specific chamber."""
+    from .chamber import profile_chamber as profile_chamber_impl
     result = profile_chamber_impl(chamber=chamber, court=court)
     _print(result, json_out)
 
@@ -1285,6 +1249,7 @@ def chamber_timeline_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Decision timeline grouped by year."""
+    from .chamber import chamber_timeline as chamber_timeline_impl
     result = chamber_timeline_impl(
         chamber=chamber, court=court,
         start_year=start_year, end_year=end_year,
@@ -1300,6 +1265,7 @@ def chamber_similar(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Find chambers with similar topic profiles."""
+    from .chamber import find_similar_chambers as find_similar_impl
     result = find_similar_impl(chamber=chamber, court=court, limit=limit)
     _print(result, json_out)
 
@@ -1313,6 +1279,7 @@ def graph_build(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build citation graph from cached documents."""
+    from .citation_graph import build_citation_graph as build_citation_graph_impl
     result = build_citation_graph_impl(limit_docs=limit_docs)
     _print(result, json_out)
 
@@ -1325,6 +1292,7 @@ def graph_show(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show citation relationships for a document."""
+    from .citation_graph import get_citation_graph as get_citation_graph_impl
     result = get_citation_graph_impl(document_id=document_id, source=source, direction=direction)
     _print(result, json_out)
 
@@ -1337,6 +1305,7 @@ def graph_citing(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Find documents that cite the given document."""
+    from .citation_graph import find_citing_documents as find_citing_documents_impl
     result = find_citing_documents_impl(document_id=document_id, source=source, limit=limit)
     _print(result, json_out)
 
@@ -1349,6 +1318,7 @@ def graph_cited(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Find documents that the given document cites."""
+    from .citation_graph import find_cited_documents as find_cited_documents_impl
     result = find_cited_documents_impl(document_id=document_id, source=source, limit=limit)
     _print(result, json_out)
 
@@ -1358,6 +1328,7 @@ def graph_stats(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Citation graph istatistikleri."""
+    from .citation_graph import get_citation_graph_stats as get_citation_graph_stats_impl
     result = get_citation_graph_stats_impl()
     _print(result, json_out)
 
@@ -1371,6 +1342,7 @@ def graph_export(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Export citation graph in various formats (json, dot, mermaid)."""
+    from .citation_graph import export_graph as export_graph_impl
     result = export_graph_impl(
         format=format,
         document_id=document_id,
@@ -1456,6 +1428,7 @@ def analytics_source_coverage(
 @template_app.command("list")
 def template_list(json_out: bool = typer.Option(False, "--json")) -> None:
     """List all available petition templates."""
+    from .templates import list_templates as list_templates_impl
     _print(list_templates_impl(), json_out)
 
 
@@ -1465,6 +1438,7 @@ def template_show(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show details of a specific petition template."""
+    from .templates import get_template as get_template_impl
     _print(get_template_impl(name), json_out)
 
 
@@ -1474,6 +1448,7 @@ def template_render(
     out_path: Optional[Path] = typer.Option(None, help="Output file path (default: stdout)"),
 ) -> None:
     """Render a template as a draft-skeleton.md compatible markdown."""
+    from .templates import render_template_to_skeleton as render_template_impl
     try:
         md = render_template_impl(name)
     except KeyError as exc:
@@ -1497,6 +1472,7 @@ def draft_diff(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Compare two draft files and show changes."""
+    from .draft_diff import diff_drafts as diff_drafts_impl
     result = diff_drafts_impl(draft_a, draft_b)
     _print(result, json_out)
 
@@ -1507,6 +1483,7 @@ def draft_placeholders(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Analyze placeholder fill status in a draft."""
+    from .draft_diff import track_placeholders as track_placeholders_impl
     result = track_placeholders_impl(draft_path)
     _print(result, json_out)
 
@@ -1518,6 +1495,7 @@ def draft_fill_report(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Generate a fill report: what still needs attention."""
+    from .draft_diff import get_fill_report as get_fill_report_impl
     result = get_fill_report_impl(draft_path, pack_dir=str(pack_dir) if pack_dir else None)
     _print(result, json_out)
 
@@ -1529,6 +1507,7 @@ def draft_save_version(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Save a snapshot of current draft state for later diff."""
+    from .draft_diff import save_draft_version as save_draft_version_impl
     result = save_draft_version_impl(draft_dir, version_label=label)
     _print(result, json_out)
 
@@ -1543,6 +1522,7 @@ def export_txt(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Export a draft to plain-text format (always available, no toolkit)."""
+    from .exporter import export_plain_text
     result = export_plain_text(
         draft_path=str(draft_path),
         out_path=str(out_path) if out_path else None,
@@ -1560,6 +1540,7 @@ def export_format_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Unified export dispatcher: docx, txt, pdf, udf."""
+    from .exporter import export_to_format
     result = export_to_format(
         draft_path=str(draft_path),
         format=format,
@@ -1575,6 +1556,7 @@ def export_capabilities_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show which export formats are currently available."""
+    from .exporter import get_export_capabilities
     _print(get_export_capabilities(), json_out)
 
 
@@ -1587,6 +1569,7 @@ def circuit_status_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show circuit breaker status for one or all sources."""
+    from .circuit import get_source_health, get_all_sources_health
     if source:
         health = get_source_health(source)
         _print(health, json_out)
@@ -1601,6 +1584,7 @@ def circuit_health_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Show source health metrics (uptime, failure counts, circuit state)."""
+    from .circuit import get_source_health, get_all_sources_health
     if source:
         health = get_source_health(source)
         _print(health, json_out)
@@ -1615,6 +1599,7 @@ def circuit_reset_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Manually reset a circuit breaker to CLOSED state."""
+    from .circuit import reset_circuit
     result = reset_circuit(source)
     _print(result, json_out)
 
@@ -1628,6 +1613,7 @@ def router_capable_sources(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List source_ids that support a given capability."""
+    from .router import get_capable_sources as get_capable_sources_impl
     _print(get_capable_sources_impl(capability), json_out)
 
 
@@ -1640,6 +1626,7 @@ def router_search_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Route a search request to capable sources."""
+    from .router import route_search as route_search_impl
     required = [c.strip() for c in require.split(",")] if require else None
     preferred = [s.strip() for s in prefer.split(",")] if prefer else None
     excluded = [s.strip() for s in exclude.split(",")] if exclude else None
@@ -1654,6 +1641,7 @@ def router_get_document_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Route a get_document request to capable sources."""
+    from .router import route_get_document as route_get_document_impl
     required = [c.strip() for c in require.split(",")] if require else None
     _print(route_get_document_impl(document_id, required_capabilities=required, preferred_source=preferred_source), json_out)
 
@@ -1668,6 +1656,7 @@ def pdf_extract(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Extract text layer from a PDF file."""
+    from .pdf_extractor import extract_pdf_text_from_file
     _print(extract_pdf_text_from_file(str(path), ocr_enabled=ocr), json_out)
 
 
@@ -1676,6 +1665,7 @@ def pdf_toolkit(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Check PDF extraction toolkit availability."""
+    from .pdf_extractor import get_pdf_toolkit_status
     _print(get_pdf_toolkit_status(), json_out)
 
 
@@ -1686,6 +1676,7 @@ def pdf_promote(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Try to promote a pdf_only Document to full_text."""
+    from .pdf_extractor import promote_pdf_to_full_text as promote_pdf_impl
     import json as json_mod
     doc = json_mod.loads(document_json)
     _print(promote_pdf_impl(doc, ocr_enabled=ocr), json_out)
@@ -1701,6 +1692,7 @@ def calibrate_source_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Measure safe request rate for a source."""
+    from .calibrate import calibrate_source as calibrate_source_impl
     _print(calibrate_source_impl(source_id, online=online), json_out)
 
 
@@ -1710,6 +1702,7 @@ def calibrate_all_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Calibrate all registered sources."""
+    from .calibrate import calibrate_all as calibrate_all_impl
     _print(calibrate_all_impl(online=online), json_out)
 
 
@@ -1737,6 +1730,7 @@ def benchmark_cmd(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Run micro-benchmark suite (deterministic corpus)."""
+    from .benchmark import run_benchmarks as run_benchmarks_impl
     _print(run_benchmarks_impl(corpus_size=corpus_size), json_out)
 
 
@@ -1763,6 +1757,7 @@ def watch_add(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Register a watch for periodic research."""
+    from .research_watch import add_watch as add_watch_impl
     src_list = [s.strip() for s in sources.split(",")] if sources else None
     result = add_watch_impl(
         name=name, query=query, sources=src_list,
@@ -1776,6 +1771,7 @@ def watch_list(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List all registered watches."""
+    from .research_watch import list_watches as list_watches_impl
     _print(list_watches_impl(), json_out)
 
 
@@ -1785,6 +1781,7 @@ def watch_run(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Execute a watch: re-search, detect new/changed docs."""
+    from .research_watch import run_watch as run_watch_impl
     _print(run_watch_impl(name), json_out)
 
 
@@ -1794,6 +1791,7 @@ def watch_remove(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Remove a watch."""
+    from .research_watch import remove_watch as remove_watch_impl
     _print(remove_watch_impl(name), json_out)
 
 
@@ -1806,6 +1804,7 @@ def privacy_scan(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Scan text for potential PII (TCKN, phone, email)."""
+    from .privacy import scan_pii as scan_pii_impl
     _print(scan_pii_impl(text), json_out)
 
 
@@ -1815,6 +1814,7 @@ def privacy_redact(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Redact PII from text. Returns copy — original unchanged."""
+    from .privacy import redact_pii as redact_pii_impl
     _print(redact_pii_impl(text), json_out)
 
 
@@ -1824,6 +1824,7 @@ def privacy_audit(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Audit a file or directory for PII presence."""
+    from .privacy import audit_privacy as audit_privacy_impl
     _print(audit_privacy_impl(path), json_out)
 
 

@@ -19,27 +19,27 @@ from .models import Document, build_error
 # Candidate extraction patterns
 # ---------------------------------------------------------------------------
 
-# Court names (Turkish legal system)
-_COURT_PATTERNS: list[tuple[str, str]] = [
-    (r"Yarg[ıi]tay", "Yargıtay"),
-    (r"Dan[ıi].tay", "Danıştay"),
-    (r"Anayasa\s+Mahkemesi|AYM", "Anayasa Mahkemesi"),
-    (r"Say[ıi].tay", "Sayıştay"),
-    (r"Rekabet\s+Kurulu|Rekabet\s+Kurumu", "Rekabet Kurulu"),
-    (r"T[ıi]caret\s+Mahkemesi", "Ticaret Mahkemesi"),
-    (r"[İi]cra\s+Hukuk\s+Mahkemesi", "İcra Hukuk Mahkemesi"),
-    (r"Asliye\s+Hukuk", "Asliye Hukuk Mahkemesi"),
-    (r"Asliye\s+Ceza", "Asliye Ceza Mahkemesi"),
-    (r"[İş]g?li?\s+Mahkemesi", "İş Mahkemesi"),
+# Court names (Turkish legal system) — M-53: pre-compile for speed
+_COURT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"Yarg[ıi]tay", re.IGNORECASE), "Yargıtay"),
+    (re.compile(r"Dan[ıi].tay", re.IGNORECASE), "Danıştay"),
+    (re.compile(r"Anayasa\s+Mahkemesi|AYM", re.IGNORECASE), "Anayasa Mahkemesi"),
+    (re.compile(r"Say[ıi].tay", re.IGNORECASE), "Sayıştay"),
+    (re.compile(r"Rekabet\s+Kurulu|Rekabet\s+Kurumu", re.IGNORECASE), "Rekabet Kurulu"),
+    (re.compile(r"T[ıi]caret\s+Mahkemesi", re.IGNORECASE), "Ticaret Mahkemesi"),
+    (re.compile(r"[İi]cra\s+Hukuk\s+Mahkemesi", re.IGNORECASE), "İcra Hukuk Mahkemesi"),
+    (re.compile(r"Asliye\s+Hukuk", re.IGNORECASE), "Asliye Hukuk Mahkemesi"),
+    (re.compile(r"Asliye\s+Ceza", re.IGNORECASE), "Asliye Ceza Mahkemesi"),
+    (re.compile(r"[İş]g?li?\s+Mahkemesi", re.IGNORECASE), "İş Mahkemesi"),
 ]
 
-# Chamber / daire hints
-_CHAMBER_PATTERNS: list[tuple[str, str]] = [
-    (r"(\d+)\.\s*(?:Hukuk|Ceza|Ticaret|İş|İdare)\s*(?:Dairesi|Genel\s+Kurulu|Kurulu)", None),
-    (r"Hukuk\s+(?:Genel\s+)?Kurulu", None),
-    (r"Ceza\s+(?:Genel\s+)?Kurulu", None),
-    (r"(\d+)\.\s*Daire(?:si)?", None),
-    (r"(Birinci|[İi]kinci|[Üü]çüncü|D[öo]rdüncü|[Beş]inci|[Altı]ncı|[Yed]inci|[Sek]inci|[Dok]inci|[On])\s+(?:Hukuk|Ceza)?\s*(?:Dairesi)?", None),
+# Chamber / daire hints — M-53: pre-compile for speed
+_CHAMBER_PATTERNS: list[tuple[re.Pattern[str], str | None]] = [
+    (re.compile(r"(\d+)\.\s*(?:Hukuk|Ceza|Ticaret|İş|İdare)\s*(?:Dairesi|Genel\s+Kurulu|Kurulu)", re.IGNORECASE), None),
+    (re.compile(r"Hukuk\s+(?:Genel\s+)?Kurulu", re.IGNORECASE), None),
+    (re.compile(r"Ceza\s+(?:Genel\s+)?Kurulu", re.IGNORECASE), None),
+    (re.compile(r"(\d+)\.\s*Daire(?:si)?", re.IGNORECASE), None),
+    (re.compile(r"(Birinci|[İi]kinci|[Üü]çüncü|D[öo]rdüncü|[Beş]inci|[Altı]ncı|[Yed]inci|[Sek]inci|[Dok]inci|[On])\s+(?:Hukuk|Ceza)?\s*(?:Dairesi)?", re.IGNORECASE), None),
 ]
 
 # Esas (case) number: YYYY/NNNNN or YYYY/NNNNN E or similar
@@ -63,11 +63,11 @@ _STANDALONE_KARAR = re.compile(
     r"\b(\d{1,3}/\d{3,6})\b"
 )
 
-# Date patterns (Turkish formats)
-_DATE_PATTERNS: list[tuple[str, str]] = [
-    (r"(\d{1,2})[./](\d{1,2})[./](\d{4})", "dmy"),   # DD.MM.YYYY
-    (r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", "ymd"),  # YYYY-MM-DD
-    (r"(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})", "my"),
+# Date patterns (Turkish formats) — M-53: pre-compile for speed
+_DATE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"(\d{1,2})[./](\d{1,2})[./](\d{4})", re.IGNORECASE), "dmy"),   # DD.MM.YYYY
+    (re.compile(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", re.IGNORECASE), "ymd"),  # YYYY-MM-DD
+    (re.compile(r"(Ocak|Şubat|Mart|Nisan|Mayıs|Haziran|Temmuz|Ağustos|Eylül|Ekim|Kasım|Aralık)\s+(\d{4})", re.IGNORECASE), "my"),
 ]
 
 # Document-id-like references (e.g., "bedesten:12345", "yargitay-2024/12345")
@@ -167,7 +167,7 @@ class VerificationFinding:
 def _detect_court(text: str) -> str | None:
     """Detect court name from text."""
     for pattern, name in _COURT_PATTERNS:
-        if re.search(pattern, text, re.IGNORECASE):
+        if pattern.search(text):
             return name
     return None
 
@@ -175,7 +175,7 @@ def _detect_court(text: str) -> str | None:
 def _detect_chamber(text: str) -> str | None:
     """Detect chamber/daire from text."""
     for pattern, _ in _CHAMBER_PATTERNS:
-        m = re.search(pattern, text, re.IGNORECASE)
+        m = pattern.search(text)
         if m:
             return m.group(0).strip()
     return None
@@ -185,7 +185,7 @@ def _detect_date(text: str) -> str | None:
     """Detect date from text.  Returns ISO-ish string or None."""
     # Try explicit date patterns
     for pattern, fmt in _DATE_PATTERNS:
-        m = re.search(pattern, text, re.IGNORECASE)
+        m = pattern.search(text)
         if m:
             if fmt == "dmy":
                 return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"

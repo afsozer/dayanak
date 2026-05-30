@@ -162,7 +162,7 @@ class TestCliGetStoresDocument:
             court="Test Court", decision_date="2024-01-01",
         )
 
-        with patch("emsal_mcp.cli.get_source") as mock_get_source:
+        with patch("emsal_mcp.sources.registry.get_source") as mock_get_source:
             mock_client = AsyncMock()
             mock_client.get_document = AsyncMock(return_value=mock_doc)
             mock_get_source.return_value = mock_client

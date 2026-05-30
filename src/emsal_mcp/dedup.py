@@ -540,6 +540,22 @@ def find_fuzzy_duplicates(
             court = r["court"] or "unknown"
             by_court.setdefault(court, []).append(r)
 
+        # M-53: Pre-fetch all dedup cluster memberships for O(1) lookup
+        # instead of issuing an SQL query per pair (O(n²) queries → O(1) set lookup).
+        cluster_pairs: set[tuple[str, str, str, str]] = set()
+        try:
+            dm_rows = db.execute(
+                "SELECT dm1.document_id AS d1, dm1.source AS s1, "
+                "dm2.document_id AS d2, dm2.source AS s2 "
+                "FROM dedup_members dm1 "
+                "JOIN dedup_members dm2 ON dm1.cluster_id = dm2.cluster_id"
+            ).fetchall()
+            for r in dm_rows:
+                cluster_pairs.add((r["d1"], r["s1"], r["d2"], r["s2"]))
+                cluster_pairs.add((r["d2"], r["s2"], r["d1"], r["s1"]))
+        except Exception:
+            pass  # table may not exist yet
+
         suspected: list[dict[str, Any]] = []
 
         for court, docs in by_court.items():
@@ -551,18 +567,8 @@ def find_fuzzy_duplicates(
                     if a["document_id"] == b["document_id"] and a["source"] == b["source"]:
                         continue
 
-                    # Skip if M-09 already detected them in the same cluster
-                    in_same_cluster = db.execute(
-                        """
-                        SELECT 1 FROM dedup_members dm1
-                        JOIN dedup_members dm2 ON dm1.cluster_id = dm2.cluster_id
-                        WHERE dm1.document_id = ? AND dm1.source = ?
-                          AND dm2.document_id = ? AND dm2.source = ?
-                        """,
-                        (a["document_id"], a["source"], b["document_id"], b["source"]),
-                    ).fetchone()
-
-                    if in_same_cluster:
+                    # M-53: O(1) cluster membership check via pre-fetched set
+                    if (a["document_id"], a["source"], b["document_id"], b["source"]) in cluster_pairs:
                         continue
 
                     # Compute cosine similarity from stored vectors

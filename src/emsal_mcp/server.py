@@ -2,113 +2,8 @@ from __future__ import annotations
 
 import json
 
-from .cache import Cache
-from .server_utils import (
-    get_active_requests,
-    get_error_codes,
-    validate_is_dict_with_keys,
-    validate_non_empty,
-    validate_positive_int,
-    validate_range,
-    validate_tool_input,
-)
-from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
-from .document import controlled_draft, export_bundle as export_bundle_impl
-from .legislation import (
-    format_legislation_citation as format_legislation_citation_impl,
-    get_legislation_article_tree as get_legislation_article_tree_impl,
-    get_legislation_document as get_legislation_document_impl,
-    get_legislation_gerekce as get_legislation_gerekce_impl,
-    get_legislation_source_status as get_legislation_source_status_impl,
-    get_legislation_types as get_legislation_types_impl,
-    search_legislation as search_legislation_impl,
-    search_legislation_articles as search_legislation_articles_impl,
-)
-from .chamber import (
-    chamber_timeline as chamber_timeline_impl,
-    find_similar_chambers as find_similar_chambers_impl,
-    get_chamber_overview as get_chamber_overview_impl,
-    profile_chamber as profile_chamber_impl,
-)
-from .citation_graph import (
-    build_citation_graph as build_citation_graph_impl,
-    export_graph as export_graph_impl,
-    find_cited_documents as find_cited_documents_impl,
-    find_citing_documents as find_citing_documents_impl,
-    get_citation_graph as get_citation_graph_impl,
-    get_citation_graph_stats as get_citation_graph_stats_impl,
-)
-from .privacy import (
-    scan_pii as scan_pii_impl,
-    redact_pii as redact_pii_impl,
-    audit_privacy as audit_privacy_impl,
-)
-from .pdf_extractor import (
-    extract_pdf_text_from_file as extract_pdf_text_impl,
-    get_pdf_toolkit_status as get_pdf_toolkit_status_impl,
-    promote_pdf_to_full_text as promote_pdf_to_full_text_impl,
-)
-from .semantic import (
-    build_semantic_index as build_semantic_index_impl,
-    get_index_status as get_index_status_impl,
-    hybrid_search as hybrid_search_impl,
-    rebuild_index as rebuild_index_impl,
-    semantic_search as semantic_search_impl,
-    update_indexes as update_indexes_impl,
-    get_index_sync_status as get_index_sync_status_impl,
-)
-from .models import Document
-from .petition import (
-    build_multi_issue_pack as build_multi_issue_pack_impl,
-    inspect_multi_issue_pack as inspect_multi_issue_pack_impl,
-    inspect_petition_pack as inspect_petition_pack_impl,
-    prepare_controlled_petition_draft as prepare_controlled_petition_draft_impl,
-    prepare_drafting_input_pack as prepare_drafting_input_pack_impl,
-    prepare_petition_outline as prepare_petition_outline_impl,
-)
-from .templates import (
-    get_template as get_template_impl,
-    list_templates as list_templates_impl,
-    render_template_to_skeleton as render_template_impl,
-)
-from .draft_diff import (
-    diff_drafts as diff_drafts_impl,
-    get_fill_report as get_fill_report_impl,
-    save_draft_version as save_draft_version_impl,
-    track_placeholders as track_placeholders_impl,
-)
-from .argument import (
-    build_argument_chain as build_argument_chain_impl,
-    score_argument as score_argument_impl,
-    get_argument_strength_report as get_argument_strength_report_impl,
-)
-from .exporter import (
-    export_plain_text as export_plain_text_impl,
-    export_to_format as export_to_format_impl,
-    get_export_capabilities as get_export_capabilities_impl,
-    prepare_docx_export as prepare_docx_export_impl,
-    prepare_export_package_bundle as prepare_export_package_bundle_impl,
-)
-from .research import refresh_research_bundle, research_quality_dashboard, research_topic
-from .safety import build_input_pack as build_input_pack_impl, citation_check
-from .sources.registry import capabilities, get_source, smoke_all_sync
-from .udf import (
-    convert_docx_to_udf_experimental,
-    convert_udf_to_docx,
-    convert_udf_to_pdf,
-    get_udf_authoring_instructions,
-    get_udf_toolkit_status,
-    probe_udf,
-    read_udf as read_udf_impl,
-    write_udf as write_udf_impl,
-)
-from .release import archive_release, readiness_dashboard, release_notes, release_smoke as release_smoke_result
-from .release import (
-    final_v1_readiness as final_v1_readiness_impl,
-    generate_release_summary as generate_release_summary_impl,
-    release_command_center as release_command_center_impl,
-    version_bump as version_bump_impl,
-)
+# M-52: All domain imports moved inside main() for faster cold-start.
+# Only stdlib (json) is imported at module level.
 
 
 def main() -> None:
@@ -117,6 +12,113 @@ def main() -> None:
     Imports FastMCP from the mcp package and registers all tool functions.
     Exits with an error message if the MCP extra is not installed.
     """
+    from .cache import Cache
+    from .server_utils import (
+        get_active_requests,
+        get_error_codes,
+        validate_is_dict_with_keys,
+        validate_non_empty,
+        validate_positive_int,
+        validate_range,
+        validate_tool_input,
+    )
+    from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
+    from .document import controlled_draft, export_bundle as export_bundle_impl
+    from .legislation import (
+        format_legislation_citation as format_legislation_citation_impl,
+        get_legislation_article_tree as get_legislation_article_tree_impl,
+        get_legislation_document as get_legislation_document_impl,
+        get_legislation_gerekce as get_legislation_gerekce_impl,
+        get_legislation_source_status as get_legislation_source_status_impl,
+        get_legislation_types as get_legislation_types_impl,
+        search_legislation as search_legislation_impl,
+        search_legislation_articles as search_legislation_articles_impl,
+    )
+    from .chamber import (
+        chamber_timeline as chamber_timeline_impl,
+        find_similar_chambers as find_similar_chambers_impl,
+        get_chamber_overview as get_chamber_overview_impl,
+        profile_chamber as profile_chamber_impl,
+    )
+    from .citation_graph import (
+        build_citation_graph as build_citation_graph_impl,
+        export_graph as export_graph_impl,
+        find_cited_documents as find_cited_documents_impl,
+        find_citing_documents as find_citing_documents_impl,
+        get_citation_graph as get_citation_graph_impl,
+        get_citation_graph_stats as get_citation_graph_stats_impl,
+    )
+    from .privacy import (
+        scan_pii as scan_pii_impl,
+        redact_pii as redact_pii_impl,
+        audit_privacy as audit_privacy_impl,
+    )
+    from .pdf_extractor import (
+        extract_pdf_text_from_file as extract_pdf_text_impl,
+        get_pdf_toolkit_status as get_pdf_toolkit_status_impl,
+        promote_pdf_to_full_text as promote_pdf_to_full_text_impl,
+    )
+    from .semantic import (
+        build_semantic_index as build_semantic_index_impl,
+        get_index_status as get_index_status_impl,
+        hybrid_search as hybrid_search_impl,
+        rebuild_index as rebuild_index_impl,
+        semantic_search as semantic_search_impl,
+        update_indexes as update_indexes_impl,
+        get_index_sync_status as get_index_sync_status_impl,
+    )
+    from .models import Document
+    from .petition import (
+        build_multi_issue_pack as build_multi_issue_pack_impl,
+        inspect_multi_issue_pack as inspect_multi_issue_pack_impl,
+        inspect_petition_pack as inspect_petition_pack_impl,
+        prepare_controlled_petition_draft as prepare_controlled_petition_draft_impl,
+        prepare_drafting_input_pack as prepare_drafting_input_pack_impl,
+        prepare_petition_outline as prepare_petition_outline_impl,
+    )
+    from .templates import (
+        get_template as get_template_impl,
+        list_templates as list_templates_impl,
+        render_template_to_skeleton as render_template_impl,
+    )
+    from .draft_diff import (
+        diff_drafts as diff_drafts_impl,
+        get_fill_report as get_fill_report_impl,
+        save_draft_version as save_draft_version_impl,
+        track_placeholders as track_placeholders_impl,
+    )
+    from .argument import (
+        build_argument_chain as build_argument_chain_impl,
+        score_argument as score_argument_impl,
+        get_argument_strength_report as get_argument_strength_report_impl,
+    )
+    from .exporter import (
+        export_plain_text as export_plain_text_impl,
+        export_to_format as export_to_format_impl,
+        get_export_capabilities as get_export_capabilities_impl,
+        prepare_docx_export as prepare_docx_export_impl,
+        prepare_export_package_bundle as prepare_export_package_bundle_impl,
+    )
+    from .research import refresh_research_bundle, research_quality_dashboard, research_topic
+    from .safety import build_input_pack as build_input_pack_impl, citation_check
+    from .sources.registry import capabilities, get_source, smoke_all_sync
+    from .udf import (
+        convert_docx_to_udf_experimental,
+        convert_udf_to_docx,
+        convert_udf_to_pdf,
+        get_udf_authoring_instructions,
+        get_udf_toolkit_status,
+        probe_udf,
+        read_udf as read_udf_impl,
+        write_udf as write_udf_impl,
+    )
+    from .release import archive_release, readiness_dashboard, release_notes, release_smoke as release_smoke_result
+    from .release import (
+        final_v1_readiness as final_v1_readiness_impl,
+        generate_release_summary as generate_release_summary_impl,
+        release_command_center as release_command_center_impl,
+        version_bump as version_bump_impl,
+    )
     try:
         from mcp.server.fastmcp import FastMCP
     except Exception as exc:  # pragma: no cover
