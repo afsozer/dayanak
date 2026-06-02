@@ -185,7 +185,7 @@ class _KikClient:
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Accept": "application/json",
-            "User-Agent": f"EmsalMcp/{__version__} (+https://github.com/fatihsozer/emsal-mcp)",
+            "User-Agent": f"EmsalMcp/{__version__} (+https://github.com/brachindul/emsal-mcp)",
         }
         payload = {"aramaMetni": query, "sayfa": 1, "sayfaBoyutu": min(limit, 20)}
 
@@ -264,7 +264,7 @@ class _KikClient:
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Accept": "application/json",
-            "User-Agent": f"EmsalMcp/{__version__} (+https://github.com/fatihsozer/emsal-mcp)",
+            "User-Agent": f"EmsalMcp/{__version__} (+https://github.com/brachindul/emsal-mcp)",
         }
 
         async with httpx.AsyncClient(timeout=30, follow_redirects=True) as http:
@@ -321,7 +321,7 @@ class _KikClient:
             headers = {
                 "Authorization": f"Bearer {self._token}",
                 "Accept": "application/json",
-                "User-Agent": f"EmsalMcp/{__version__} (+https://github.com/fatihsozer/emsal-mcp)",
+                "User-Agent": f"EmsalMcp/{__version__} (+https://github.com/brachindul/emsal-mcp)",
             }
             async with httpx.AsyncClient(timeout=15, follow_redirects=True) as http:
                 resp = await http.post(

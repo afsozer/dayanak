@@ -1,6 +1,6 @@
 {
   "generated_by": "scripts/inventory_messages.py",
-  "source_dir": "C:\\Users\\Sozer\\Emsal-mcp\\src\\emsal_mcp",
+  "source_dir": "src/emsal_mcp",
   "module_count": 18,
   "total_unique_messages": 101,
   "category_counts": {

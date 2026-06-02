@@ -68,7 +68,7 @@ class EmsalConfig:
                 from . import __version__
                 self._user_agent = (
                     f"EmsalMcp/{__version__} "
-                    f"(https://github.com/fatihsozer/emsal-mcp)"
+                    f"(https://github.com/brachindul/emsal-mcp)"
                 )
         return self._user_agent
 

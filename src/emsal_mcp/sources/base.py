@@ -375,7 +375,7 @@ def client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=30,
         follow_redirects=True,
-        headers={"User-Agent": f"EmsalMcp/{__version__} (+https://github.com/fatihsozer/emsal-mcp)"},
+        headers={"User-Agent": f"EmsalMcp/{__version__} (+https://github.com/brachindul/emsal-mcp)"},
     )
 
 

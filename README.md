@@ -2,9 +2,9 @@
 
 > **v3.1.0** — 113 MCP tools · 150 CLI commands · 47 test files · 36 source modules
 >
-> [![CI](https://github.com/fatihsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/fatihsozer/emsal-mcp/actions/workflows/ci.yml)
+> [![CI](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml)
 
-Fatih Sözer'in yerel makinesinde çalışan, resmi/public hukuk kaynak odaklı, citation-safe MCP araştırma ve belge hazırlık sistemi.
+Resmî ve kamuya açık Türk hukuk kaynaklarında (emsal kararlar ve mevzuat) citation-safe arama, araştırma ve belge hazırlık için MCP sunucusu.
 
 ## Kırmızı çizgiler
 
