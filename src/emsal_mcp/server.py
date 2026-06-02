@@ -156,16 +156,25 @@ def main() -> None:
     @mcp.tool()
     @validate_tool_input(query=validate_non_empty, limit=validate_positive_int)
     async def search_decisions(source: str, query: str, limit: int = 10, page: int = 1) -> list[dict]:
-        """Search court decisions LIVE from an official source (online).
+        """✅ PRIMARY, MANDATORY TOOL FOR ALL CASE-LAW / DECISION / MEVZUAT RESEARCH.
 
-        This is the PRIMARY tool for finding decisions on a topic. It queries
-        the live official API (e.g. Bedesten/Yargıtay, Mevzuat) and returns
-        fresh results. Use this first for any research question. Fetched
-        results are cached so `hybrid_search` can later search them locally.
+        For ANY question about court decisions, precedents, case law, or
+        legislation you MUST call THIS tool first. It is the ONLY tool that
+        retrieves real, current documents LIVE from the official source
+        (online — e.g. Bedesten/Yargıtay, Mevzuat).
 
-        Do NOT rely on `hybrid_search` for topic research — that only searches
-        the local cache of already-fetched documents and will be empty/sparse
-        until you have fetched decisions via this tool.
+        HARD RULES — no exceptions, no interpretation:
+        - Do NOT answer case-law questions from memory, training data, or web search.
+        - Do NOT use hybrid_search / semantic_search / embedding_search /
+          search_local_cache to FIND decisions — those search ONLY the small
+          local cache and only RE-RANK what THIS tool has already fetched.
+          They cannot discover any decision that was not fetched here first.
+        - Every esas/karar number, date, and chamber you cite MUST come from a
+          document returned by THIS tool and verified via get_document full text.
+        - If you have not called this tool yet, you have NO case law to cite.
+
+        Fetched results are cached so the local re-ranking tools can operate on
+        them afterward within the same session.
 
         Args:
             source: Source identifier (e.g. 'bedesten', 'mevzuat').
@@ -349,7 +358,17 @@ def main() -> None:
         sort: str = "relevance",
         limit: int = 20,
     ) -> list[dict]:
-        """Search cached documents locally without network access.
+        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
+
+        Filters/looks up documents ALREADY fetched via `search_decisions`. It
+        cannot find any decision that was not fetched first; the cache is small
+        by design (not a crawler, not a full corpus).
+
+        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
+        (live, online) first — it is the primary, mandatory entry point. Use
+        this tool only to filter/inspect already-fetched results. Never
+        web-search, never cite esas/karar numbers not from a fetched full-text
+        document.
 
         Supports filters: source, court, chamber, date, esas_no, karar_no,
         document_id, content_status, draft_usable, quote_usable.
@@ -1198,9 +1217,18 @@ def main() -> None:
         limit: int = 10,
         filters: dict | None = None,
     ) -> dict:
-        """Search cached documents using TF-IDF cosine similarity.
+        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
 
-        Pure term-frequency search without keyword dependency.
+        This ONLY re-ranks documents ALREADY fetched via `search_decisions`.
+        It cannot find any decision that was not fetched first; the local cache
+        is small by design (not a crawler, not a full corpus).
+
+        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
+        (live, online) first — it is the primary, mandatory entry point. Use
+        this tool only to re-rank already-fetched results. Never web-search,
+        never cite esas/karar numbers not from a fetched full-text document.
+
+        Pure term-frequency (TF-IDF cosine) search over the cache.
         Works best with documents that share vocabulary.
         Uses Turkish suffix stripping for query expansion — stemmed
         variants of query terms are generated automatically.
@@ -1230,15 +1258,24 @@ def main() -> None:
         hybrid_weight: float = 0.6,
         rerank: bool = False,
     ) -> dict:
-        """Hybrid search over the LOCAL CACHE only (not online).
+        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
 
-        IMPORTANT: This searches ONLY documents already fetched into the local
-        cache via `search_decisions`/`get_document`. It does NOT query any
-        official source. If the cache is empty or sparse, results will be
-        limited — that is expected, not a failure. For topic research on fresh
-        case law, use `search_decisions` (live) first; never fall back to web
-        search and never cite case numbers that did not come from a fetched,
-        full-text document.
+        This ONLY re-ranks documents ALREADY fetched via `search_decisions`.
+        It is a re-ranker over an existing local result set, NOT a way to find
+        case law. It CANNOT discover any decision that was not fetched first,
+        and the local cache is small by design (this is NOT a crawler and NOT a
+        corpus of all decisions — it holds only what you fetched this session).
+
+        HARD RULES — no exceptions, no interpretation:
+        - To find decisions on ANY topic you MUST call `search_decisions`
+          (live, online). That is THE primary, mandatory entry point.
+        - Use this tool ONLY to refine/re-rank results AFTER `search_decisions`
+          has fetched documents in the same session.
+        - "Empty/limited results here" means "you have not fetched yet" — go
+          call `search_decisions`. It does NOT mean no case law exists.
+        - NEVER substitute web search for `search_decisions`. NEVER cite an
+          esas/karar number, date, or chamber not coming from a fetched
+          full-text document.
 
         Balances exact keyword matching (FTS5 BM25) with semantic similarity
         (TF-IDF cosine).  hybrid_weight controls the balance: higher = more
@@ -1320,9 +1357,18 @@ def main() -> None:
         limit: int = 10,
         provider: str | None = None,
     ) -> dict:
-        """Dense embedding similarity search.
+        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
 
-        Uses brute-force cosine similarity over all indexed embeddings.
+        Dense-embedding re-ranking over documents ALREADY fetched via
+        `search_decisions`. Cannot find decisions that were not fetched first;
+        the local index is small by design (not a crawler, not a full corpus).
+
+        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
+        (live, online) first — it is the primary, mandatory entry point. Use
+        this tool only to re-rank already-fetched results. Never web-search,
+        never cite esas/karar numbers not from a fetched full-text document.
+
+        Uses brute-force cosine similarity over indexed embeddings.
         No approximate nearest-neighbor (ANN) — exact but slower for large
         corpora.
 
@@ -2199,7 +2245,17 @@ def main() -> None:
         filters: dict | None = None,
         include_dense: bool = False,
     ) -> dict:
-        """Hybrid search using Reciprocal Rank Fusion (RRF).
+        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
+
+        Re-ranks documents ALREADY fetched via `search_decisions` using
+        Reciprocal Rank Fusion. Cannot find decisions that were not fetched
+        first; the local cache is small by design (not a crawler, not a full
+        corpus).
+
+        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
+        (live, online) first — it is the primary, mandatory entry point. Use
+        this tool only to re-rank already-fetched results. Never web-search,
+        never cite esas/karar numbers not from a fetched full-text document.
 
         RRF merges BM25, TF-IDF, and optionally dense embedding results
         by rank position only — no score normalization required.
