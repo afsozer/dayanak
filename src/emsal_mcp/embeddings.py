@@ -383,15 +383,3 @@ def heuristic_rerank(
         "method": "heuristic",
         "boosted": boosted,
     }
-
-
-# ---------------------------------------------------------------------------
-    # Sort by heuristic score descending
-    reranked = sorted(candidates, key=lambda x: x.get("heuristic_score", 0), reverse=True)
-
-    return {
-        "ok": True,
-        "results": reranked[:top_k],
-        "method": "heuristic",
-        "boosted": boosted,
-    }
