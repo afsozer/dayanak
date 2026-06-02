@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **M-60:** Adaptör yanıt-şeması doğrulaması — `SourceClient` sınıfına `_check_response_schema()` metodu eklendi. Bedesten, Mevzuat, Danıştay, GİB, Sayıştay adaptörleri için beklenen JSON yanıt anahtarları (`_search_response_keys`, `_get_document_response_keys`) tanımlandı. API şema değişimi (primary key kaybı) saptandığında `_capability_status` runtime'da `STABLE` → `PARTIAL` olarak düşürülür. Fallback zinciri korunur; HTML tabanlı adaptörler (AYM, Uyuşmazlık, Rekabet) doğrulamaya dahil edilmez. 26 yeni test (10 birim + 16 entegrasyon) eklendi.
+
 ### Fixed
 - **M-57:** Hermetik test düzeltmesi — `test_status_nonexistent_env` artık LibreOffice kurulu/kurulu olmayan tüm makinelerde aynı sonucu veriyor. UDF toolkit'inin binary keşfi (`_discover_libreoffice`, `_discover_unoconv`) ve dizin çözümlemesi (`_resolve_toolkit_dir`) enjekte edilebilir hale getirildi; testler tamamen ortamdan bağımsız (hermetik).
 - **M-58:** README drift tespiti — README başlığındaki sürüm/modül/araç sayıları artık koddan otomatik türetiliyor (`scripts/gen_readme_counts.py`). Drift durumunda `tests/test_readme_drift.py` CI'da hata verir.
