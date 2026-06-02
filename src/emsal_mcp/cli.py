@@ -39,6 +39,7 @@ pdf_app = typer.Typer(help="PDF content extraction: text layer, toolkit status")
 calibrate_app = typer.Typer(help="Source calibration: measure safe request rates")
 watch_app = typer.Typer(help="Research watchlist: add, list, run, remove watches")
 privacy_app = typer.Typer(help="PII detection, redaction, and privacy audit")
+eval_app = typer.Typer(help="Retrieval evaluation: run eval harness, recall@k, nDCG")
 app.add_typer(api_app, name="api")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
@@ -61,6 +62,7 @@ app.add_typer(pdf_app, name="pdf")
 app.add_typer(calibrate_app, name="calibrate")
 app.add_typer(watch_app, name="watch")
 app.add_typer(privacy_app, name="privacy")
+app.add_typer(eval_app, name="eval")
 
 
 def _print(obj, json_out: bool):
@@ -1848,6 +1850,22 @@ def privacy_audit(
     """Audit a file or directory for PII presence."""
     from .privacy import audit_privacy as audit_privacy_impl
     _print(audit_privacy_impl(path), json_out)
+
+
+# ── Eval commands ────────────────────────────────────────────────────────────
+
+
+@eval_app.command("run")
+def eval_run(
+    golden_path: str | None = typer.Option(None, help="Path to golden_queries.json"),
+    k: int = typer.Option(5, help="Cutoff rank for recall@k / nDCG@k"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Run evaluation harness against golden query set."""
+    from .eval_metrics import evaluate_search
+    from .semantic import hybrid_search
+    result = evaluate_search(search_fn=hybrid_search, golden_path=golden_path, k_default=k)
+    _print(result, json_out)
 
 
 if __name__ == "__main__":

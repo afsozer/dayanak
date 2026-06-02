@@ -2125,6 +2125,27 @@ def main() -> None:
         """
         return audit_privacy_impl(path)
 
+    # ── Eval v4.0 M-71 tool ──────────────────────────────────────────────
+
+    @mcp.tool()
+    def run_evaluation(golden_path: str | None = None, k: int = 5) -> dict:
+        """Run retrieval evaluation harness against golden query set.
+
+        Uses recall@k and nDCG@k metrics.  Returns per-query scores and
+        aggregate metrics.
+
+        Args:
+            golden_path: Optional path to golden_queries.json (default: eval/golden_queries.json).
+            k: Cutoff rank (default 5).
+
+        Returns:
+            Dict with ok, query_count, metrics (recall_at_k, ndcg_at_k, pass_rate),
+            per_query details.
+        """
+        from .eval_metrics import evaluate_search
+        from .semantic import hybrid_search
+        return evaluate_search(search_fn=hybrid_search, golden_path=golden_path, k_default=k)
+
     mcp.run()
 
 

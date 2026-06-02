@@ -62,8 +62,7 @@ Hedef: "doğru kararı ilk 5 sonuçta getir." Şu an arama çalışıyor ama öl
 - **M-70 — Hukuki sorgu anlama.** Madde/kanun normalizasyonu ("İYUK 11" ↔ "2577 s. K. m.11"),
   eş anlamlı/terim genişletme (TR hukuk sözlüğünden), daire/konu filtre çıkarımı. Uydurma yok —
   yalnızca deterministik normalizasyon.
-- **M-71 — Getirme değerlendirme koşumu (eval harness).** Altın sorgu seti (konu→beklenen kararlar),
-  `recall@k` / `nDCG` metrikleri, CI'da **regresyon geçidi**. "Daha iyi" iddiası artık ölçülür.
+- **M-71 — Getirme değerlendirme koşumu ✅** `eval_metrics.py`, `eval/golden_queries.json`, recall@k + nDCG.
 - **M-72 — Yeniden sıralama (rerank).** İsteğe bağlı cross-encoder/heuristik rerank katmanı;
   alıntı-güvenli belgeleri ve daha yeni içtihadı yukarı taşıma sinyalleri.
 

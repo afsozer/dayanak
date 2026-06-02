@@ -1,0 +1,32 @@
+[
+    {
+        "query": "sözleşme ihlali tazminat",
+        "expected_document_ids": ["SYNTH-YT-2025-001"],
+        "description": "Sözleşme ihlali — Yargıtay 3. Hukuk Dairesi kararı",
+        "k": 3
+    },
+    {
+        "query": "idari para cezası iptal",
+        "expected_document_ids": ["SYNTH-DT-2025-002"],
+        "description": "İdari para cezası — Danıştay 10. Dairesi kararı",
+        "k": 3
+    },
+    {
+        "query": "yargıtay hukuk dairesi kararı",
+        "expected_document_ids": ["SYNTH-YT-2025-001", "SYNTH-YH-2025-005"],
+        "description": "Yargıtay kararları — iki farklı hukuk dairesi",
+        "k": 5
+    },
+    {
+        "query": "ticaret mahkemesi limited şirket",
+        "expected_document_ids": ["SYNTH-AH-2025-004"],
+        "description": "Asliye Ticaret — limited şirket sözleşmesi",
+        "k": 3
+    },
+    {
+        "query": "anayasa mahkemesi bireysel başvuru mülkiyet",
+        "expected_document_ids": ["SYNTH-AYM-2025-003"],
+        "description": "AYM bireysel başvuru — mülkiyet hakkı",
+        "k": 3
+    }
+]
