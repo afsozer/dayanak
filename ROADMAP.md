@@ -34,15 +34,6 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ## FAZ A — Doğruluk & Hijyen (yüksek öncelik, küçük efor)
 
-### M-58 — README & sürüm tutarlılığı
-**Sorun:** README başlığı "v1.0.0 · 10 source modules" diyor; gerçek v3.1.0, 36 modül.
-Tool/CLI sayıları elle yazılmış ve geride kalmış.
-- README başlığını gerçek sürüm/modül sayısıyla güncelle.
-- Sayıları (MCP tool, CLI komutu, test dosyası) elle yazmak yerine `scripts/` altında bir
-  üreteç ile README'ye gömülen bir bölümden doldur (CI'da drift kontrolü).
-- **Bitti sayılır:** README'deki tüm sayılar koddan türetilir; sürüm pyproject ile eşleşir;
-  drift testi suite'te.
-
 ### M-59 — Doküman konsolidasyonu
 **Sorun:** Kök dizinde dağınık geçmiş dokümanlar birikmişti (temizlendi). Kalan referanslar
 güncel tutulmalı.
