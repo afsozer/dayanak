@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .cache import Cache
-from .models import ContentStatus, Document, SearchResult
+from .models import ContentStatus, Document, SearchResult, merge_search_metadata
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +116,10 @@ def research_topic(
         try:
             import asyncio
             doc = asyncio.run(client.get_document(sr.document_id))
+            # Carry structured search metadata (esas/karar/date/court) into the
+            # fetched document; getDocumentContent returns content-only for some
+            # sources, which otherwise blocks citation_check despite full text.
+            merge_search_metadata(doc, sr)
             fetched_documents.append(doc)
         except Exception as exc:
             fetch_warnings.append(f"fetch {sr.source}:{sr.document_id}: {exc}")

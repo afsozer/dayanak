@@ -7,7 +7,7 @@ pytestmark = [pytest.mark.unit]
 
 import pytest
 
-from emsal_mcp.models import ContentStatus, Document, SafetyState
+from emsal_mcp.models import ContentStatus, Document, SafetyState, SearchResult, merge_search_metadata
 from emsal_mcp.safety import build_input_pack, citation_check, exact_quote, verify_document_hash
 
 
@@ -22,6 +22,46 @@ def make_doc(**kwargs) -> Document:
     }
     defaults.update(kwargs)
     return Document(**defaults)
+
+
+class TestMergeSearchMetadata:
+    def test_fills_empty_provenance_and_unblocks_citation(self):
+        # Document with full text but no provenance (Bedesten getDocumentContent
+        # returns content-only) → citation_check fails.
+        doc = Document(
+            source="bedesten", document_id="1208605300", title="1208605300",
+            full_text="8. Hukuk Dairesi ... uzun karar metni " * 5,
+            content_status=ContentStatus.HTML_MARKDOWN,
+        )
+        assert citation_check(doc).quoteUsable is False
+        sr = SearchResult(
+            source="bedesten", document_id="1208605300", title="8. HD kararı",
+            esas_no="2024/271", karar_no="2026/2944", decision_date="28.04.2026",
+            court="Yargıtay", chamber="8. Hukuk Dairesi",
+        )
+        merge_search_metadata(doc, sr)
+        assert doc.esas_no == "2024/271"
+        assert doc.karar_no == "2026/2944"
+        assert doc.decision_date == "28.04.2026"
+        assert citation_check(doc).quoteUsable is True
+
+    def test_never_overwrites_existing_values(self):
+        doc = Document(
+            source="bedesten", document_id="1", title="Gerçek Başlık",
+            esas_no="2020/100", decision_date="01.01.2020",
+            full_text="metin", content_status=ContentStatus.HTML_MARKDOWN,
+        )
+        sr = SearchResult(
+            source="bedesten", document_id="1", title="Farklı Başlık",
+            esas_no="9999/999", karar_no="2021/55", decision_date="02.02.2021",
+        )
+        merge_search_metadata(doc, sr)
+        # Existing values preserved
+        assert doc.esas_no == "2020/100"
+        assert doc.decision_date == "01.01.2020"
+        assert doc.title == "Gerçek Başlık"
+        # Only the empty field is filled
+        assert doc.karar_no == "2021/55"
 
 
 class TestCitationCheck:

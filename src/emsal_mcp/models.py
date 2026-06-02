@@ -414,6 +414,40 @@ def finalize_document(doc: Document, warnings: list[str] | None = None) -> Docum
     return doc
 
 
+# Provenance fields that may be carried over from a SearchResult to a fetched
+# Document. These come from the structured search API — never fabricated.
+_PROVENANCE_FIELDS = (
+    "decision_date", "esas_no", "karar_no", "court", "chamber",
+    "source_url", "summary", "title",
+)
+
+
+def merge_search_metadata(doc: Document, source_result: SearchResult) -> Document:
+    """Fill empty provenance fields on a fetched Document from its SearchResult.
+
+    The ``getDocumentContent`` endpoints of some sources (e.g. Bedesten) return
+    only the content blob with no structured metadata, leaving ``esas_no`` /
+    ``karar_no`` / ``decision_date`` empty. That causes ``citation_check`` to
+    fail even when full text is present. This helper carries the metadata the
+    search API already returned into the document.
+
+    - Fill-empty-only: never overwrites a value the document already has.
+    - Only the structured fields the search API provided are copied; nothing
+      is inferred, parsed from text, or fabricated.
+    - Identity fields (source, document_id) and content fields are untouched.
+
+    Returns the document (mutated in-place and returned for convenience).
+    """
+    if source_result is None:
+        return doc
+    for field in _PROVENANCE_FIELDS:
+        current = getattr(doc, field, None)
+        incoming = getattr(source_result, field, None)
+        if (current is None or current == "" or current == doc.document_id) and incoming:
+            setattr(doc, field, incoming)
+    return doc
+
+
 def build_error(
     error_code: str,
     message: str,
