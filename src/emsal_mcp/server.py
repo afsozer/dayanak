@@ -153,6 +153,45 @@ def main() -> None:
 
     mcp = FastMCP("emsal-mcp")
 
+    def _attach_corpus_hint(result: dict) -> dict:
+        """Runtime safety net: steer the model back to live search_decisions.
+
+        Local search tools only search already-fetched documents. When they
+        return nothing, or when the local cache is tiny, inject an explicit
+        ``hint`` (and ``cache_document_count``) telling the caller to use the
+        live `search_decisions` tool instead of trusting these results or
+        falling back to web search.
+        """
+        if not isinstance(result, dict):
+            return result
+        try:
+            c = Cache()
+            try:
+                corpus = c.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+            finally:
+                c.close()
+        except Exception:
+            corpus = None
+        total = result.get("total_matches", len(result.get("results") or []))
+        hint = None
+        if total == 0:
+            hint = (
+                "0 eşleşme. Bu araç YALNIZCA daha önce çekilmiş belgelerde arar, "
+                "canlı kaynakta DEĞİL. Karar bulmak için search_decisions (canlı) "
+                "aracını çağır; web aramasına başvurma."
+            )
+        elif corpus is not None and corpus < 200:
+            hint = (
+                f"Yerel cache yalnızca {corpus} belge içeriyor (crawler/tam derlem "
+                "DEĞİL). Eksiksiz ve güncel sonuç için önce search_decisions (canlı) "
+                "ile getir; bu sonuçlar yalnızca çekilmiş belgelerin yeniden sıralamasıdır."
+            )
+        if hint:
+            result["hint"] = hint
+            if corpus is not None:
+                result["cache_document_count"] = corpus
+        return result
+
     @mcp.tool()
     @validate_tool_input(query=validate_non_empty, limit=validate_positive_int)
     async def search_decisions(source: str, query: str, limit: int = 10, page: int = 1) -> list[dict]:
@@ -1245,9 +1284,9 @@ def main() -> None:
             Dict with ok, query, results (score + snippet), total_matches, method,
             expanded_query_terms, snippet_highlighted.
         """
-        return semantic_search_impl(
+        return _attach_corpus_hint(semantic_search_impl(
             query=query, limit=limit, filters=filters,
-        )
+        ))
 
     @mcp.tool()
     @validate_tool_input(limit=validate_positive_int, hybrid_weight=validate_range(0.0, 1.0))
@@ -1300,11 +1339,11 @@ def main() -> None:
             total_matches, method, hybrid_weight, reranked, expanded_query_terms,
             snippet_highlighted.
         """
-        return hybrid_search_impl(
+        return _attach_corpus_hint(hybrid_search_impl(
             query=query, limit=limit, filters=filters,
             hybrid_weight=hybrid_weight,
             rerank=rerank,
-        )
+        ))
 
     @mcp.tool()
     def index_status() -> dict:
@@ -1382,7 +1421,7 @@ def main() -> None:
         """
         from .semantic import embedding_search as _emb_search
 
-        return _emb_search(query=query, limit=limit, provider=provider)
+        return _attach_corpus_hint(_emb_search(query=query, limit=limit, provider=provider))
 
     @mcp.tool()
     def embedding_index_status() -> dict:
@@ -2270,9 +2309,9 @@ def main() -> None:
             Dict with ok, results (with rrf_score), method="rrf".
         """
         from .semantic import hybrid_search_rrf as _hybrid_search_rrf
-        return _hybrid_search_rrf(
+        return _attach_corpus_hint(_hybrid_search_rrf(
             query=query, limit=limit, filters=filters, include_dense=include_dense,
-        )
+        ))
 
     # ── Query understanding M-70 tools ────────────────────────────────────
 
