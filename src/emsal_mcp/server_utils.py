@@ -76,19 +76,36 @@ def validate_tool_input(**validators: Callable[[Any], tuple[bool, str | None]]) 
     """
 
     def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            errors: list[str] = []
-            for param, validator in validators.items():
-                value = kwargs.get(param)
-                is_valid, err_msg = validator(value)
-                if not is_valid and value is not None:
-                    errors.append(f"{param}: {err_msg}")
-            if errors:
-                return build_error("INVALID_INPUT", "; ".join(errors))
-            return func(*args, **kwargs)
+        import asyncio
 
-        return wrapper
+        if asyncio.iscoroutinefunction(func):
+            @functools.wraps(func)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                errors: list[str] = []
+                for param, validator in validators.items():
+                    value = kwargs.get(param)
+                    is_valid, err_msg = validator(value)
+                    if not is_valid and value is not None:
+                        errors.append(f"{param}: {err_msg}")
+                if errors:
+                    return build_error("INVALID_INPUT", "; ".join(errors))
+                return await func(*args, **kwargs)
+
+            return async_wrapper
+        else:
+            @functools.wraps(func)
+            def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                errors: list[str] = []
+                for param, validator in validators.items():
+                    value = kwargs.get(param)
+                    is_valid, err_msg = validator(value)
+                    if not is_valid and value is not None:
+                        errors.append(f"{param}: {err_msg}")
+                if errors:
+                    return build_error("INVALID_INPUT", "; ".join(errors))
+                return func(*args, **kwargs)
+
+            return sync_wrapper
 
     return decorator
 

@@ -35,7 +35,7 @@ class BedestenClient(SourceClient):
             "itemTypeList": [item_type],
             "phrase": query,
             "sortFields": ["KARAR_TARIHI"],
-            "sortDirection": "desc",
+            "sortDirection": filters.get("sort_direction") or "desc",
         }
         payload: dict[str, Any] = {
             "data": data_payload,

@@ -242,6 +242,37 @@ class TestValidateToolInput:
         assert my_special_tool.__name__ == "my_special_tool"
         assert "My special tool docstring" in (my_special_tool.__doc__ or "")
 
+    def test_async_tool_stays_coroutine(self):
+        """Async tools must remain coroutine functions so FastMCP awaits them.
+
+        Regression: a sync wrapper around an async tool (e.g. search_decisions)
+        breaks the MCP server because the result is never awaited.
+        """
+        import asyncio
+
+        from emsal_mcp.server_utils import validate_tool_input, validate_non_empty
+
+        @validate_tool_input(query=validate_non_empty)
+        async def my_async_tool(query: str) -> dict:
+            return {"ok": True, "query": query}
+
+        assert asyncio.iscoroutinefunction(my_async_tool)
+        result = asyncio.run(my_async_tool(query="hello"))
+        assert result == {"ok": True, "query": "hello"}
+
+    def test_async_tool_validation_returns_error(self):
+        import asyncio
+
+        from emsal_mcp.server_utils import validate_tool_input, validate_non_empty
+
+        @validate_tool_input(query=validate_non_empty)
+        async def my_async_tool(query: str) -> dict:
+            return {"ok": True}
+
+        result = asyncio.run(my_async_tool(query=""))
+        assert result["ok"] is False
+        assert result["errorCode"] == "INVALID_INPUT"
+
 
 # ── Concurrency Tracking ──────────────────────────────────────────
 
