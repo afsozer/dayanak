@@ -10,6 +10,10 @@ class MevzuatClient(BedestenClient):
     name = "Mevzuat/Bedesten"
     base = "https://bedesten.adalet.gov.tr"
 
+    # Response schema — declared for M-60 schema-drift detection.
+    _search_response_keys = ["mevzuatList", "items", "data"]
+    _get_document_response_keys = ["content"]
+
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
         from .base import check_http_response, client
         from emsal_mcp.models import ContentStatus, SearchResult
@@ -29,11 +33,14 @@ class MevzuatClient(BedestenClient):
         async with client() as c:
             r = await c.post(f"{self.base}/mevzuat/searchDocuments", json=body, headers=self.headers)
             check_http_response(r, self.source_id)
-            data = r.json().get("data", {})
+            raw_data = r.json()
+        data = raw_data.get("data", raw_data)
+        # M-60: schema validation
+        _ = self._check_response_schema(data, self._search_response_keys, "search")
         items = data.get("mevzuatList") or data.get("items") or data.get("data") or []
         out: list[SearchResult] = []
         for i in items[:limit]:
-            doc_id = str(i.get("documentId") or i.get("id") or "")
+            doc_id = str(i.get("documentId") or i.get("mevzuatId") or i.get("id") or "")
             if not doc_id:
                 continue
             # Fix title: prefer mevzuatAdi, fallback to title, then construct from fields
@@ -54,7 +61,7 @@ class MevzuatClient(BedestenClient):
                 summary=i.get("summary") or i.get("ozet"),
                 court="Mevzuat",
                 decision_date=i.get("resmiGazeteTarihi") or i.get("date"),
-                karar_no=i.get("mevzuatNo"),
+                karar_no=(str(i["mevzuatNo"]) if i.get("mevzuatNo") is not None else None),
                 content_status=ContentStatus.METADATA_ONLY, metadata=i,
             ))
         return out
@@ -68,6 +75,8 @@ class MevzuatClient(BedestenClient):
             check_http_response(r, self.source_id)
             raw = r.json()
         data = raw.get("data", raw)
+        # M-60: schema validation
+        _ = self._check_response_schema(data, self._get_document_response_keys, "get_document")
         encoded = data.get("content") or ""
         text = ""
         warnings: list[str] = []

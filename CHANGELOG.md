@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **M-57:** Hermetik test düzeltmesi — `test_status_nonexistent_env` artık LibreOffice kurulu/kurulu olmayan tüm makinelerde aynı sonucu veriyor. UDF toolkit'inin binary keşfi (`_discover_libreoffice`, `_discover_unoconv`) ve dizin çözümlemesi (`_resolve_toolkit_dir`) enjekte edilebilir hale getirildi; testler tamamen ortamdan bağımsız (hermetik).
 - **M-58:** README drift tespiti — README başlığındaki sürüm/modül/araç sayıları artık koddan otomatik türetiliyor (`scripts/gen_readme_counts.py`). Drift durumunda `tests/test_readme_drift.py` CI'da hata verir.
 - **M-59:** Doküman konsolidasyonu — `docs/INDEX.md` tüm 11 dokümanı kapsayacak şekilde güncellendi (API.md, COOKBOOK.md, GLOSSARY.md, ERROR_CATALOG.md, LICENSES.md eklendi). Kök dizinde yalnızca README, CHANGELOG, INSTALL, ROADMAP + Makefile kaldı.
+- **M-60:** Adaptör yanıt-şeması doğrulaması — `SourceClient.validate_response_schema()` ile her adaptör beklenen JSON anahtarlarını bildiriyor; şema drift'i durumunda `_capability_status` runtime'da `PARTIAL`'a düşürülüyor, legacy fallback zinciri güvenlik ağı olarak korunuyor. Bedesten, Mevzuat, Danıştay, GİB, Sayıştay adaptörleri için schema tanımlandı. 26 test.
 
 ## [3.1.0] — 2026-05-30
 

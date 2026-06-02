@@ -104,6 +104,9 @@ class DanistayClient(SourceClient):
         "Accept": "application/json, text/javascript, */*; q=0.01",
     }
 
+    # Response schema (M-60)
+    _search_response_keys = ["data"]
+
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
         payload = {
             "data": {
@@ -119,6 +122,8 @@ class DanistayClient(SourceClient):
             r = await c.post(f"{self.base}/aramalist", json=payload, headers=self._headers)
             check_http_response(r, self.source_id)
             data = r.json()
+        # M-60: schema validation
+        _ = self._check_response_schema(data, self._search_response_keys, "search")
         items = data.get("data", {}).get("data") or data.get("data") or []
         return [
             SearchResult(
@@ -164,6 +169,9 @@ class GibClient(SourceClient):
     name = "Gelir İdaresi Başkanlığı"
     base = "https://gib.gov.tr/api"
 
+    # Response schema (M-60)
+    _search_response_keys = ["resultContainer", "content", "data"]
+
     # GİB query normalization map
     _query_norm: dict[str, str] = {
         "katma değer vergisi": "KDV",
@@ -191,6 +199,8 @@ class GibClient(SourceClient):
             )
             check_http_response(r, self.source_id)
             data = r.json()
+        # M-60: schema validation
+        _ = self._check_response_schema(data, self._search_response_keys, "search")
         items = (
             data.get("resultContainer", {}).get("content")
             or data.get("content")
@@ -494,6 +504,8 @@ class SayistayClient(SourceClient):
     source_id = "sayistay"
     name = "Sayıştay"
     base = "https://www.sayistay.gov.tr"
+    # Response schema (M-60)
+    _search_response_keys = ["data"]
     endpoints = {
         "daire": ("/KararlarDaire", "/KararlarDaire/DataTablesList", "/KararlarDaire/Detay"),
         "temyiz_kurulu": ("/KararlarTemyiz", "/KararlarTemyiz/DataTablesList", "/KararlarTemyiz/Detay"),
@@ -555,6 +567,8 @@ class SayistayClient(SourceClient):
                 content_status=ContentStatus.UNAVAILABLE,
                 metadata={"error": "parser_failure", "kind": kind},
             )][:1]
+        # M-60: schema validation
+        _ = self._check_response_schema(data, self._search_response_keys, "search")
         out = []
         for row in (data.get("data") or [])[:limit]:
             rid = str(row.get("Id") or row.get("id") or "")

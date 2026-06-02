@@ -36,15 +36,6 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ## FAZ B — Dış Bağımlılık Sağlamlığı (orta öncelik)
 
-### M-60 — Adaptör yanıt-şeması doğrulaması
-**Sorun:** Bedesten vb. resmî/sözleşmesiz endpoint'lere bağlı; `data.get(...)` zincirleme
-fallback'leri şema değişimini sessizce yutuyor.
-- Her adaptör için beklenen yanıt şeması (zorunlu alanlar) tanımla; eksikse yapısal
-  `error` + `warnings` döndür, sessizce boş liste döndürme.
-- Şema sürümü/etag benzeri bir "kaynak imzası" logla; beklenmeyen şekil saptanınca
-  capability'yi runtime'da `partial`/`unavailable`'a düşür.
-- **Bitti sayılır:** Bozuk/değişmiş yanıt simüle eden testler yapısal hata üretir; sessiz boş dönüş yok.
-
 ### M-61 — Kaynak sağlık izleme (smoke genişletme)
 - `smoke` komutunu, her adaptör için son başarılı şema imzasını saklayıp karşılaştıracak
   şekilde genişlet; kaynak kırıldığında erken uyarı.
@@ -83,5 +74,4 @@ enforce edilmiyor.
 
 ## Öncelik Sırası
 
-`M-57 → M-58 → M-59` (hijyen, hızlı kazanım) → `M-60 → M-61` (en yüksek teknik risk:
-dış API kırılganlığı) → `M-62` → (gerekirse) `M-63 → M-64`.
+`M-57 → M-58 → M-59` (hijyen, hızlı kazanım) → `M-61` → `M-62` → (gerekirse) `M-63 → M-64`.

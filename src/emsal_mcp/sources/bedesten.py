@@ -19,6 +19,10 @@ class BedestenClient(SourceClient):
     # Bedesten item_type constants (used by Yargıtay adapter override)
     _default_item_type = "YARGITAYKARARI"
 
+    # Response schema — declared for M-60 schema-drift detection.
+    _search_response_keys = ["emsalKararList", "items", "data", "content"]
+    _get_document_response_keys = ["content", "document", "data"]
+
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
         item_type = filters.get("item_type") or filters.get("court") or self._default_item_type
         # Normalize item_type: accept common variations
@@ -46,7 +50,10 @@ class BedestenClient(SourceClient):
         async with client() as c:
             r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
             check_http_response(r, self.source_id)
-            data = r.json().get("data", {})
+            raw_data = r.json()
+        data = raw_data.get("data", raw_data)
+        # M-60: schema validation — never silently swallow an API shape change
+        _ = self._check_response_schema(data, self._search_response_keys, "search")
         items = data.get("emsalKararList") or data.get("data") or data.get("items") or data.get("content") or []
         out: list[SearchResult] = []
         for it in items[:limit]:
@@ -79,6 +86,8 @@ class BedestenClient(SourceClient):
             check_http_response(r, self.source_id)
             raw = r.json()
         data = raw.get("data", raw)
+        # M-60: schema validation
+        _ = self._check_response_schema(data, self._get_document_response_keys, "get_document")
         encoded = data.get("content") or data.get("document") or data.get("data") or ""
         mime = data.get("mimeType") or "text/html"
         text = ""

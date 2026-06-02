@@ -92,6 +92,49 @@ class SourceClient(ABC):
     _known_limitations: list[str] = []
     _notes: str = ""
 
+    # Response schema validation — optional per-adapter declaration.
+    # _search_response_keys : list of expected top-level JSON keys for search()
+    # _get_document_response_keys : expected keys for get_document()
+    # Set to None (default) to skip validation for HTML/form-based adapters.
+    _search_response_keys: list[str] | None = None
+    _get_document_response_keys: list[str] | None = None
+
+    def _check_response_schema(
+        self, data: dict, expected_keys: list[str] | None, context: str
+    ) -> tuple[str | None, list[str]]:
+        """Validate that at least one expected key exists in the response data.
+
+        Returns ``(primary_key, warnings)`` where *primary_key* is the first
+        expected key found (or ``None`` if none found), and *warnings* is a
+        list of schema-drift warning strings.
+
+        Side-effect: downgrades ``_capability_status`` to ``PARTIAL`` when the
+        primary expected key is missing (one-shot — once PARTIAL, stays).
+        """
+        if not expected_keys:
+            return None, []
+        primary = expected_keys[0]
+        warnings: list[str] = []
+        # Check primary key presence
+        if primary not in data:
+            warnings.append(
+                f"SCHEMA_DRIFT: {self.source_id} {context} response missing "
+                f"expected key {primary!r}. Got keys: {sorted(str(k) for k in data.keys())[:12]}"
+            )
+            # One-shot capability downgrade
+            if self._capability_status == SourceStatus.STABLE:
+                self._capability_status = SourceStatus.PARTIAL
+            # Still try fallback keys
+            for fallback in expected_keys[1:]:
+                if fallback in data:
+                    warnings.append(
+                        f"SCHEMA_DRIFT_FALLBACK: {self.source_id} {context} using "
+                        f"fallback key {fallback!r}"
+                    )
+                    return fallback, warnings
+            return None, warnings
+        return primary, warnings
+
     # Retry configuration — OPT-IN per source by setting attributes.
     _retry_enabled: bool = False
     _retry_max_attempts: int = 3
