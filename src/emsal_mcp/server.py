@@ -11,7 +11,34 @@ def main() -> None:
 
     Imports FastMCP from the mcp package and registers all tool functions.
     Exits with an error message if the MCP extra is not installed.
+
+    This is a stdio JSON-RPC MCP server, not a CLI. When started by an MCP
+    client (stdin is a pipe), it enters the protocol loop. When a human runs
+    it interactively (stdin is a TTY) or passes --help/--version, it prints a
+    short usage note and exits instead of emitting confusing JSON parse errors.
     """
+    import sys
+
+    from . import __version__
+
+    argv = sys.argv[1:]
+    if argv and argv[0] in {"--version", "-V", "version"}:
+        print(f"emsal-mcp-server {__version__}")
+        return
+    if (argv and argv[0] in {"--help", "-h", "help"}) or sys.stdin.isatty():
+        print(
+            f"emsal-mcp-server {__version__} - stdio MCP (JSON-RPC) sunucusu\n"
+            "\n"
+            "Bu bir CLI degil; bir MCP istemcisi (orn. Claude Desktop) tarafindan\n"
+            "stdio uzerinden baslatilmak uzere tasarlanmistir. Elle/interaktif\n"
+            "calistirip Enter'a basmak JSON-RPC parse hatasi uretir (beklenen).\n"
+            "\n"
+            "Komut satiri arac/komutlari icin:  emsal-mcp --help\n"
+            "MCP istemci yapilandirmasi icin komut:  emsal-mcp-server\n",
+            file=sys.stderr,
+        )
+        return
+
     from .cache import Cache
     from .server_utils import (
         get_active_requests,
@@ -2173,6 +2200,50 @@ def main() -> None:
         return _hybrid_search_rrf(
             query=query, limit=limit, filters=filters, include_dense=include_dense,
         )
+
+    # ── Query understanding M-70 tools ────────────────────────────────────
+
+    @mcp.tool()
+    def normalize_law_ref(query: str) -> dict:
+        """Normalize law abbreviations to full references.
+
+        Example: 'İYUK 11' → '2577 (İdari Yargılama Usulü Kanunu) m.11'
+        Uses deterministic hardcoded mappings — no fabrication.
+
+        Args:
+            query: Text containing law abbreviation references.
+
+        Returns:
+            Dict with normalized_query and replacements list.
+        """
+        from .query_understanding import normalize_law_ref as _norm_law
+        return _norm_law(query)
+
+    @mcp.tool()
+    def expand_query_terms(query: str) -> dict:
+        """Expand query with legal synonyms from curated dictionary.
+
+        Args:
+            query: Query text to expand.
+
+        Returns:
+            Dict with expanded_query and added_terms.
+        """
+        from .query_understanding import expand_query_terms as _expand
+        return _expand(query)
+
+    @mcp.tool()
+    def extract_query_filters(query: str) -> dict:
+        """Extract court/chamber filters from query text.
+
+        Args:
+            query: Query text to analyze.
+
+        Returns:
+            Dict with filters dict and confidence level.
+        """
+        from .query_understanding import extract_query_filters as _extract
+        return _extract(query)
 
     mcp.run()
 

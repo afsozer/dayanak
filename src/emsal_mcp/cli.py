@@ -63,6 +63,8 @@ app.add_typer(calibrate_app, name="calibrate")
 app.add_typer(watch_app, name="watch")
 app.add_typer(privacy_app, name="privacy")
 app.add_typer(eval_app, name="eval")
+query_app = typer.Typer(help="Legal query understanding: norm reference, expand terms, extract filters")
+app.add_typer(query_app, name="query")
 
 
 def _print(obj, json_out: bool):
@@ -1857,6 +1859,39 @@ def eval_run(
     from .semantic import hybrid_search
     result = evaluate_search(search_fn=hybrid_search, golden_path=golden_path, k_default=k)
     _print(result, json_out)
+
+
+# ── Query understanding commands (M-70) ──────────────────────────────────────
+
+
+@query_app.command("norm")
+def query_norm(
+    query: str = typer.Argument(..., help="Sorgu metni"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Normalize law references in query (İYUK 11 → 2577 s.K. m.11)."""
+    from .query_understanding import normalize_law_ref
+    _print(normalize_law_ref(query), json_out)
+
+
+@query_app.command("expand")
+def query_expand(
+    query: str = typer.Argument(..., help="Sorgu metni"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Expand query with legal synonyms."""
+    from .query_understanding import expand_query_terms
+    _print(expand_query_terms(query), json_out)
+
+
+@query_app.command("extract-filters")
+def query_extract(
+    query: str = typer.Argument(..., help="Sorgu metni"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Extract court/chamber filters from query text."""
+    from .query_understanding import extract_query_filters
+    _print(extract_query_filters(query), json_out)
 
 
 if __name__ == "__main__":

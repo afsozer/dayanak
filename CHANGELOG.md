@@ -7,7 +7,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - **M-69:** Hibrit embeddings GA — Reciprocal Rank Fusion (RRF) test kapsamı tamamlandı. `_rrf_fusion()` birim testleri (9 adet: 2'li/3'lü sıralayıcı, boş küme, limit, metadata koruma) ve `hybrid_search_rrf()` entegrasyon testleri (7 adet: temel arama, dense dahil, boş cache, determinizm, limit, tekilleştirme, RRF vs lineer karşılaştırma) eklendi. Mevcut RRF altyapısı (`semantic.py` — `_rrf_fusion`, `hybrid_search_rrf`, `_fts5_search`, `_tfidf_search`) doğrulandı. BM25 + TF-IDF + dense 3-sinyal RRF tümlemesi test edildi. Toplam 16 yeni test.
-- **M-71:** Getirme değerlendirme koşumu (eval harness) — `eval_metrics.py`: `recall_at_k()`, `ndcg_at_k()`, `evaluate_search()` ile altın sorgu setine karşı arama kalitesi ölçümü. `eval/golden_queries.json` ile 5 sentetik sorgu. CLI: `emsal-mcp eval run`. MCP: `run_evaluation`. 21 test.
+- **M-70:** Hukuki sorgu anlama — `query_understanding.py` modülü eklendi: `normalize_law_ref()` (13 kanun kısaltması → tam referans: İYUK→2577, HMK→6100 vb.), `expand_query_terms()` (10 konuda belirlenimci eş anlamlı sözlüğü), `extract_query_filters()` (sorgudan mahkeme/daire deseni çıkarımı). Tüm eşlemeler sabit kodlu — uydurma yok. 30 birim test. CLI: `emsal-mcp query normalize/expand/filters`. MCP: 3 araç. `release.py` modül listesine eklendi.
+- **M-71:** Getirme değerlendirme koşumu (eval harness)
 - **M-69:** Embeddings GA — Reciprocal Rank Fusion (RRF) hibrit skorlama eklendi. `hybrid_search_rrf()` BM25 + TF-IDF + opsiyonel dense embedding sonuçlarını rank pozisyonuyla birleştirir (skor normalizasyonu gerekmez). CLI: `emsal-mcp semantic hybrid --rrf --dense`. MCP: `hybrid_search_rrf`. 1570 test.
 
 ### Added

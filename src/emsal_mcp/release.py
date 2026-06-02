@@ -199,6 +199,7 @@ def release_command_center(cache: Any | None = None) -> dict[str, Any]:
         "emsal_mcp.verification",
         "emsal_mcp.citation_graph",
         "emsal_mcp.eval_metrics",
+        "emsal_mcp.query_understanding",
     ]
     for mod in modules_to_check:
         try:
