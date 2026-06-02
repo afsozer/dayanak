@@ -1,6 +1,8 @@
-"""Emsal-mcp Semantic/Hybrid Search – v0.11
+"""Emsal-mcp Semantic/Hybrid Search – v0.14
 
-Hybrid search combining SQLite FTS5 BM25 ranking with TF-IDF cosine similarity.
+Hybrid search combining SQLite FTS5 BM25 ranking with TF-IDF cosine similarity
+and dense embeddings (LocalHashProvider or optional FastEmbed).
+Supports weighted linear fusion and Reciprocal Rank Fusion (RRF).
 No external ML dependencies — pure Python + SQLite FTS5.
 
 This module adds semantic search on top of the existing Cache v2 SQLite database.
@@ -701,6 +703,162 @@ def semantic_search(
                 db.close()
             except Exception:
                 pass
+
+
+# ── FTS5 / TF-IDF search helpers for RRF fusion (M-69) ──────────────────────
+
+
+def _fts5_search(
+    query: str, limit: int, cache: Cache | None = None, filters: dict | None = None
+) -> list[dict[str, Any]]:
+    """Run BM25 FTS5 search and return results in standard format."""
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        raw = c.search_local(query=query, limit=limit)
+        # Convert search_local format to standard result dict
+        return [
+            {
+                "document_id": r.get("document_id", ""),
+                "source": r.get("source", ""),
+                "title": r.get("title", ""),
+                "court": r.get("court"),
+                "chamber": r.get("chamber"),
+                "decision_date": r.get("decision_date"),
+                "score": 0.0,  # BM25 not directly available from LIKE fallback
+                "content_status": r.get("content_status", ""),
+                "quote_usable": r.get("quote_usable", False),
+                "draft_usable": r.get("draft_usable", False),
+                "snippet": r.get("snippet", ""),
+            }
+            for r in raw
+        ]
+    finally:
+        if own_cache:
+            c.close()
+
+
+def _tfidf_search(
+    query: str, limit: int, cache: Cache | None = None, filters: dict | None = None
+) -> list[dict[str, Any]]:
+    """Run TF-IDF cosine search and return results in standard format."""
+    sr = semantic_search(query=query, limit=limit, cache=cache, filters=filters)
+    return sr.get("results", []) if sr.get("ok") else []
+
+
+# ── Reciprocal Rank Fusion (RRF) — M-69 ──────────────────────────────────────
+
+_RRF_K = 60  # RRF constant (standard value)
+
+
+def _rrf_fusion(
+    bm25_results: list[dict[str, Any]],
+    tfidf_results: list[dict[str, Any]],
+    dense_results: list[dict[str, Any]] | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Fuse result lists using Reciprocal Rank Fusion.
+
+    RRF does not require score normalization — it only uses rank positions.
+    Formula: score(d) = sum_{ranker} 1 / (k + rank_i(d))
+
+    Returns top ``limit`` documents sorted by RRF score descending.
+    """
+    scores: dict[tuple[str, str], float] = {}  # (doc_id, source) -> rrf_score
+
+    # Merge scores from each ranker
+    rankers = [bm25_results, tfidf_results]
+    if dense_results:
+        rankers.append(dense_results)
+
+    # Collect document metadata for the merged results
+    doc_meta: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for ranker_results in rankers:
+        for rank, item in enumerate(ranker_results):
+            key = (item.get("document_id", ""), item.get("source", ""))
+            if not key[0]:
+                continue
+            scores[key] = scores.get(key, 0.0) + 1.0 / (_RRF_K + rank + 1)
+            if key not in doc_meta:
+                doc_meta[key] = item
+
+    # Sort by RRF score descending
+    sorted_keys = sorted(scores, key=lambda k: scores[k], reverse=True)
+
+    merged = []
+    for key in sorted_keys[:limit]:
+        item = dict(doc_meta[key])
+        item["rrf_score"] = round(scores[key], 6)
+        merged.append(item)
+
+    return merged
+
+
+def hybrid_search_rrf(
+    query: str,
+    limit: int = 10,
+    cache: Cache | None = None,
+    filters: dict[str, Any] | None = None,
+    include_dense: bool = False,
+) -> dict[str, Any]:
+    """Hybrid search using Reciprocal Rank Fusion (RRF) instead of weighted linear fusion.
+
+    RRF avoids the need for score calibration between heterogeneous rankers
+    (BM25, TF-IDF cosine, dense cosine).  Results from each ranker are merged
+    by rank position only.
+
+    Args:
+        query: Search query.
+        limit: Max results.
+        cache: Optional Cache.
+        filters: Optional metadata filters.
+        include_dense: Whether to include dense embeddings in fusion.
+
+    Returns:
+        Dict with ok, results (with rrf_score), method="rrf".
+    """
+    from .models import build_error
+    from .embeddings import get_embedding_provider
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        # 1. BM25 (FTS5)
+        bm25 = _fts5_search(query, limit=limit * 2, cache=c, filters=filters)
+
+        # 2. TF-IDF cosine
+        tfidf = _tfidf_search(query, limit=limit * 2, cache=c, filters=filters)
+
+        # 3. Dense (optional)
+        dense: list[dict[str, Any]] | None = None
+        dense_provider = None
+        if include_dense:
+            prov = get_embedding_provider()
+            if prov is not None:
+                dr = embedding_search(query=query, limit=limit * 2, cache=c, filters=filters)
+                if dr.get("ok"):
+                    dense = dr.get("results", [])
+                    dense_provider = prov.id
+
+        merged = _rrf_fusion(bm25, tfidf, dense, limit)
+
+        return {
+            "ok": True,
+            "query": query,
+            "results": merged,
+            "total_matches": len(merged),
+            "method": "rrf",
+            "rrf_k": _RRF_K,
+            "dense_included": include_dense,
+            "dense_provider": dense_provider,
+            "warnings": [],
+            "recommended_next_steps": [],
+            "version": "0.14.0",
+        }
+    finally:
+        if own_cache:
+            c.close()
 
 
 def hybrid_search(
