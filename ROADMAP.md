@@ -1,12 +1,10 @@
 # ROADMAP.md — Emsal-mcp
 
 **Mevcut sürüm:** v3.1.0 · **Oluşturulma:** 2026-06-02
-**Durum:** Çekirdek olgun (1524 test geçiyor, citation-safety sağlam, mypy temiz). Bu roadmap, kalan
-sağlamlık/taşınabilirlik/doküman borçlarını kapatmaya odaklanır.
+**Durum:** Tüm açık milestone'lar tamamlandı (1524 test geçiyor, citation-safety sağlam, mypy temiz, CI aktif).
 
-> **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-62)
-> [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur. Bu dosya yalnızca **ileriye
-> dönük** çalışmayı içerir; tamamlanan iş buradan CHANGELOG'a taşınır ve burada tutulmaz.
+> **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
+> [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
 
 ---
 
@@ -17,6 +15,7 @@ Her milestone **bağımsız, test-geçitli ve additive**'dir. Bir milestone'a "b
 
 ```bash
 python -m ruff check .                                 # 0 hata
+python -m mypy src                                     # 0 hata
 python -m pytest -q                                    # tüm testler geçer, regresyon yok
 python -c "from emsal_mcp.server import main"          # server import OK
 python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
@@ -32,23 +31,4 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ---
 
-## FAZ A — Doğruluk & Hijyen (yüksek öncelik, küçük efor)
-
-## FAZ B — Dış Bağımlılık Sağlamlığı (orta öncelik)
-
-## FAZ C — Tip Güvenliği (orta öncelik)
-
-## FAZ D — Taşınabilirlik & Dağıtım (düşük öncelik, scope kararı)
-
-> Not: Proje bilinçli olarak "tek kullanıcı/tek makine" hedefli. Bu faz yalnızca paylaşım/
-> dağıtım hedefi netleşirse yapılır.
-
-### M-64 — CI iskeleti
-- `.github/` altında ruff + pytest + mypy + import-smoke çalıştıran minimal workflow.
-- **Bitti sayılır:** Push'ta geçit otomatik koşar; README'de durum rozeti.
-
----
-
-## Öncelik Sırası
-
-`M-57 → M-58 → M-59` (hijyen, hızlı kazanım) → (gerekirse) `M-63 → M-64`.
+Tüm aktif milestone'lar tamamlandı. Yeni iş için CHANGELOG.md'ye bakın.
