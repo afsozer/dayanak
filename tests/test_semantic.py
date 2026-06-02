@@ -23,11 +23,13 @@ from emsal_mcp.semantic import (
     SEMANTIC_VERSION,
     _expand_query,
     _generate_snippet,
+    _rrf_fusion,
     _strip_turkish_suffix,
     build_semantic_index,
     get_index_status,
     get_index_sync_status,
     hybrid_search,
+    hybrid_search_rrf,
     rebuild_index,
     semantic_search,
     update_indexes,
@@ -1824,5 +1826,231 @@ class TestGetIndexSyncStatus:
             status_after = get_index_sync_status(cache=cache)
             assert status_after["tfidf_out_of_sync"] == 0
             assert status_after["tfidf_indexed"] == 3
+        finally:
+            cache.close()
+
+
+# ===========================================================================
+# M-69: Reciprocal Rank Fusion (RRF) Tests
+# ===========================================================================
+
+
+class TestRRFFusionUnit:
+    """Unit tests for _rrf_fusion()."""
+
+    def _make_result(self, doc_id: str, source: str = "test", title: str = "") -> dict:
+        return {
+            "document_id": doc_id,
+            "source": source,
+            "title": title,
+            "score": 0.0,
+        }
+
+    def test_two_rankers_perfect_overlap(self):
+        """When both rankers return same docs in same order, RRF score decreases by rank."""
+        bm25 = [self._make_result("a"), self._make_result("b"), self._make_result("c")]
+        tfidf = [self._make_result("a"), self._make_result("b"), self._make_result("c")]
+        result = _rrf_fusion(bm25, tfidf, None, limit=3)
+        assert len(result) == 3
+        # "a" gets top score from both rankers → highest RRF
+        assert result[0]["document_id"] == "a"
+        assert result[1]["document_id"] == "b"
+        assert result[2]["document_id"] == "c"
+        assert result[0]["rrf_score"] > result[1]["rrf_score"] > result[2]["rrf_score"]
+
+    def test_two_rankers_different_order(self):
+        """Documents ranked differently — first-position doc in bm25 ranks higher."""
+        bm25 = [self._make_result("a"), self._make_result("b"), self._make_result("c")]
+        tfidf = [self._make_result("c"), self._make_result("b"), self._make_result("a")]
+        result = _rrf_fusion(bm25, tfidf, None, limit=3)
+        assert len(result) == 3
+        # a (rank 0 bm25 + rank 2 tfidf) and c (rank 2 bm25 + rank 0 tfidf)
+        # have identical RRF scores — stable sort keeps insertion order
+        assert result[0]["document_id"] == "a"
+        assert result[1]["document_id"] == "c"
+        assert result[2]["document_id"] == "b"
+
+    def test_three_rankers_with_dense(self):
+        """Three rankers including dense produce correct fusion."""
+        bm25 = [self._make_result("x"), self._make_result("y")]
+        tfidf = [self._make_result("y"), self._make_result("x")]
+        dense = [self._make_result("z"), self._make_result("y")]
+        result = _rrf_fusion(bm25, tfidf, dense, limit=3)
+        assert len(result) == 3
+        # "y" appears in all 3 rankers → highest RRF
+        assert result[0]["document_id"] == "y"
+        all_ids = {r["document_id"] for r in result}
+        assert all_ids == {"x", "y", "z"}
+
+    def test_empty_rankers(self):
+        """All rankers empty → empty result."""
+        result = _rrf_fusion([], [], None, limit=5)
+        assert result == []
+
+    def test_single_ranker(self):
+        """One ranker → returns its results with RRF scores."""
+        bm25 = [self._make_result("a"), self._make_result("b")]
+        result = _rrf_fusion(bm25, [], None, limit=2)
+        assert len(result) == 2
+        assert result[0]["document_id"] == "a"
+        assert result[1]["document_id"] == "b"
+        for r in result:
+            assert "rrf_score" in r
+            assert r["rrf_score"] > 0
+
+    def test_empty_dense_list(self):
+        """Empty dense list is treated same as None."""
+        bm25 = [self._make_result("a")]
+        tfidf = [self._make_result("a")]
+        result_none = _rrf_fusion(bm25, tfidf, None, limit=5)
+        result_empty = _rrf_fusion(bm25, tfidf, [], limit=5)
+        assert result_none[0]["rrf_score"] == result_empty[0]["rrf_score"]
+
+    def test_limit_smaller_than_merged(self):
+        """RRF respects the limit parameter."""
+        bm25 = [self._make_result(str(i)) for i in range(10)]
+        tfidf = [self._make_result(str(i)) for i in range(10)]
+        result = _rrf_fusion(bm25, tfidf, None, limit=3)
+        assert len(result) == 3
+
+    def test_duplicate_in_ranker_gets_higher_score(self):
+        """Same document appearing in both rankers gets higher RRF than unique docs."""
+        bm25 = [
+            self._make_result("a"),
+            self._make_result("unique_bm25"),
+            self._make_result("b"),
+        ]
+        tfidf = [
+            self._make_result("b"),
+            self._make_result("unique_tfidf"),
+            self._make_result("a"),
+        ]
+        result = _rrf_fusion(bm25, tfidf, None, limit=4)
+        # Docs appearing in both (a, b) should rank higher than unique ones
+        overlap_ids = [r["document_id"] for r in result[:2]]
+        # a and b should be in top 2 (they appear in both rankers)
+        assert set(overlap_ids) == {"a", "b"}
+
+    def test_preserves_metadata(self):
+        """RRF preserves title and other metadata from the first occurrence."""
+        bm25 = [{"document_id": "a", "source": "test", "title": "Decision A", "court": "Yargitay"}]
+        tfidf = [{"document_id": "a", "source": "test", "title": "Overridden", "court": "Danistay"}]
+        result = _rrf_fusion(bm25, tfidf, None, limit=1)
+        assert result[0]["title"] == "Decision A"
+        assert result[0]["court"] == "Yargitay"
+
+
+class TestHybridSearchRRF:
+    """Integration tests for hybrid_search_rrf()."""
+
+    def test_basic_search_returns_rrf_method(self, tmp_path: Path) -> None:
+        cache = Cache(tmp_path / "rrf_basic.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        try:
+            result = hybrid_search_rrf("sözleşme", limit=5, cache=cache)
+            assert result["ok"] is True
+            assert result["method"] == "rrf"
+            assert "rrf_k" in result
+            assert result["rrf_k"] == 60
+            assert result["dense_included"] is False
+            assert len(result["results"]) > 0
+            for r in result["results"]:
+                assert "rrf_score" in r
+                assert "document_id" in r
+                assert "source" in r
+        finally:
+            cache.close()
+
+    def test_search_with_dense_included(self, tmp_path: Path) -> None:
+        """RRF with dense embeddings (LocalHashProvider) should work."""
+        cache = Cache(tmp_path / "rrf_dense.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        from emsal_mcp.semantic import build_embedding_index
+
+        build_embedding_index(cache=cache)
+        try:
+            result = hybrid_search_rrf(
+                "sözleşme", limit=5, cache=cache, include_dense=True
+            )
+            assert result["ok"] is True
+            assert result["method"] == "rrf"
+            assert result["dense_included"] is True
+            assert result["dense_provider"] == "local-hash-v1"
+        finally:
+            cache.close()
+
+    def test_empty_cache_returns_empty(self, tmp_path: Path) -> None:
+        """RRF on empty cache returns ok with empty results."""
+        cache = Cache(tmp_path / "rrf_empty.sqlite3")
+        try:
+            result = hybrid_search_rrf("test", limit=5, cache=cache)
+            assert result["ok"] is True
+            assert result["results"] == []
+            assert result["total_matches"] == 0
+        finally:
+            cache.close()
+
+    def test_deterministic(self, tmp_path: Path) -> None:
+        """RRF results are deterministic for same input."""
+        cache = Cache(tmp_path / "rrf_det.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        try:
+            r1 = hybrid_search_rrf("tazminat", limit=5, cache=cache)
+            r2 = hybrid_search_rrf("tazminat", limit=5, cache=cache)
+            assert r1["ok"] is True
+            assert r2["ok"] is True
+            assert len(r1["results"]) == len(r2["results"])
+            for res1, res2 in zip(r1["results"], r2["results"]):
+                assert res1["rrf_score"] == res2["rrf_score"]
+                assert res1["document_id"] == res2["document_id"]
+        finally:
+            cache.close()
+
+    def test_limit_respected(self, tmp_path: Path) -> None:
+        """RRF respects the limit parameter."""
+        cache = Cache(tmp_path / "rrf_limit.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        try:
+            result = hybrid_search_rrf("hukuk", limit=2, cache=cache)
+            assert result["ok"] is True
+            assert len(result["results"]) <= 2
+        finally:
+            cache.close()
+
+    def test_no_duplicate_results(self, tmp_path: Path) -> None:
+        """RRF fusion should not produce duplicate results."""
+        cache = Cache(tmp_path / "rrf_dup.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        try:
+            result = hybrid_search_rrf("hukuk", limit=10, cache=cache)
+            assert result["ok"] is True
+            ids = [
+                (r["document_id"], r["source"]) for r in result["results"]
+            ]
+            assert len(ids) == len(set(ids)), f"Duplicates found: {ids}"
+        finally:
+            cache.close()
+
+    def test_rrf_fusion_vs_linear_different_results(self, tmp_path: Path) -> None:
+        """RRF and linear fusion may produce different rankings."""
+        cache = Cache(tmp_path / "rrf_vs_lin.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        try:
+            rrf = hybrid_search_rrf("sözleşme", limit=5, cache=cache)
+            lin = hybrid_search("sözleşme", limit=5, cache=cache, dense_weight=0.0)
+            assert rrf["ok"] is True
+            assert lin["ok"] is True
+            # Both should return results (ordering may differ)
+            assert len(rrf["results"]) > 0
+            assert len(lin["results"]) > 0
+            # Method markers differ
+            assert rrf["method"] == "rrf"
+            assert lin["method"] == "hybrid"
         finally:
             cache.close()

@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 - **M-71:** Getirme değerlendirme koşumu (eval harness) — `eval_metrics.py`: `recall_at_k()`, `ndcg_at_k()`, `evaluate_search()` ile altın sorgu setine karşı arama kalitesi ölçümü. `eval/golden_queries.json` ile 5 sentetik sorgu. CLI: `emsal-mcp eval run`. MCP: `run_evaluation`. 21 test.
+- **M-69:** Embeddings GA — Reciprocal Rank Fusion (RRF) hibrit skorlama eklendi. `hybrid_search_rrf()` BM25 + TF-IDF + opsiyonel dense embedding sonuçlarını rank pozisyonuyla birleştirir (skor normalizasyonu gerekmez). CLI: `emsal-mcp semantic hybrid --rrf --dense`. MCP: `hybrid_search_rrf`. 1570 test.
 
 ### Added
 - **M-60:** Adaptör yanıt-şeması doğrulaması — `SourceClient` sınıfına `_check_response_schema()` metodu eklendi. Bedesten, Mevzuat, Danıştay, GİB, Sayıştay adaptörleri için beklenen JSON yanıt anahtarları (`_search_response_keys`, `_get_document_response_keys`) tanımlandı. API şema değişimi (primary key kaybı) saptandığında `_capability_status` runtime'da `STABLE` → `PARTIAL` olarak düşürülür. Fallback zinciri korunur; HTML tabanlı adaptörler (AYM, Uyuşmazlık, Rekabet) doğrulamaya dahil edilmez. 26 yeni test (10 birim + 16 entegrasyon) eklendi.

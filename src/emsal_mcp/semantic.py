@@ -818,7 +818,6 @@ def hybrid_search_rrf(
     Returns:
         Dict with ok, results (with rrf_score), method="rrf".
     """
-    from .models import build_error
     from .embeddings import get_embedding_provider
 
     own_cache = cache is None

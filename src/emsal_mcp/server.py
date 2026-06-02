@@ -2146,6 +2146,34 @@ def main() -> None:
         from .semantic import hybrid_search
         return evaluate_search(search_fn=hybrid_search, golden_path=golden_path, k_default=k)
 
+    # ── RRF M-69 tool ────────────────────────────────────────────────────
+
+    @mcp.tool()
+    def hybrid_search_rrf(
+        query: str,
+        limit: int = 10,
+        filters: dict | None = None,
+        include_dense: bool = False,
+    ) -> dict:
+        """Hybrid search using Reciprocal Rank Fusion (RRF).
+
+        RRF merges BM25, TF-IDF, and optionally dense embedding results
+        by rank position only — no score normalization required.
+
+        Args:
+            query: Search query.
+            limit: Max results (default 10).
+            filters: Optional dict with source, court, chamber, content_status.
+            include_dense: Whether to include dense embeddings (needs built index).
+
+        Returns:
+            Dict with ok, results (with rrf_score), method="rrf".
+        """
+        from .semantic import hybrid_search_rrf as _hybrid_search_rrf
+        return _hybrid_search_rrf(
+            query=query, limit=limit, filters=filters, include_dense=include_dense,
+        )
+
     mcp.run()
 
 

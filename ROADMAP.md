@@ -56,9 +56,7 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 Hedef: "doğru kararı ilk 5 sonuçta getir." Şu an arama çalışıyor ama ölçülmüyor.
 
-- **M-69 — Embeddings GA.** `fastembed` boru hattını opsiyonel ama tam destekli hale getir;
-  yoğun (dense) vektörleri cache'te sakla, BM25 + dense **hibrit skorlama** ve füzyon (RRF).
-  Embeddings yokken mevcut TF-IDF'e zarif düşüş.
+- **M-69 — Embeddings GA ✅** `hybrid_search_rrf()`, Reciprocal Rank Fusion, BM25+TF-IDF+dense füzyon.
 - **M-70 — Hukuki sorgu anlama.** Madde/kanun normalizasyonu ("İYUK 11" ↔ "2577 s. K. m.11"),
   eş anlamlı/terim genişletme (TR hukuk sözlüğünden), daire/konu filtre çıkarımı. Uydurma yok —
   yalnızca deterministik normalizasyon.

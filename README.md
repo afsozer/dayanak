@@ -1,6 +1,6 @@
 ﻿# Emsal-mcp
 
-> **v3.1.0** — 114 MCP tools · 152 CLI commands · 49 test files · 37 source modules
+> **v3.1.0** — 115 MCP tools · 152 CLI commands · 49 test files · 37 source modules
 >
 > [![CI](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml)
 
