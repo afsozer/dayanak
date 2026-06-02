@@ -156,7 +156,16 @@ def main() -> None:
     @mcp.tool()
     @validate_tool_input(query=validate_non_empty, limit=validate_positive_int)
     async def search_decisions(source: str, query: str, limit: int = 10, page: int = 1) -> list[dict]:
-        """Search court decisions from a given source.
+        """Search court decisions LIVE from an official source (online).
+
+        This is the PRIMARY tool for finding decisions on a topic. It queries
+        the live official API (e.g. Bedesten/Yargıtay, Mevzuat) and returns
+        fresh results. Use this first for any research question. Fetched
+        results are cached so `hybrid_search` can later search them locally.
+
+        Do NOT rely on `hybrid_search` for topic research — that only searches
+        the local cache of already-fetched documents and will be empty/sparse
+        until you have fetched decisions via this tool.
 
         Args:
             source: Source identifier (e.g. 'bedesten', 'mevzuat').
@@ -1221,7 +1230,15 @@ def main() -> None:
         hybrid_weight: float = 0.6,
         rerank: bool = False,
     ) -> dict:
-        """Combined FTS5 BM25 + TF-IDF cosine hybrid search.
+        """Hybrid search over the LOCAL CACHE only (not online).
+
+        IMPORTANT: This searches ONLY documents already fetched into the local
+        cache via `search_decisions`/`get_document`. It does NOT query any
+        official source. If the cache is empty or sparse, results will be
+        limited — that is expected, not a failure. For topic research on fresh
+        case law, use `search_decisions` (live) first; never fall back to web
+        search and never cite case numbers that did not come from a fetched,
+        full-text document.
 
         Balances exact keyword matching (FTS5 BM25) with semantic similarity
         (TF-IDF cosine).  hybrid_weight controls the balance: higher = more
