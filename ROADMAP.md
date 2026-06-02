@@ -1,7 +1,8 @@
 # ROADMAP.md — Emsal-mcp
 
 **Mevcut sürüm:** v3.1.0 · **Oluşturulma:** 2026-06-02
-**Durum:** M-01…M-68 tamamlandı (1526 test geçiyor, mypy temiz, ruff 0 hata, CI aktif). Yeni milestone yok.
+**Durum:** M-01…M-68 tamamlandı (1526 test geçiyor, mypy temiz, ruff 0 hata, CI yeşil).
+**Sıradaki ufuk:** v4.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…K, M-69+).
 
 > **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
@@ -38,4 +39,108 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ---
 
-Tüm aktif milestone'lar tamamlandı (M-01…M-68). Yeni iş için CHANGELOG.md'ye bakın.
+# Uzun Vadeli Yol Haritası (v4.0 → v6.0)
+
+> M-01…M-68 ile çekirdek olgun: 11 kaynak adaptörü, hibrit arama (FTS5 BM25 +
+> TF-IDF), citation-safety, dilekçe paketi, mevzuat, daire profilleme, atıf grafiği,
+> PII, UDF/DOCX, araştırma watch. Bundan sonrası **derinlik ve erişim**: getirme
+> kalitesi, kaynak kapsamı, akıl yürütme, dağıtım ve kullanıcı deneyimi.
+>
+> Her faz bağımsız değer üretir; sıralama önerilidir, zorunlu değil. Tüm milestone'lar
+> yukarıdaki **5 değişmeze** ve doğrulama geçidine tabidir. Yeni runtime bağımlılığı
+> ancak gerekçeli ve **opsiyonel extra** olarak eklenir (çekirdek stdlib + sqlite3 kalır).
+
+---
+
+## FAZ F — Getirme Kalitesi & Zekâ (v4.0)
+
+Hedef: "doğru kararı ilk 5 sonuçta getir." Şu an arama çalışıyor ama ölçülmüyor.
+
+- **M-69 — Embeddings GA.** `fastembed` boru hattını opsiyonel ama tam destekli hale getir;
+  yoğun (dense) vektörleri cache'te sakla, BM25 + dense **hibrit skorlama** ve füzyon (RRF).
+  Embeddings yokken mevcut TF-IDF'e zarif düşüş.
+- **M-70 — Hukuki sorgu anlama.** Madde/kanun normalizasyonu ("İYUK 11" ↔ "2577 s. K. m.11"),
+  eş anlamlı/terim genişletme (TR hukuk sözlüğünden), daire/konu filtre çıkarımı. Uydurma yok —
+  yalnızca deterministik normalizasyon.
+- **M-71 — Getirme değerlendirme koşumu (eval harness).** Altın sorgu seti (konu→beklenen kararlar),
+  `recall@k` / `nDCG` metrikleri, CI'da **regresyon geçidi**. "Daha iyi" iddiası artık ölçülür.
+- **M-72 — Yeniden sıralama (rerank).** İsteğe bağlı cross-encoder/heuristik rerank katmanı;
+  alıntı-güvenli belgeleri ve daha yeni içtihadı yukarı taşıma sinyalleri.
+
+## FAZ G — Kaynak Kapsamı & Dayanıklılık (v4.5)
+
+Hedef: daha çok meşru kaynak, daha az sessiz kırılma.
+
+- **M-73 — KİK/EKAP canlı.** Şu an `unavailable` (401/token). Auth/token akışını çöz; çözülemezse
+  resmî kısıtı dokümante et, placeholder davranışını koru.
+- **M-74 — Yeni kaynaklar.** BAM (bölge adliye), Bölge İdare Mahkemeleri, İçtihatı Birleştirme
+  kararları, Resmî Gazete, KVKK kararları — her biri capability matrisine açık durumla girer.
+- **M-75 — Adaptör SDK 2.0.** Bildirimsel (declarative) adaptör tanımı, otomatik kontrat testleri,
+  M-60/M-61 şema-drift uyarılarını kaynak-başı sağlık paneline bağla.
+- **M-76 — Toplu derlem (corpus) oluşturucu.** Zamanlanmış artımlı tarama, ölçekli dedup,
+  yerel derlem inşası — büyük analiz/eval için temel. Rate-limit'e saygılı, tek-kullanıcı dostu.
+
+## FAZ H — Akıl Yürütme & Belge Üretimi (v5.0)
+
+Hedef: getirmeden **anlama ve taslağa**. Tümü citation-safe sınırları içinde.
+
+- **M-77 — Argüman madenciliği.** Karardan *holding* / *ratio decidendi* / uyuşmazlık konusu
+  çıkarımı (metinden, işaretli; uydurma değil). Belirsizse `warnings` + düşük confidence.
+- **M-78 — Çapraz referans çözücü.** Madde ↔ karar ↔ gerekçe bağlama; bir kararın atıf yaptığı
+  mevzuatı ve onu izleyen içtihadı otomatik ilişkilendirme (M-72 atıf grafiği üzerine).
+- **M-79 — Tutarlılık/çelişki denetleyici.** Bir dilekçede atfedilen otoriteler arası çelişki
+  (örn. bozulmuş/değiştirilmiş içtihat) tespiti ve uyarı.
+- **M-80 — Yapılandırılmış taslak üretimi.** Şablonlu dilekçe/mütalaa üretimi; her cümle bir
+  alıntı-güvenli kaynağa bağlı, bağlanamayan ifade `[DOĞRULANMADI]` ile işaretli.
+
+## FAZ I — Platform & Dağıtım (v5.5)
+
+Hedef: "tek makine" tasarımını bozmadan, isteyene paylaşılabilir/dağıtılabilir hale getir.
+
+- **M-81 — Paketleme & sürümleme.** PyPI yayını, sürümlenmiş release'ler, opsiyonel Docker imajı,
+  `pipx` ile tek komut kurulum.
+- **M-82 — HTTP/SSE MCP taşıması + REST sağlamlaştırma.** stdio dışında uzak transport; `api_server`
+  için auth, rate-limit, sürüm uçları.
+- **M-83 — Çok-kullanıcı/sunucu modu (opsiyonel).** Kullanıcı-başı cache izolasyonu, kimlik,
+  kota. Varsayılan tek-kullanıcı modu değişmez; bu yalnızca opt-in profil.
+- **M-84 — Gözlemlenebilirlik.** Yapısal log, metrikler, opsiyonel tracing; hata kataloğuyla
+  (76 kod) entegre teşhis.
+
+## FAZ J — Kullanıcı Deneyimi & Ekosistem (v6.0)
+
+Hedef: CLI/MCP ötesinde erişilebilirlik.
+
+- **M-85 — Web panosu.** Arama, belge görüntüleme, dilekçe paketi/taslak yönetimi için hafif yerel UI.
+- **M-86 — Entegrasyon kılavuzları & örnek ajanlar.** Claude Desktop / IDE / Agent SDK için hazır
+  reçeteler; "hukuk araştırma ajanı" referans örneği.
+- **M-87 — Üçüncü-taraf kaynak eklenti ekosistemi.** SDK 2.0 üzerine harici adaptör paketleri
+  (entry-point keşfi), topluluk katkısı için kontrat + örnek.
+- **M-88 — İngilizce yüzey (i18n).** Mesaj kataloğu ve dokümanların TR/EN ikiliği; çekirdek
+  hukuk verisi TR kalır.
+
+## FAZ K — Süregelen Disiplinler (her sürümde)
+
+Faz değil, sürekli çark — her release'de gözden geçirilir:
+
+- **Güvenlik:** düzenli `security-review`, bağımlılık denetimi, PII kapsamının genişletilmesi.
+- **Performans bütçesi:** cold-start, arama gecikmesi, bellek için eşikler; regresyon testi.
+- **Eval-güdümlü geliştirme:** M-71 metrikleri her getirme/rerank değişikliğinde koşar.
+- **Doküman tazeliği:** README drift testi (M-58), API.md üreteci, cookbook güncel kalır.
+- **Test hijyeni:** hermetik, ortam-bağımsız, cross-platform (M-CI cross-platform dersi).
+
+---
+
+## Öncelik & Sıralama
+
+Önerilen değer/efor sırası:
+
+1. **M-69 + M-71** (hibrit embeddings + eval) — en yüksek kullanıcı-hissedilir kalite sıçraması;
+   eval önce gelirse sonraki her iyileştirme ölçülebilir.
+2. **M-73 + M-74** (kaynak kapsamı) — daha çok meşru içtihat = daha çok değer.
+3. **M-70 + M-72** (sorgu anlama + rerank) — kaliteyi pekiştirir.
+4. **M-81 + M-82** (paketleme + transport) — başkalarının kullanması için kapı.
+5. **FAZ H** (akıl yürütme) — en iddialı; sağlam getirme + eval üzerine inşa edilmeli.
+6. **FAZ J** (UX) — kitle genişledikçe.
+
+> Bir milestone'a başlamadan: ilgili modülleri keşfet, "Bitti sayılır" koşullarını yaz,
+> doğrulama geçidini her adımda koştur. Tamamlanan iş buradan CHANGELOG.md'ye taşınır.
