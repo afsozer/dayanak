@@ -57,9 +57,7 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 Hedef: "doğru kararı ilk 5 sonuçta getir." Şu an arama çalışıyor ama ölçülmüyor.
 
 - **M-69 — Embeddings GA ✅** `hybrid_search_rrf()`, Reciprocal Rank Fusion, BM25+TF-IDF+dense füzyon.
-- **M-70 — Hukuki sorgu anlama.** Madde/kanun normalizasyonu ("İYUK 11" ↔ "2577 s. K. m.11"),
-  eş anlamlı/terim genişletme (TR hukuk sözlüğünden), daire/konu filtre çıkarımı. Uydurma yok —
-  yalnızca deterministik normalizasyon.
+- **M-70 — Hukuki sorgu anlama ✅** `query_understanding.py`: kanun normalizasyonu, terim genişletme, filtre çıkarımı.
 - **M-71 — Getirme değerlendirme koşumu ✅** `eval_metrics.py`, `eval/golden_queries.json`, recall@k + nDCG.
 - **M-72 — Yeniden sıralama (rerank).** İsteğe bağlı cross-encoder/heuristik rerank katmanı;
   alıntı-güvenli belgeleri ve daha yeni içtihadı yukarı taşıma sinyalleri.
