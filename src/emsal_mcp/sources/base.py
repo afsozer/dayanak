@@ -335,7 +335,8 @@ def _load_schema_sigs() -> dict[str, str]:
         p = _schema_sig_path()
         if not p.exists():
             return {}
-        return json.loads(p.read_text(encoding="utf-8"))
+        result: dict[str, str] = json.loads(p.read_text(encoding="utf-8"))
+        return result
     except Exception:
         return {}
 

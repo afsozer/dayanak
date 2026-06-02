@@ -38,16 +38,6 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ## FAZ C — Tip Güvenliği (orta öncelik)
 
-### M-62 — mypy sıkılaştırma
-**Sorun:** `check_untyped_defs=false`, `warn_return_any=false` — 121 annotation var ama
-enforce edilmiyor.
-- Modül modül `check_untyped_defs=true`'ya geç (önce yaprak modüller: `safety`, `models`, `citation`).
-- `warn_return_any=true` ve `disallow_untyped_defs` kademeli olarak aç.
-- mypy'yi CI doğrulama geçidine ekle.
-- **Bitti sayılır:** `python -m mypy src` temiz; geçit komutlarına mypy eklenir.
-
----
-
 ## FAZ D — Taşınabilirlik & Dağıtım (düşük öncelik, scope kararı)
 
 > Not: Proje bilinçli olarak "tek kullanıcı/tek makine" hedefli. Bu faz yalnızca paylaşım/
@@ -67,4 +57,4 @@ enforce edilmiyor.
 
 ## Öncelik Sırası
 
-`M-57 → M-58 → M-59` (hijyen, hızlı kazanım) → `M-62` → (gerekirse) `M-63 → M-64`.
+`M-57 → M-58 → M-59` (hijyen, hızlı kazanım) → (gerekirse) `M-63 → M-64`.

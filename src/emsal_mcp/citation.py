@@ -812,7 +812,8 @@ def verify_legal_citation(
     scored_docs.sort(key=lambda x: x[0], reverse=True)
 
     # --- Phase 6: Format top matches ---
-    for score, doc, cand in scored_docs[:fetch]:
+    for score, doc, raw_cand in scored_docs[:fetch]:
+        matched_cand: CitationCandidate | None = raw_cand
         if score < min_score:
             continue
 
@@ -820,7 +821,7 @@ def verify_legal_citation(
         formatted_citations.append(fmt)
 
         finding = VerificationFinding(
-            candidate=cand or CitationCandidate(raw_text=""),
+            candidate=matched_cand or CitationCandidate(raw_text=""),
             matched=True,
             match_score=score,
             matched_document={

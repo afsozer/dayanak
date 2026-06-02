@@ -54,5 +54,7 @@ select = ["D100", "D101", "D103"]  # module, class, function docstrings
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
-check_untyped_defs = false
-warn_return_any = false
+check_untyped_defs = true
+disallow_untyped_defs = false  # too many untyped params still
+warn_return_any = true
+warn_unused_ignores = false

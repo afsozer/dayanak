@@ -77,7 +77,8 @@ def write_history(out_dir: str | Path, dashboard: dict[str, Any] | None = None) 
     out.mkdir(parents=True, exist_ok=True)
     record = {"version": __version__, "generated_at": _now(), "dashboard": dashboard or readiness_dashboard()}
     record["sha256"] = hashlib.sha256(json.dumps(record, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
-    path = out / f"history-{record['generated_at'].replace(':','').replace('.','')}.json"
+    gen_at: str = str(record["generated_at"])
+    path = out / f"history-{gen_at.replace(':','').replace('.','')}.json"
     path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"path": str(path), "record": record}
 

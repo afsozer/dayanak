@@ -331,6 +331,7 @@ def get_legislation_document(
             version=LEGISLATION_VERSION,
             rule=_NO_INVENTION_BLOCK,
         )
+    assert doc is not None  # _fetch_doc returns (Document, None) when no error
 
     classification = _classify_type(
         doc.title or "",
@@ -404,6 +405,7 @@ def search_legislation_articles(
             version=LEGISLATION_VERSION,
             rule=_NO_INVENTION_BLOCK,
         )
+    assert doc is not None  # _fetch_doc returns (Document, None) when no error
 
     text = doc.text or ""
     if not text.strip():
@@ -499,6 +501,7 @@ def get_legislation_article_tree(
             version=LEGISLATION_VERSION,
             rule=_NO_INVENTION_BLOCK,
         )
+    assert doc is not None  # _fetch_doc returns (Document, None) when no error
 
     text = doc.text or ""
     if not text.strip():
@@ -594,6 +597,7 @@ def get_legislation_gerekce(
             version=LEGISLATION_VERSION,
             rule=_NO_INVENTION_BLOCK,
         )
+    assert doc is not None  # _fetch_doc returns (Document, None) when no error
 
     text = doc.text or ""
     if not text.strip():

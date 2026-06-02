@@ -70,7 +70,7 @@ def _canonical_rank(content_status: str | None, text_length: int, retrieved_at: 
     2. text length (longer is better → negate for ascending sort)
     3. retrieved_at (earlier is better)
     """
-    rank = _CONTENT_STATUS_RANK.get(content_status, 99)
+    rank = _CONTENT_STATUS_RANK.get(content_status or "", 99)
     # Negate text_length so longer text sorts first in ascending order
     return (rank, -text_length, retrieved_at or "")
 

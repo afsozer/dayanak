@@ -35,7 +35,8 @@ def _load_pack_json(pack_dir: Path, filename: str) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        result: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        return result
     except (json.JSONDecodeError, OSError):
         return {}
 

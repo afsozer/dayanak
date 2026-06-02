@@ -151,13 +151,14 @@ def verify_bundle(bundle_path: str | Path) -> dict[str, Any]:
             manifest = json.loads(zf.read("manifest.json"))
 
             # Verify hashes
-            results = {"valid": True, "hashes": {}}
+            hashes: dict[str, dict[str, Any]] = {}
+            results: dict[str, Any] = {"valid": True, "hashes": hashes}
             for fname in ["draft.json", "pack.json"]:
                 content = zf.read(fname)
                 computed = hashlib.sha256(content).hexdigest()
                 expected = manifest.get(f"{fname.split('.')[0]}_hash")
                 match = computed == expected
-                results["hashes"][fname] = {"computed": computed, "expected": expected, "match": match}
+                hashes[fname] = {"computed": computed, "expected": expected, "match": match}
                 if not match:
                     results["valid"] = False
 
@@ -167,7 +168,7 @@ def verify_bundle(bundle_path: str | Path) -> dict[str, Any]:
                 computed = hashlib.sha256(content).hexdigest()
                 expected = manifest.get("docx_hash")
                 match = computed == expected if expected else False
-                results["hashes"]["draft.docx"] = {"computed": computed, "expected": expected, "match": match}
+                hashes["draft.docx"] = {"computed": computed, "expected": expected, "match": match}
                 if not match:
                     results["valid"] = False
 
@@ -312,7 +313,6 @@ def prepare_docx_export(
     zip_valid = False
     disclaimer_present = False
     placeholders_preserved = False
-    validation_warnings: list[str] = []
 
     try:
         with ZipFile(out_path, "r") as zf:

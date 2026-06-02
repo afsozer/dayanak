@@ -477,11 +477,11 @@ def get_source(source: str) -> SourceClient:
     take precedence over built-in sources.
     """
     if source in _extra_adapters:
-        return _extra_adapters[source]
+        return _extra_adapters[source]  # type: ignore[no-any-return]
     reg = registry()
     if source not in reg:
         raise KeyError(f"Bilinmeyen kaynak: {source}. Geçerli: {', '.join(reg)}")
-    return reg[source]
+    return reg[source]  # type: ignore[no-any-return]
 
 
 async def smoke_all(online: bool = False) -> list[SourceSmokeResult]:

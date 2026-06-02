@@ -13,7 +13,7 @@ from .models import Document
 
 def smoke_test_offline() -> dict[str, Any]:
     """Offline smoke test: basic import and model validation."""
-    results = {"ok": True, "tests": []}
+    results: dict[str, Any] = {"ok": True, "tests": []}
 
     # Test imports
     try:
@@ -78,7 +78,7 @@ def smoke_test_online(source: str = "bedesten") -> dict[str, Any]:
     import asyncio
     from .sources.registry import get_source
 
-    results = {"ok": True, "tests": []}
+    results: dict[str, Any] = {"ok": True, "tests": []}
 
     try:
         client = get_source(source)
@@ -109,7 +109,7 @@ def smoke_test_online(source: str = "bedesten") -> dict[str, Any]:
 def check_cache_integrity(cache_path: str | Path | None = None) -> dict[str, Any]:
     """Check cache database integrity."""
     cache = Cache(Path(cache_path) if cache_path else None)
-    results = {"ok": True, "tests": []}
+    results: dict[str, Any] = {"ok": True, "tests": []}
 
     try:
         # Check WAL mode

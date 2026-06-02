@@ -77,6 +77,7 @@ def add_watch(
     own_cache = cache is None
     if own_cache:
         cache = Cache()
+    assert cache is not None  # type narrowed by own_cache branch
 
     try:
         _ensure_watch_table(cache)
@@ -120,6 +121,7 @@ def list_watches(cache: Cache | None = None) -> dict[str, Any]:
     own_cache = cache is None
     if own_cache:
         cache = Cache()
+    assert cache is not None  # type narrowed by own_cache branch
 
     try:
         _ensure_watch_table(cache)
@@ -163,6 +165,7 @@ def run_watch(
     own_cache = cache is None
     if own_cache:
         cache = Cache()
+    assert cache is not None  # type narrowed by own_cache branch
 
     try:
         _ensure_watch_table(cache)
@@ -283,6 +286,7 @@ def remove_watch(name: str, cache: Cache | None = None) -> dict[str, Any]:
     own_cache = cache is None
     if own_cache:
         cache = Cache()
+    assert cache is not None  # type narrowed by own_cache branch
 
     try:
         _ensure_watch_table(cache)

@@ -12,6 +12,7 @@ import os
 import re
 import struct
 from abc import ABC, abstractmethod
+from typing import Any
 
 EMBEDDING_VERSION = "2.1.0"
 
@@ -113,7 +114,7 @@ class FastEmbedProvider(EmbeddingProvider):
         self._cache_dir = cache_dir
         self._model: object | None = None
 
-    def _get_model(self) -> object:
+    def _get_model(self) -> Any:
         if self._model is None:
             try:
                 from fastembed import TextEmbedding  # type: ignore[import-untyped]
@@ -144,7 +145,7 @@ class FastEmbedProvider(EmbeddingProvider):
         embeddings: list[list[float]] = []
         for i in range(0, len(normalized), self._BATCH_SIZE):
             batch = normalized[i : i + self._BATCH_SIZE]
-            for emb in model.embed(batch):
+            for emb in model.embed(batch):  # type: ignore[attr-defined]
                 embeddings.append(emb.tolist())
         return embeddings
 

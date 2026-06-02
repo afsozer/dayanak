@@ -460,7 +460,7 @@ def upgrade_all_pdf_documents(
             query += " AND source = ?"
             params.append(source)
         query += " LIMIT ?"
-        params.append(limit)
+        params.append(str(limit))
 
         rows = db.execute(query, params).fetchall()
 

@@ -29,24 +29,25 @@ class BedestenClient(SourceClient):
         if item_type and not item_type.isupper():
             item_type = item_type.upper().replace(" ", "").replace("İ", "I").replace("Ş", "S").replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
 
-        payload = {
-            "data": {
-                "pageSize": min(int(limit), 100),
-                "pageNumber": filters.get("page", 1),
-                "itemTypeList": [item_type],
-                "phrase": query,
-                "sortFields": ["KARAR_TARIHI"],
-                "sortDirection": "desc",
-            },
+        data_payload: dict[str, Any] = {
+            "pageSize": min(int(limit), 100),
+            "pageNumber": filters.get("page", 1),
+            "itemTypeList": [item_type],
+            "phrase": query,
+            "sortFields": ["KARAR_TARIHI"],
+            "sortDirection": "desc",
+        }
+        payload: dict[str, Any] = {
+            "data": data_payload,
             "applicationName": "UyapMevzuat",
             "paging": True,
         }
         if filters.get("chamber"):
-            payload["data"]["birimAdi"] = filters["chamber"]
+            data_payload["birimAdi"] = filters["chamber"]
         if filters.get("start_date"):
-            payload["data"]["kararTarihiStart"] = filters["start_date"]
+            data_payload["kararTarihiStart"] = filters["start_date"]
         if filters.get("end_date"):
-            payload["data"]["kararTarihiEnd"] = filters["end_date"]
+            data_payload["kararTarihiEnd"] = filters["end_date"]
         async with client() as c:
             r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
             check_http_response(r, self.source_id)

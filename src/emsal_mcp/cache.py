@@ -170,7 +170,7 @@ class Cache:
     @property
     def schema_version(self) -> int:
         """Return current schema version from PRAGMA user_version."""
-        return self.db.execute("PRAGMA user_version").fetchone()[0]
+        return int(self.db.execute("PRAGMA user_version").fetchone()[0])
 
     def _ensure_schema_version(self) -> None:
         """Check and auto-migrate schema to latest version.
@@ -704,7 +704,7 @@ class Cache:
             "DELETE FROM cache WHERE key LIKE 'search:%' AND created_at < datetime('now', ?)",
             (f"-{max_age_days} days",),
         )
-        count = self.db.execute("SELECT changes()").fetchone()[0]
+        count = int(self.db.execute("SELECT changes()").fetchone()[0])
         self.db.commit()
         self.log("prune_search_cache", {
             "max_age_days": max_age_days,

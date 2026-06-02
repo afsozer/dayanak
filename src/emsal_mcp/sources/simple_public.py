@@ -439,12 +439,11 @@ class RekabetClient(SourceClient):
             kid = (re.search(r"kararId=([^\"'\s&]+)", table, re.I) or [None, None])[1]
             if not kid:
                 continue
-            title = html_to_text(
-                (re.search(
-                    r"<a[^>]+href=[\"'][^\"']*Karar\?kararId=[^\"']+[\"'][^>]*>([\s\S]*?)</a>",
-                    table, re.I,
-                ) or [None, ""])[1]
+            title_match = re.search(
+                r"<a[^>]+href=[\"'][^\"']*Karar\?kararId=[^\"']+[\"'][^>]*>([\s\S]*?)</a>",
+                table, re.I,
             )
+            title = html_to_text(title_match.group(1) if title_match else "")
             txt = html_to_text(table)
             out.append(SearchResult(
                 source=self.source_id, document_id=kid,

@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import typer
 
 from . import __version__
+
+if TYPE_CHECKING:
+    from .cache import Cache
 
 # M-52: All domain imports moved to lazy (inside command functions) for
 # faster startup.  Only stdlib + typer + __version__ are imported at
@@ -411,6 +414,7 @@ def cache_dedup_cluster(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Find which dedup cluster a document belongs to."""
+    from .cache import Cache
     from .dedup import get_dedup_cluster as get_dedup_cluster_impl
     cache = Cache(cache_path)
     try:
@@ -443,6 +447,7 @@ def cache_merge_cluster(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Merge a dedup cluster: enrich canonical record with alternative source URLs."""
+    from .cache import Cache
     from .dedup import merge_cluster as merge_cluster_impl
     cache = Cache(cache_path)
     try:
@@ -1362,6 +1367,7 @@ def analytics_report(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Comprehensive search analytics report."""
+    from .cache import Cache
     from .search_analytics import get_search_analytics
 
     cache = Cache(cache_path)
@@ -1379,6 +1385,7 @@ def analytics_empty_queries(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List queries that returned 0 results."""
+    from .cache import Cache
     from .search_analytics import get_empty_queries
 
     cache = Cache(cache_path)
@@ -1396,6 +1403,7 @@ def analytics_top_queries(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Most frequent queries."""
+    from .cache import Cache
     from .search_analytics import get_top_queries
 
     cache = Cache(cache_path)
@@ -1412,6 +1420,7 @@ def analytics_source_coverage(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Source coverage: doc counts and full_text percentage."""
+    from .cache import Cache
     from .search_analytics import get_source_coverage
 
     cache = Cache(cache_path)

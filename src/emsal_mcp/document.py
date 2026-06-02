@@ -55,7 +55,7 @@ def markdown_to_docx(markdown: str, out_path: str | Path) -> Path:
             doc.add_paragraph(line)
         else:
             doc.add_paragraph("")
-    doc.save(out)
+    doc.save(str(out))
     return out
 
 

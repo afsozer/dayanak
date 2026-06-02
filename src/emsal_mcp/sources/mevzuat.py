@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from emsal_mcp.models import Document, SearchResult
 
 from .bedesten import BedestenClient
@@ -17,19 +19,20 @@ class MevzuatClient(BedestenClient):
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
         from .base import check_http_response, client
         from emsal_mcp.models import ContentStatus, SearchResult
-        body = {
-            "data": {
-                "pageSize": min(int(limit), 100),
-                "pageNumber": filters.get("page", 1),
-                "phrase": query,
-                "sortFields": ["RESMI_GAZETE_TARIHI"],
-                "sortDirection": "desc",
-            },
+        data_payload: dict[str, Any] = {
+            "pageSize": min(int(limit), 100),
+            "pageNumber": filters.get("page", 1),
+            "phrase": query,
+            "sortFields": ["RESMI_GAZETE_TARIHI"],
+            "sortDirection": "desc",
+        }
+        body: dict[str, Any] = {
+            "data": data_payload,
             "applicationName": "UyapMevzuat",
             "paging": True,
         }
         if filters.get("type"):
-            body["data"]["mevzuatTurList"] = [filters["type"]]
+            data_payload["mevzuatTurList"] = [filters["type"]]
         async with client() as c:
             r = await c.post(f"{self.base}/mevzuat/searchDocuments", json=body, headers=self.headers)
             check_http_response(r, self.source_id)
