@@ -1,6 +1,6 @@
 # Emsal-mcp Documentation Index
 
-> v3.0.0 — Final roadmap release
+> v3.1.0
 
 This index provides a comprehensive listing of all project documentation.
 Documents are grouped by category for easy navigation.
@@ -12,9 +12,8 @@ Documents are grouped by category for easy navigation.
 | Document | Description |
 |---|---|
 | [README.md](../README.md) | Project overview, quick start, and feature summary |
-| [CHANGELOG.md](../CHANGELOG.md) | Full release history (v0.1.0 → v3.0.0) |
-| [ROADMAP.md](../ROADMAP.md) | Feature roadmap for active development milestones |
-| [ROADMAP_LONG_HORIZON.md](../ROADMAP_LONG_HORIZON.md) | Long-term milestones and future vision |
+| [CHANGELOG.md](../CHANGELOG.md) | Full release history (v0.1.0 → v3.1.0) |
+| [ROADMAP.md](../ROADMAP.md) | Forward-looking roadmap (open milestones M-57+) |
 
 ## Installation & Setup
 
@@ -35,14 +34,9 @@ Documents are grouped by category for easy navigation.
 | Document | Description |
 |---|---|
 | [docs/KIK_RESEARCH.md](KIK_RESEARCH.md) | Research notes on the KIK (Kamu İhale Kurumu) API |
-| [REPORT_v0.1.0_to_v0.13.0.md](../REPORT_v0.1.0_to_v0.13.0.md) | Summary report covering v0.1.0 through v0.13.0 |
-| [CHANGELOG_SESSION_v0.13_to_v2.0.0.md](../CHANGELOG_SESSION_v0.13_to_v2.0.0.md) | Session-level changelog from v0.13 to v2.0.0 |
 
-## Release Notes
-
-| Document | Description |
-|---|---|
-| [RELEASE_NOTES_v1.0.0.md](../RELEASE_NOTES_v1.0.0.md) | Release notes for v1.0.0 |
+> Historical release reports and session changelogs were consolidated into
+> [CHANGELOG.md](../CHANGELOG.md); older standalone files were removed (history in git).
 
 ---
 
