@@ -31,6 +31,7 @@ from emsal_mcp.embeddings import (
     FastEmbedProvider,
     LocalHashProvider,
     get_embedding_provider,
+    heuristic_rerank,
     list_embedding_providers,
     pack_vector,
     rerank_results,
@@ -1175,3 +1176,112 @@ class TestHybridSearchRerank:
             assert result.get("reranked") is False
         finally:
             cache.close()
+
+
+# ===================================================================
+# M-72: Heuristic Rerank (citation-safe + recency boost)
+# ===================================================================
+
+
+class TestHeuristicRerank:
+    """Tests for heuristic_rerank() — deterministic citation-safe and recency boost."""
+
+    def _make_candidate(self, doc_id: str, score: float, **kwargs) -> dict:
+        c = {"document_id": doc_id, "source": "test", "title": f"Doc {doc_id}", "score": score}
+        c.update(kwargs)
+        return c
+
+    def test_empty_candidates(self):
+        result = heuristic_rerank([], top_k=5)
+        assert result["ok"] is True
+        assert result["results"] == []
+        assert result["method"] == "heuristic"
+
+    def test_basic_passthrough(self):
+        """No boost attributes → same order as input."""
+        candidates = [
+            self._make_candidate("a", 0.9),
+            self._make_candidate("b", 0.5),
+            self._make_candidate("c", 0.3),
+        ]
+        result = heuristic_rerank(candidates, top_k=3)
+        assert result["results"][0]["document_id"] == "a"
+        assert result["results"][1]["document_id"] == "b"
+        assert result["results"][2]["document_id"] == "c"
+
+    def test_citation_safe_boost(self):
+        """Document with quote_usable=True gets boosted over higher-score doc."""
+        candidates = [
+            self._make_candidate("safe", 0.6, quote_usable=True),
+            self._make_candidate("unsafe", 0.8, quote_usable=False),
+        ]
+        result = heuristic_rerank(candidates, top_k=2, citation_safe_boost=0.3)
+        # safe gets 0.6 + 0.3 = 0.9 > 0.8
+        assert result["results"][0]["document_id"] == "safe"
+        assert result["boosted"] == 1
+
+    def test_draft_usable_also_counts(self):
+        """draft_usable=True gives same boost as quote_usable."""
+        candidates = [
+            self._make_candidate("draft", 0.5, draft_usable=True),
+            self._make_candidate("plain", 0.6),
+        ]
+        result = heuristic_rerank(candidates, top_k=2, citation_safe_boost=0.2)
+        # draft gets 0.5 + 0.2 = 0.7 > 0.6
+        assert result["results"][0]["document_id"] == "draft"
+
+    def test_recency_boost(self):
+        """Newer decision_date gets higher bonus."""
+        candidates = [
+            self._make_candidate("old", 0.7, decision_date="2020-01-01"),
+            self._make_candidate("new", 0.7, decision_date="2025-06-01"),
+        ]
+        result = heuristic_rerank(candidates, top_k=2, citation_safe_boost=0.0, recency_weight=0.5)
+        # newer should rank higher with equal base score
+        assert result["results"][0]["document_id"] == "new"
+
+    def test_combined_boost(self):
+        """Citation-safe + recency both applied."""
+        candidates = [
+            self._make_candidate("a", 0.7, quote_usable=True, decision_date="2023-01-01"),
+            self._make_candidate("b", 0.7, quote_usable=False, decision_date="2020-01-01"),
+        ]
+        result = heuristic_rerank(candidates, top_k=2, citation_safe_boost=0.1, recency_weight=0.1)
+        assert result["results"][0]["document_id"] == "a"
+        assert result["boosted"] >= 1
+
+    def test_top_k_respected(self):
+        """Only top_k results returned."""
+        candidates = [
+            self._make_candidate(str(i), float(10 - i)) for i in range(10)
+        ]
+        result = heuristic_rerank(candidates, top_k=4)
+        assert len(result["results"]) == 4
+
+    def test_deterministic(self):
+        """Same input always produces same output."""
+        candidates = [
+            self._make_candidate("a", 0.5, quote_usable=True),
+            self._make_candidate("b", 0.8),
+            self._make_candidate("c", 0.3, quote_usable=True),
+        ]
+        r1 = heuristic_rerank(candidates, top_k=3)
+        r2 = heuristic_rerank(candidates, top_k=3)
+        assert [x["document_id"] for x in r1["results"]] == [x["document_id"] for x in r2["results"]]
+
+    def test_heuristic_score_added(self):
+        """Each result gets a heuristic_score field."""
+        candidates = [self._make_candidate("x", 0.5)]
+        result = heuristic_rerank(candidates)
+        assert "heuristic_score" in result["results"][0]
+        assert result["results"][0]["heuristic_score"] >= 0.5
+
+    def test_invalid_date_ignored(self):
+        """Unparseable decision_date → no recency boost, no crash."""
+        candidates = [
+            self._make_candidate("bad", 0.5, decision_date="not-a-date"),
+            self._make_candidate("good", 0.5),
+        ]
+        result = heuristic_rerank(candidates)
+        for r in result["results"]:
+            assert "heuristic_score" in r

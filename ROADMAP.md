@@ -59,8 +59,7 @@ Hedef: "doğru kararı ilk 5 sonuçta getir." Şu an arama çalışıyor ama öl
 - **M-69 — Embeddings GA ✅** `hybrid_search_rrf()`, Reciprocal Rank Fusion, BM25+TF-IDF+dense füzyon.
 - **M-70 — Hukuki sorgu anlama ✅** `query_understanding.py`: kanun normalizasyonu, terim genişletme, filtre çıkarımı.
 - **M-71 — Getirme değerlendirme koşumu ✅** `eval_metrics.py`, `eval/golden_queries.json`, recall@k + nDCG.
-- **M-72 — Yeniden sıralama (rerank).** İsteğe bağlı cross-encoder/heuristik rerank katmanı;
-  alıntı-güvenli belgeleri ve daha yeni içtihadı yukarı taşıma sinyalleri.
+- **M-72 — Yeniden sıralama (rerank) ✅** `heuristic_rerank()`: citation-safe boost + recency decay.
 
 ## FAZ G — Kaynak Kapsamı & Dayanıklılık (v4.5)
 

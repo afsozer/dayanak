@@ -313,3 +313,85 @@ def rerank_results(
             "method": "passthrough",
             "warnings": warnings,
         }
+
+
+def heuristic_rerank(
+    candidates: list[dict],
+    top_k: int = 10,
+    *,
+    citation_safe_boost: float = 0.05,
+    recency_weight: float = 0.02,
+) -> dict:
+    """Re-rank candidates with deterministic citation-safety and recency signals (M-72).
+
+    Each candidate receives bonus points for:
+    - ``quote_usable`` / ``draft_usable`` (citation safety signal)
+    - More recent ``decision_date`` (recency signal, ISO YYYY-MM-DD format)
+
+    Boost values are configurable — default adds up to 0.07 to the score.
+    The boost is additive and deterministic — never replaces the base score.
+    No model download required. Always available, never raises.
+
+    Args:
+        candidates: List of {document_id, source, title, score, quote_usable,
+                    draft_usable, decision_date, ...}.
+        top_k: Number of top results to return.
+        citation_safe_boost: Score added when quote_usable or draft_usable is True.
+        recency_weight: Continuous recency multiplier with 5-year half-life.
+
+    Returns:
+        Dict with ok, results (with heuristic_score), method, boosted.
+    """
+    import datetime as _dt
+
+    if not candidates:
+        return {"ok": True, "results": [], "method": "heuristic", "boosted": 0}
+
+    now = _dt.date.today()
+    boosted = 0
+
+    for c in candidates:
+        base = float(c.get("score", 0.0) or c.get("hybrid_score", 0.0) or 0.0)
+        bonus = 0.0
+
+        # Citation-safe boost
+        if c.get("quote_usable") or c.get("draft_usable"):
+            bonus += citation_safe_boost
+            boosted += 1
+
+        # Recency boost — newer decisions get higher bonus
+        date_str = c.get("decision_date") or ""
+        try:
+            if len(date_str) >= 10:
+                d = _dt.date.fromisoformat(date_str[:10])
+                days_ago = max(0, (now - d).days)
+                # Map days_ago to [0, 1] with 5-year (1825 day) half-life
+                recency = 1.0 / (1.0 + days_ago / 1825.0)
+                bonus += recency_weight * recency
+        except (ValueError, TypeError):
+            pass
+
+        c["heuristic_boost"] = round(bonus, 4)
+        c["heuristic_score"] = round(base + bonus, 6)
+
+    # Sort by heuristic score descending
+    reranked = sorted(candidates, key=lambda x: x.get("heuristic_score", 0), reverse=True)
+
+    return {
+        "ok": True,
+        "results": reranked[:top_k],
+        "method": "heuristic",
+        "boosted": boosted,
+    }
+
+
+# ---------------------------------------------------------------------------
+    # Sort by heuristic score descending
+    reranked = sorted(candidates, key=lambda x: x.get("heuristic_score", 0), reverse=True)
+
+    return {
+        "ok": True,
+        "results": reranked[:top_k],
+        "method": "heuristic",
+        "boosted": boosted,
+    }
