@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,9 +20,9 @@ def test_readme_headline_matches_code() -> None:
     m = re.search(r"v(\d+\.\d+\.\d+)", content.split("\n")[2])
     assert m, "README line 3 must contain a version number like v3.1.0"
 
-    # Run the generator in check mode
+    # Run the generator in check mode using sys.executable (CI-safe)
     result = subprocess.run(
-        ["python", str(ROOT / "scripts" / "gen_readme_counts.py"), "--check"],
+        [sys.executable, str(ROOT / "scripts" / "gen_readme_counts.py"), "--check"],
         capture_output=True, text=True, cwd=str(ROOT),
     )
     assert result.returncode == 0, (

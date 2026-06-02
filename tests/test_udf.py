@@ -96,8 +96,13 @@ class TestUDF:
 
 
 class TestToolKitStatus:
-    def test_status_disabled_by_default(self):
+    def test_status_disabled_by_default(self, monkeypatch):
         """No toolkit dir configured — should return disabled with warnings."""
+        monkeypatch.delenv("EMSAL_UDF_TOOLKIT_DIR", raising=False)
+        monkeypatch.delenv("UDF_TOOLKIT_DIR", raising=False)
+        monkeypatch.setattr(udf_mod, "_resolve_toolkit_dir", lambda: None)
+        monkeypatch.setattr(udf_mod, "_discover_libreoffice", lambda: None)
+        monkeypatch.setattr(udf_mod, "_discover_unoconv", lambda: None)
         status = get_udf_toolkit_status()
         assert status["ok"] is False
         assert status["enabled"] is False

@@ -67,9 +67,16 @@ class TestNdcgAtK:
 
 class TestEvaluateSearch:
     def _make_golden_file(self, queries: list[dict]) -> Path:
-        tmp = tempfile.mktemp(suffix=".json")
-        Path(tmp).write_text(json.dumps(queries), encoding="utf-8")
-        return Path(tmp)
+        import os
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
+        try:
+            json.dump(queries, tmp)
+            tmp.close()
+            return Path(tmp.name)
+        except Exception:
+            tmp.close()
+            os.unlink(tmp.name)
+            raise
 
     def _fake_search(self, query: str, limit: int = 10, cache=None) -> dict:
         """Fake search that returns a known set filtered by query keyword."""
