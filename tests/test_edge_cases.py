@@ -7,7 +7,6 @@ dict (or build_error dict) and NEVER crashes / throws exceptions.
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -32,8 +31,6 @@ from emsal_mcp.semantic import (
     _expand_query,
     _generate_snippet,
     _tokenize,
-    hybrid_search,
-    semantic_search,
 )
 from emsal_mcp.legislation import (
     format_legislation_citation,

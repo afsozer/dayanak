@@ -371,6 +371,56 @@ class Draft(BaseModel):
 
 MIN_CONTENT_LENGTH = 50  # minimum chars for full_text/html_markdown to be considered real content
 
+# ── M-66 date plausibility ───────────────────────────────────────────────────
+
+import datetime as _dt
+
+_YEAR_MIN = 1920  # earliest plausible decision year
+
+
+def _year_ceiling() -> int:
+    """Return current year + 1 as the upper bound for plausible dates."""
+    return _dt.date.today().year + 1
+
+
+def _check_date_plausibility(doc: Document, w: list[str]) -> None:
+    """Flag implausible decision_date values with a warning.
+
+    Never modifies the date field — only appends a warning and lowers
+    metadata_confidence when the year is outside [1920, current_year+1].
+    """
+    date_str = getattr(doc, "decision_date", None) or ""
+    date_str = date_str.strip()
+    if not date_str:
+        return
+
+    # Try to extract a 4-digit year from ISO (YYYY-MM-DD) or TR (DD.MM.YYYY).
+    year: int | None = None
+    import re
+    m = re.match(r"^(\d{4})-\d{2}-\d{2}$", date_str)  # ISO
+    if m:
+        year = int(m.group(1))
+    else:
+        m = re.match(r"^\d{2}\.\d{2}\.(\d{4})$", date_str)  # DD.MM.YYYY
+        if m:
+            year = int(m.group(1))
+        else:
+            m = re.match(r"^(\d{4})$", date_str)  # bare year
+            if m:
+                year = int(m.group(1))
+
+    if year is None:
+        return  # unparseable format — don't flag
+
+    ceiling = _year_ceiling()
+    if year < _YEAR_MIN or year > ceiling:
+        w.append(
+            f"Implausible decision_date '{date_str}': year {year} outside "
+            f"[{_YEAR_MIN}, {ceiling}]. Date preserved as-is; metadata_confidence lowered."
+        )
+        if isinstance(doc.metadata, dict):
+            doc.metadata["metadata_confidence"] = "low"
+
 
 def finalize_document(doc: Document, warnings: list[str] | None = None) -> Document:
     """Finalize a Document after source-specific parsing.
@@ -405,6 +455,9 @@ def finalize_document(doc: Document, warnings: list[str] | None = None) -> Docum
         ContentStatus.HTML_MARKDOWN,
     }:
         doc.content_hash = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
+
+    # M-66: date plausibility — flag impossible years, never modify the date
+    _check_date_plausibility(doc, w)
 
     # Attach warnings via metadata if not already present
     if w:

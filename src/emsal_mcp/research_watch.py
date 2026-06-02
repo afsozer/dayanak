@@ -257,6 +257,25 @@ def run_watch(
             "fetched_count": fetched_count,
         }
 
+        # M-67: citation-safe signal — track content recovery
+        status_summary = result.get("content_status_summary", {})
+        cs_count = status_summary.get("full_text", 0) + status_summary.get("html_markdown", 0)
+        prev_cs_key = f"watch_cs:{name}"
+        prev_cs_count = cache.get(prev_cs_key) or 0
+        cs_delta = cs_count - prev_cs_count
+        cache.set(prev_cs_key, cs_count)
+
+        diff_report["citation_safe_count"] = cs_count
+        diff_report["citation_safe_delta"] = cs_delta
+        if prev_cs_count == 0 and cs_count > 0:
+            diff_report["content_recovery_signal"] = True
+            diff_report["content_recovery_note"] = (
+                f"Kaynak içeriği geri geldi: {cs_count} alıntılanabilir belge mevcut "
+                f"(önceki çalıştırmada 0 idi)."
+            )
+        else:
+            diff_report["content_recovery_signal"] = False
+
         return {
             "ok": True,
             "name": name,

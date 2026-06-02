@@ -11,7 +11,6 @@ Output: JSON report grouped by module, saved to docs/message_inventory.json.
 """
 from __future__ import annotations
 
-import ast
 import json
 import re
 import sys

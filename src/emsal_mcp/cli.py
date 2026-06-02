@@ -10,7 +10,7 @@ import typer
 from . import __version__
 
 if TYPE_CHECKING:
-    from .cache import Cache
+    pass
 
 # M-52: All domain imports moved to lazy (inside command functions) for
 # faster startup.  Only stdlib + typer + __version__ are imported at
@@ -135,10 +135,14 @@ def get(source: str, document_id: str, json_out: bool = typer.Option(False, "--j
     """Fetch a single document by ID from the given source."""
     from .cache import Cache
     from .sources.registry import get_source
-    from .models import Document
+    from .models import merge_search_metadata
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
     cache = Cache()
+    # M-65: merge cached provenance so standalone get has metadata
+    _cached = cache.get_document(document_id, source)
+    if _cached and _cached.esas_no:
+        merge_search_metadata(doc, _cached)
     cache.set(f"doc:{source}:{document_id}", doc.model_dump(mode="json"))
     cache.store_document(doc)
     cache.log("get", {"source": source, "document_id": document_id})
@@ -151,8 +155,18 @@ def citation_check_cmd(source: str, document_id: str, json_out: bool = typer.Opt
     """Check citation safety of a document from the given source."""
     from .safety import citation_check
     from .sources.registry import get_source
+    from .cache import Cache
+    from .models import merge_search_metadata
     import asyncio
     doc = asyncio.run(get_source(source).get_document(document_id))
+    # M-65: merge cached provenance so standalone citation-check sees metadata
+    cache = Cache()
+    try:
+        _cached = cache.get_document(document_id, source)
+        if _cached and _cached.esas_no:
+            merge_search_metadata(doc, _cached)
+    finally:
+        cache.close()
     _print(citation_check(doc).model_dump(mode="json"), json_out)
 
 
@@ -1182,7 +1196,6 @@ def semantic_providers(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """List available embedding providers."""
-    from .embeddings import list_embedding_providers
     from .embeddings import list_embedding_providers
 
     _print(list_embedding_providers(), json_out)

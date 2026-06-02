@@ -9,8 +9,6 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -26,7 +24,7 @@ from emsal_mcp.sources.base import (
 )
 from emsal_mcp.sources.bedesten import BedestenClient
 from emsal_mcp.sources.mevzuat import MevzuatClient
-from emsal_mcp.sources.registry import smoke_all_sync, registry
+from emsal_mcp.sources.registry import smoke_all_sync
 
 
 # ── Schema signature computation ────────────────────────────────────────

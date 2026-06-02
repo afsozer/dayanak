@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 import sys
-import textwrap
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -65,7 +64,7 @@ def main() -> None:
         existing = re.search(r"^> \*\*v[\d.]+.*$", content, re.MULTILINE)
         if existing and existing.group().strip() == headline:
             sys.exit(0)
-        print(f"DRIFT: README headline out of sync.")
+        print("DRIFT: README headline out of sync.")
         print(f"  Expected: {headline}")
         if existing:
             print(f"  Found:    {existing.group().strip()}")

@@ -161,6 +161,11 @@ def main() -> None:
         """
         doc = await get_source(source).get_document(document_id)
         cache = Cache()
+        # M-65: merge cached provenance so standalone get has metadata
+        _cached = cache.get_document(document_id, source)
+        if _cached and _cached.esas_no:
+            from .models import merge_search_metadata
+            merge_search_metadata(doc, _cached)
         cache.set(f"doc:{source}:{document_id}", doc.model_dump(mode="json"))
         cache.store_document(doc)
         cache.log("get", {"source": source, "document_id": document_id})

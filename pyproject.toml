@@ -48,8 +48,11 @@ markers = [
 [tool.ruff]
 line-length = 100
 
+# Docstring rules (D100/D101/D103) are intentionally excluded from the main
+# gate — they are advisory only.  The gate requires 0 ruff errors on the
+# default rule set (E/W/F).  See ROADMAP.md M-68 / FAZ E.
 [tool.ruff.lint]
-select = ["D100", "D101", "D103"]  # module, class, function docstrings
+extend-ignore = ["D100", "D101", "D103", "E402"]  # D=advisory docstrings, E402=deliberate lazy imports (M-52)
 
 [tool.mypy]
 python_version = "3.11"

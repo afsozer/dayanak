@@ -16,7 +16,6 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 from emsal_mcp.models import SourceStatus
-from emsal_mcp.sources.base import SourceClient
 from emsal_mcp.sources.bedesten import BedestenClient
 from emsal_mcp.sources.mevzuat import MevzuatClient
 from emsal_mcp.sources.simple_public import DanistayClient, GibClient, SayistayClient

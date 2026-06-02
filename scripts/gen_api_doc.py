@@ -6,7 +6,6 @@ Usage:
 Writes docs/API.md with function signatures and docstrings extracted via ast.
 """
 import ast
-import sys
 from pathlib import Path
 
 SRC_DIR = Path(__file__).resolve().parent.parent / "src" / "emsal_mcp"

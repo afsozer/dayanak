@@ -4,8 +4,6 @@ Provides session-scoped cache fixtures to avoid repeated Cache() construction.
 """
 from __future__ import annotations
 
-import os
-import sqlite3
 import tempfile
 from pathlib import Path
 
