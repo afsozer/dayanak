@@ -396,6 +396,22 @@ class TestBedestenMocked:
             with pytest.raises(httpx.HTTPStatusError):
                 asyncio.run(ci.get_document("123"))
 
+    def test_get_document_404_returns_unavailable(self):
+        """404 (full text not yet published) degrades gracefully, not raises."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(status_code=404)
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            doc = asyncio.run(ci.get_document("999"))
+        assert doc.content_status == ContentStatus.UNAVAILABLE
+        assert doc.document_id == "999"
+        warnings = doc.metadata.get("_emsal_warnings", [])
+        assert any("404" in w for w in warnings)
+
 
 class TestYargitayMocked:
     def test_source_id_preserved(self):

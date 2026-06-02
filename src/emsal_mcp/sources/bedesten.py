@@ -81,11 +81,31 @@ class BedestenClient(SourceClient):
         return out
 
     async def get_document(self, document_id: str, **kwargs: Any) -> Document:
+        import httpx
+
         payload = {"data": {"documentId": document_id}, "applicationName": "UyapMevzuat"}
-        async with client() as c:
-            r = await c.post(f"{self.base}/emsal-karar/getDocumentContent", json=payload, headers=self.headers)
-            check_http_response(r, self.source_id)
-            raw = r.json()
+        try:
+            async with client() as c:
+                r = await c.post(f"{self.base}/emsal-karar/getDocumentContent", json=payload, headers=self.headers)
+                check_http_response(r, self.source_id)
+                raw = r.json()
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            # 404 = full text not (yet) published by the source. Very recent
+            # decisions often have searchable metadata but no uploaded content.
+            # Degrade gracefully (invariant #3: structured result, not exception)
+            # so callers get a fast UNAVAILABLE instead of a crash. Date-agnostic:
+            # once the source backfills the text, the same code returns it.
+            if status_code == 404:
+                doc = Document(
+                    source=self.source_id, document_id=document_id,
+                    title=document_id, content_status=ContentStatus.UNAVAILABLE,
+                )
+                return finalize_document(doc, [
+                    f"{self.source_id}/{document_id}: tam metin kaynakta yok (HTTP 404); "
+                    "büyük olasılıkla çok yeni bir karar, içerik henüz yayımlanmamış."
+                ])
+            raise
         data = raw.get("data", raw)
         # M-60: schema validation
         _ = self._check_response_schema(data, self._get_document_response_keys, "get_document")
