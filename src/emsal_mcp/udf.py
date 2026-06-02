@@ -41,6 +41,12 @@ def _resolve_toolkit_dir() -> Optional[Path]:
     return None
 
 
+# Injectible hooks so tests can fully hermeticize toolkit detection.
+# Replace these in test monkeypatching (no import-time side effects).
+_discover_libreoffice = staticmethod(lambda: shutil.which("soffice") or shutil.which("libreoffice") or shutil.which("soffice.exe"))
+_discover_unoconv = staticmethod(lambda: shutil.which("unoconv"))
+
+
 def get_udf_toolkit_status() -> dict:
     """Check whether the external UDF toolkit (libreoffice/unoconv etc.) is available.
 
@@ -48,15 +54,21 @@ def get_udf_toolkit_status() -> dict:
     """
     toolkit_dir = _resolve_toolkit_dir()
     enabled = toolkit_dir is not None
-    libreoffice_path = shutil.which("soffice") or shutil.which("libreoffice") or shutil.which("soffice.exe")
-    unoconv_path = shutil.which("unoconv")
+    libreoffice_path = _discover_libreoffice()
+    unoconv_path = _discover_unoconv()
 
     warnings: list[str] = []
     if not enabled:
-        warnings.append(
-            "UDF toolkit dizini ayarlanmamis. "
-            "EMSAL_UDF_TOOLKIT_DIR veya UDF_TOOLKIT_DIR ortam degiskeni ile ayarlayin."
-        )
+        if toolkit_dir is not None and not toolkit_dir.exists():
+            warnings.append(
+                f"UDF toolkit dizini mevcut degil: {toolkit_dir}. "
+                "EMSAL_UDF_TOOLKIT_DIR veya UDF_TOOLKIT_DIR ortam degiskeni ile gecerli bir dizin ayarlayin."
+            )
+        else:
+            warnings.append(
+                "UDF toolkit dizini ayarlanmamis. "
+                "EMSAL_UDF_TOOLKIT_DIR veya UDF_TOOLKIT_DIR ortam degiskeni ile ayarlayin."
+            )
     if not libreoffice_path:
         warnings.append("LibreOffice (soffice) PATH'te bulunamadi.")
     if not unoconv_path:

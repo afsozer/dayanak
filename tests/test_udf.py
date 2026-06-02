@@ -7,6 +7,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
+import emsal_mcp.udf as udf_mod
 from emsal_mcp.udf import (
     DOCX_TO_UDF_EXPERIMENTAL_WARNING,
     UDF_AUTHORING_WARNING,
@@ -131,6 +132,12 @@ class TestToolKitStatus:
 
     def test_status_nonexistent_env(self, monkeypatch):
         monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", "/nonexistent/path")
+        monkeypatch.delenv("UDF_TOOLKIT_DIR", raising=False)
+        # Hermetic: mock all external state so the test is deterministic
+        # regardless of host OS, LibreOffice installation, or env vars.
+        monkeypatch.setattr(udf_mod, "_resolve_toolkit_dir", lambda: None)
+        monkeypatch.setattr(udf_mod, "_discover_libreoffice", lambda: None)
+        monkeypatch.setattr(udf_mod, "_discover_unoconv", lambda: None)
         status = get_udf_toolkit_status()
         assert status["enabled"] is False
 

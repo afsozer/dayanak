@@ -3,6 +3,11 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+- **M-57:** Hermetik test düzeltmesi — `test_status_nonexistent_env` artık LibreOffice kurulu/kurulu olmayan tüm makinelerde aynı sonucu veriyor. UDF toolkit'inin binary keşfi (`_discover_libreoffice`, `_discover_unoconv`) ve dizin çözümlemesi (`_resolve_toolkit_dir`) enjekte edilebilir hale getirildi; testler tamamen ortamdan bağımsız (hermetik).
+
 ## [3.1.0] — 2026-05-30
 
 ### Added

@@ -34,13 +34,6 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ## FAZ A — Doğruluk & Hijyen (yüksek öncelik, küçük efor)
 
-### M-57 — Hermetik test düzeltmesi
-**Sorun:** `tests/test_udf.py::test_status_nonexistent_env` makineye bağımlı — LibreOffice
-kurulu sistemlerde auto-detect devreye girip `enabled=True` döndürdüğü için başarısız oluyor.
-- LibreOffice yol keşfini test içinde mock'la (PATH/`shutil.which` ve env değişkeni izole edilsin).
-- UDF toolkit'inin ortam keşfini tek bir enjekte edilebilir fonksiyona indir, testte onu override et.
-- **Bitti sayılır:** Test, LibreOffice kurulu **ve** kurulu olmayan makinede aynı sonucu verir; tüm suite yeşil.
-
 ### M-58 — README & sürüm tutarlılığı
 **Sorun:** README başlığı "v1.0.0 · 10 source modules" diyor; gerçek v3.1.0, 36 modül.
 Tool/CLI sayıları elle yazılmış ve geride kalmış.
