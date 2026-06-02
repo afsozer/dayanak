@@ -20,9 +20,18 @@ KİK/EKAP v2 canlı arama şu anda `unavailable` capability ile kayıtlıdır; �
 ## Kurulum
 
 ```powershell
-cd C:\Users\Sozer\Emsal-mcp
+# Windows
+cd <repo-dizini>
 python -m venv .venv
-.\.venv\Scripts\pip install -e .[dev,mcp]
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev,mcp]"
+
+# macOS / Linux
+cd <repo-dizini>
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev,mcp]"
+
 emsal-mcp version
 emsal-mcp release command-center --json
 ```
@@ -57,4 +66,4 @@ emsal-mcp-server
 | **Chamber Profiling** | v0.12 | 4 | Daire analizi, profil, zaman çizelgesi, benzerlik |
 | **Release Management** | v0.13 | 4 | Komuta merkezi, sürüm, v1 hazırlık, özet |
 
-**Toplam:** 113 MCP tool · 127 CLI komutu · 42 test dosyası
+**Toplam:** 113 MCP tool · 150 CLI komutu · 47 test dosyası

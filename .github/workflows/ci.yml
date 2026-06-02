@@ -42,7 +42,6 @@ jobs:
 
   type-check:
     runs-on: ubuntu-latest
-    continue-on-error: true  # informational, not blocking
 
     steps:
       - uses: actions/checkout@v4
@@ -58,4 +57,4 @@ jobs:
           pip install -e ".[dev,mcp]"
 
       - name: Type check with mypy
-        run: python -m mypy src/emsal_mcp/ --ignore-missing-imports
+        run: python -m mypy src/

@@ -1,10 +1,10 @@
 # ROADMAP.md — Emsal-mcp
 
 **Mevcut sürüm:** v3.1.0 · **Oluşturulma:** 2026-06-02
-**Durum:** Çekirdek olgun (1470 test geçiyor, citation-safety sağlam). Bu roadmap, kalan
+**Durum:** Çekirdek olgun (1524 test geçiyor, citation-safety sağlam, mypy temiz). Bu roadmap, kalan
 sağlamlık/taşınabilirlik/doküman borçlarını kapatmaya odaklanır.
 
-> **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-56)
+> **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-62)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur. Bu dosya yalnızca **ileriye
 > dönük** çalışmayı içerir; tamamlanan iş buradan CHANGELOG'a taşınır ve burada tutulmaz.
 
@@ -42,12 +42,6 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 > Not: Proje bilinçli olarak "tek kullanıcı/tek makine" hedefli. Bu faz yalnızca paylaşım/
 > dağıtım hedefi netleşirse yapılır.
-
-### M-63 — Yola-bağımsız kurulum
-- README/INSTALL'daki literal `C:\Users\Sozer\...` yollarını `<repo>` placeholder'ı ve
-  platform-bağımsız örneklerle değiştir.
-- Kurulumu mevcut çalışma dizininden bağımsız hale getir; sabit kullanıcı yolu varsayımlarını kaldır.
-- **Bitti sayılır:** Temiz bir makinede README adımları birebir çalışır.
 
 ### M-64 — CI iskeleti
 - `.github/` altında ruff + pytest + mypy + import-smoke çalıştıran minimal workflow.

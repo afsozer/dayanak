@@ -3,9 +3,21 @@
 ## Geliştirme Ortamı
 
 ```bash
-cd Emsal-mcp
+# Repo dizinine geçin
+cd <repo-dizini>
+
+# Sanal ortam oluştur
 python -m venv .venv
-.\.venv\Scripts\activate
+
+# Sanal ortamı aktive et (Windows)
+.\.venv\Scripts\Activate.ps1    # PowerShell
+# veya
+.\.venv\Scripts\activate         # cmd.exe
+
+# Sanal ortamı aktive et (macOS / Linux)
+source .venv/bin/activate
+
+# Paketi kur
 pip install -e .
 ```
 
