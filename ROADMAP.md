@@ -36,13 +36,6 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ## FAZ B — Dış Bağımlılık Sağlamlığı (orta öncelik)
 
-### M-61 — Kaynak sağlık izleme (smoke genişletme)
-- `smoke` komutunu, her adaptör için son başarılı şema imzasını saklayıp karşılaştıracak
-  şekilde genişlet; kaynak kırıldığında erken uyarı.
-- **Bitti sayılır:** `emsal-mcp smoke` çıktısı kaynak-başı şema-sağlık durumu içerir.
-
----
-
 ## FAZ C — Tip Güvenliği (orta öncelik)
 
 ### M-62 — mypy sıkılaştırma
@@ -74,4 +67,4 @@ enforce edilmiyor.
 
 ## Öncelik Sırası
 
-`M-57 → M-58 → M-59` (hijyen, hızlı kazanım) → `M-61` → `M-62` → (gerekirse) `M-63 → M-64`.
+`M-57 → M-58 → M-59` (hijyen, hızlı kazanım) → `M-62` → (gerekirse) `M-63 → M-64`.

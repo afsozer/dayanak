@@ -370,3 +370,68 @@ class TestCapabilityModelAfterDrift:
         # After drift — capability_model should show PARTIAL
         cap2 = ci.capability_model()
         assert cap2.status == SourceStatus.PARTIAL
+
+
+# ── M-61: Schema health in smoke output ────────────────────────────────
+
+
+class TestSmokeSchemaHealth:
+    """Verify smoke() includes schema_health for adapters with declared schema."""
+
+    def test_bedesten_smoke_has_schema_health(self):
+        """Normal API response: emsalKararList key exists, results returned normally."""
+        ci = BedestenClient()
+        result = asyncio.run(ci.smoke(online=False))
+        sh = result.schema_health
+        assert sh is not None
+        assert sh["schema_declared"] is True
+        assert "emsalKararList" in sh["declared_search_keys"]
+        assert "content" in sh["declared_get_document_keys"]
+
+    def test_mevzuat_smoke_has_schema_health(self):
+        """mevzuatList key exists."""
+        ci = MevzuatClient()
+        result = asyncio.run(ci.smoke(online=False))
+        sh = result.schema_health
+        assert sh is not None
+        assert "mevzuatList" in sh["declared_search_keys"]
+
+    def test_html_adapter_no_schema_health(self):
+        """AYM (HTML-based, no schema) — schema_health should be None."""
+        from emsal_mcp.sources.simple_public import AymClient
+        ci = AymClient()
+        result = asyncio.run(ci.smoke(online=False))
+        assert result.schema_health is None
+
+    def test_drift_detected_when_capability_downgraded(self):
+        """When capability is PARTIAL (drift), smoke should report drift_detected=True."""
+        ci = BedestenClient()
+        # Force capability downgrade
+        ci._capability_status = SourceStatus.PARTIAL
+        result = asyncio.run(ci.smoke(online=False))
+        assert result.schema_health is not None
+        assert result.schema_health["drift_detected"] is True
+
+    def test_drift_not_detected_when_stable(self):
+        """When capability is STABLE, drift_detected should be False."""
+        ci = BedestenClient()
+        ci._capability_status = SourceStatus.STABLE
+        result = asyncio.run(ci.smoke(online=False))
+        assert result.schema_health is not None
+        assert result.schema_health["drift_detected"] is False
+
+    def test_smoke_model_dump_includes_schema_health(self):
+        """schema_health field appears in model_dump output for JSON serialization."""
+        ci = BedestenClient()
+        result = asyncio.run(ci.smoke(online=False))
+        dumped = result.model_dump(mode="json")
+        assert "schema_health" in dumped
+        assert dumped["schema_health"]["schema_declared"] is True
+
+    def test_smoke_model_dump_schema_health_none_for_html_adapter(self):
+        """schema_health is null in JSON output when no schema is declared."""
+        from emsal_mcp.sources.simple_public import AymClient
+        ci = AymClient()
+        result = asyncio.run(ci.smoke(online=False))
+        dumped = result.model_dump(mode="json")
+        assert dumped["schema_health"] is None

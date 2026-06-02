@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import re
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Callable, Coroutine, TypeVar
 
 import httpx
@@ -134,6 +136,19 @@ class SourceClient(ABC):
                     return fallback, warnings
             return None, warnings
         return primary, warnings
+
+    def _schema_signature(self) -> str | None:
+        """Compute a deterministic hash of the declared response keys.
+
+        Used to detect schema declaration changes across runs.
+        Returns None only when no schema keys are declared.
+        """
+        search = tuple(sorted(self._search_response_keys or []))
+        doc = tuple(sorted(self._get_document_response_keys or []))
+        if not search and not doc:
+            return None
+        payload = json.dumps({"search": list(search), "get_document": list(doc)}, sort_keys=True)
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
     # Retry configuration — OPT-IN per source by setting attributes.
     _retry_enabled: bool = False
@@ -272,7 +287,67 @@ class SourceClient(ABC):
                 f"capability_model().source_id ({cap.source_id}) != self.source_id ({self.source_id})"
             )
             result.offline_ok = False
+        # M-61: schema health check — report declared schema keys and drift status
+        declared_keys: list[str] = list(self._search_response_keys or []) + list(
+            self._get_document_response_keys or []
+        )
+        sig = self._schema_signature()
+        if declared_keys or sig:
+            # Compare against stored signature from previous run
+            stored_sigs = _load_schema_sigs()
+            stored = stored_sigs.get(self.source_id)
+            drift_detail = None
+            if sig and stored and stored != sig:
+                drift_detail = (
+                    f"Schema declaration changed since last smoke: "
+                    f"was {stored}, now {sig}"
+                )
+                result.warnings.append(drift_detail)
+            # Save current signature for next run
+            if sig:
+                stored_sigs[self.source_id] = sig
+                _save_schema_sigs(stored_sigs)
+            result.schema_health = {
+                "schema_declared": bool(declared_keys),
+                "declared_search_keys": list(self._search_response_keys or []),
+                "declared_get_document_keys": list(self._get_document_response_keys or []),
+                "schema_signature": sig,
+                "previous_signature": stored,
+                "drift_detected": self._capability_status != SourceStatus.STABLE or bool(drift_detail),
+                "drift_detail": drift_detail,
+            }
         return result
+
+
+# ── Schema signature persistence (M-61) ──────────────────────────────────
+
+_SCHEMA_SIG_FILENAME = ".emsal_schema_sigs.json"
+
+
+def _schema_sig_path() -> Path:
+    """Path to the schema signature store file."""
+    return Path.home() / ".emsal_mcp" / _SCHEMA_SIG_FILENAME
+
+
+def _load_schema_sigs() -> dict[str, str]:
+    """Load stored schema signatures from disk. Returns {} on any error."""
+    try:
+        p = _schema_sig_path()
+        if not p.exists():
+            return {}
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_schema_sigs(sigs: dict[str, str]) -> None:
+    """Persist schema signatures to disk. Silently ignores IO errors."""
+    try:
+        p = _schema_sig_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(sigs, sort_keys=True, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def html_to_text(html: str) -> str:

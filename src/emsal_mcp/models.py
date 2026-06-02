@@ -196,6 +196,7 @@ class SourceSmokeResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     tested_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    schema_health: dict | None = None
 
 
 class SourceProvenance(BaseModel):
