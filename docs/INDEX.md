@@ -13,27 +13,33 @@ Documents are grouped by category for easy navigation.
 |---|---|
 | [README.md](../README.md) | Project overview, quick start, and feature summary |
 | [CHANGELOG.md](../CHANGELOG.md) | Full release history (v0.1.0 → v3.1.0) |
-| [ROADMAP.md](../ROADMAP.md) | Forward-looking roadmap (open milestones M-57+) |
+| [ROADMAP.md](../ROADMAP.md) | Forward-looking roadmap (open milestones M-59+) |
 
 ## Installation & Setup
 
 | Document | Description |
 |---|---|
 | [INSTALL.md](../INSTALL.md) | Installation guide covering pip, dev setup, and optional dependencies |
+| [LICENSES.md](LICENSES.md) | License information for all runtime and optional dependencies |
 
 ## Technical Contracts
 
 | Document | Description |
 |---|---|
-| [docs/JSON_CONTRACTS.md](JSON_CONTRACTS.md) | JSON output contracts for all public API functions |
-| [docs/MCP_CONTRACTS.md](MCP_CONTRACTS.md) | MCP tool contracts and interface definitions |
-| [docs/ADAPTER_SDK.md](ADAPTER_SDK.md) | Guide for creating custom source adapters |
+| [JSON_CONTRACTS.md](JSON_CONTRACTS.md) | JSON output contracts for all public API functions |
+| [MCP_CONTRACTS.md](MCP_CONTRACTS.md) | MCP tool contracts and interface definitions |
+| [ADAPTER_SDK.md](ADAPTER_SDK.md) | Guide for creating custom source adapters |
+| [API.md](API.md) | Auto-generated API reference (function signatures + docstrings) |
 
-## Research & Analysis
+## Reference & Guides
 
 | Document | Description |
 |---|---|
-| [docs/KIK_RESEARCH.md](KIK_RESEARCH.md) | Research notes on the KIK (Kamu İhale Kurumu) API |
+| [COOKBOOK.md](COOKBOOK.md) | Usage cookbook with 8 copy-paste workflow recipes |
+| [GLOSSARY.md](GLOSSARY.md) | Bilingual Turkish-English glossary of 77 legal and technical terms |
+| [ERROR_CATALOG.md](ERROR_CATALOG.md) | Complete error code catalog (76 codes) with recommended actions |
+| [dead_code_report.md](dead_code_report.md) | Dead code analysis report (M-45 audit) |
+| [KIK_RESEARCH.md](KIK_RESEARCH.md) | Research notes on the KIK (Kamu İhale Kurumu) API |
 
 > Historical release reports and session changelogs were consolidated into
 > [CHANGELOG.md](../CHANGELOG.md); older standalone files were removed (history in git).

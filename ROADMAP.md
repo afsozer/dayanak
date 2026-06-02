@@ -34,16 +34,6 @@ python -m emsal_mcp.cli release v1-readiness --json    # ready: true korunur
 
 ## FAZ A — Doğruluk & Hijyen (yüksek öncelik, küçük efor)
 
-### M-59 — Doküman konsolidasyonu
-**Sorun:** Kök dizinde dağınık geçmiş dokümanlar birikmişti (temizlendi). Kalan referanslar
-güncel tutulmalı.
-- `docs/INDEX.md`'i sil(in)en dosyalara referans kalmayacak şekilde güncelle.
-- Kök dizinde yalnızca: `README.md`, `CHANGELOG.md`, `INSTALL.md`, `ROADMAP.md`, `Makefile`.
-  Geri kalan tüm açıklayıcı dokümanlar `docs/` altında.
-- **Bitti sayılır:** `docs/INDEX.md` kırık link içermez; kök dizinde 4 .md dosyası kalır.
-
----
-
 ## FAZ B — Dış Bağımlılık Sağlamlığı (orta öncelik)
 
 ### M-60 — Adaptör yanıt-şeması doğrulaması
