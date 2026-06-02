@@ -878,7 +878,10 @@ def prepare_petition_outline(
     """
     pack_path = Path(pack_dir)
     out_path = Path(out_dir) if out_dir else pack_path
-    out_path.mkdir(parents=True, exist_ok=True)
+    try:
+        out_path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return build_error("OUTPUT_DIR_ERROR", f"Cannot create output dir '{out_path}': {exc}")
 
     warnings: list[str] = []
 
@@ -1104,7 +1107,10 @@ def prepare_controlled_petition_draft(
     """
     pack_path = Path(pack_dir)
     out_path = Path(out_dir) if out_dir else pack_path / "draft_output"
-    out_path.mkdir(parents=True, exist_ok=True)
+    try:
+        out_path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return build_error("OUTPUT_DIR_ERROR", f"Cannot create output dir '{out_path}': {exc}")
 
     warnings: list[str] = []
     blocking_warnings: list[str] = []

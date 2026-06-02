@@ -437,7 +437,10 @@ def prepare_export_package_bundle(
     """
     pack_path = Path(pack_dir)
     bundle_path = Path(out_dir) if out_dir else pack_path / "export_bundle"
-    bundle_path.mkdir(parents=True, exist_ok=True)
+    try:
+        bundle_path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return build_error("OUTPUT_DIR_ERROR", f"Cannot create output dir '{bundle_path}': {exc}")
 
     warnings: list[str] = []
     files_written: list[str] = []
