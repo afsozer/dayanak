@@ -121,6 +121,31 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 - **Eval-güdümlü geliştirme:** M-71 metrikleri her getirme/rerank değişikliğinde koşar.
 - **Doküman tazeliği:** README drift testi (M-58), API.md üreteci, cookbook güncel kalır.
 - **Test hijyeni:** hermetik, ortam-bağımsız, cross-platform (M-CI cross-platform dersi).
+  Ayrıca aşağıdaki FAZ L boşlukları.
+
+---
+
+## FAZ L — Test Yüzeyi Boşlukları (2026-06-03 demo dersleri)
+
+> Bir dizi gerçek bug (async dekoratör, 404'te exception, rate-limit, araç seçimi)
+> kendi geliştirme testlerimizde değil, harici bir ajan (Antigravity/Gemini) canlı
+> kullanırken ortaya çıktı. Sebep: **bileşeni test ettik, entegrasyon yüzeyini değil.**
+> Bu faz o boşlukları kapatır.
+
+- **M-89 — Gerçek MCP-protokol E2E testleri.** stdio üzerinden `initialize` → `tools/call`
+  ile asıl sunucu yolunu test et (sadece fonksiyon-mock değil). En az birer happy-path:
+  `search_decisions`, `get_document`, `hybrid_search`. Async dekoratör bug'ı tam burada
+  yaşıyordu; bu test onu yakalardı. Canlı ağ yok — mock transport/sources_override.
+- **M-90 — Hata-yolu invariant testleri.** "Kaynak hatası → exception değil yapısal sonuç"
+  kuralını HER araçta zorla: 404/500/timeout/şema-bozuk senaryoları. Mevcut suite 404/500'ün
+  *raise* etmesini doğru sayıyordu (yanlış varsayım); bu, graceful-degradation değişmezini
+  test düzeyinde sabitler.
+- **M-91 — Opt-in load/limit smoke.** Canlı (varsayılan kapalı) bir smoke: kısa bir burst
+  atıp rate-limiter'ın 429'u önlediğini ve `Retry-After` cooldown'ının çalıştığını doğrular.
+  Sunucu pencere davranışı değişirse erken uyarı.
+
+**Öncelik:** M-89 → M-90 (ikisi düşük efor, yüksek koruma) → M-91. Bu üçü olmadan benzer
+"entegrasyon yüzeyi" hataları yine kaçar.
 
 ---
 
