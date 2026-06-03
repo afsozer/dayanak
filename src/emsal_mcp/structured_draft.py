@@ -6,11 +6,8 @@ marked [DOĞRULANMADI].
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
-
-from .models import build_error
 
 STRUCTURED_DRAFT_VERSION = "1.0.0"
 

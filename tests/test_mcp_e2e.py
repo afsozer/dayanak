@@ -45,17 +45,14 @@ class TestMCPE2EHappyPath:
         # We don't call main() (it blocks with mcp.run()).
         # Instead, directly import the decorated functions.
 
-    def test_search_decisions_returns_list(self) -> None:
-        """search_decisions with a valid source should return a list."""
+    def test_search_decisions_source_resolvable(self) -> None:
+        """The source backing search_decisions resolves and exposes async search/get."""
         from emsal_mcp.sources.registry import get_source
+
         src = get_source("bedesten")
-        # Use a search that's fast — might hit network. Use mock.
-        # For E2E, we test that the tool wrapper exists and doesn't crash.
-        # We can't easily call the @mcp.tool() without running the server.
-        # Alternative: test via direct function call.
-        # All we can verify at import time: server module imports cleanly.
-        # But the roadmap says "stdio transport" — let's test the tool functions directly.
-        pass
+        assert src is not None
+        assert callable(getattr(src, "search", None))
+        assert callable(getattr(src, "get_document", None))
 
     def test_all_mcp_server_imports(self) -> None:
         """Server module imports without errors (catches async decorator bugs)."""
@@ -156,23 +153,21 @@ class TestMCPErrorHandling:
     """Error-path: tools never crash, always return structured dicts."""
 
     def test_search_invalid_source(self) -> None:
-        """Search with invalid source returns error, not exception."""
-        from emsal_mcp.sources.registry import get_source
-        try:
-            src = get_source("nonexistent_source_xyz")
-            # Should have raised KeyError or returned None
-            # Test that this path doesn't crash unexpectedly
-        except KeyError:
-            pass  # Expected: source not found
+        """An unknown source id raises KeyError (caught/handled by callers)."""
+        import pytest
 
-    def test_get_document_empty_id(self) -> None:
-        """get_document with empty ID should not crash."""
         from emsal_mcp.sources.registry import get_source
-        try:
-            src = get_source("bedesten")
-            # This would need network — skip in CI
-        except Exception:
-            pass  # Source may not be available, that's fine
+
+        with pytest.raises(KeyError):
+            get_source("nonexistent_source_xyz")
+
+    def test_get_document_empty_id_rejected_by_validator(self) -> None:
+        """The validator guarding get_document rejects an empty document_id."""
+        from emsal_mcp.server_utils import validate_non_empty
+
+        ok, msg = validate_non_empty("")
+        assert ok is False
+        assert msg
 
     def test_hybrid_search_empty_query(self) -> None:
         """hybrid_search with empty query returns structured result."""

@@ -6,7 +6,6 @@ Respects rate limits, applies deduplication, tracks progress.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from .cache import Cache

@@ -192,9 +192,7 @@ def check_consistency(authorities: list[dict[str, Any]], cache: Any | None = Non
         return {"ok": True, "contradictions": [], "warnings": ["Need at least 2 authorities to check consistency."],
                 "version": REASONING_VERSION}
 
-    # Check for very old decisions
-    import datetime as _dt
-    now = _dt.date.today()
+    # Check for very old decisions (fixed pre-2000 cutoff)
     for auth in authorities:
         date_str = auth.get("decision_date", "")
         if date_str:
