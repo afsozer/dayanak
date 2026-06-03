@@ -5,6 +5,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Agent uyumu & dayanıklılık (mini update)
+- **Sunucu-taraflı hız limiti:** Pacing artık MCP'nin içinde (`base.py` `client()` httpx hook'ları), bağlanan agent'tan bağımsız. Ampirik limit testiyle bedesten'in ~10 istek/~30s sabit penceresi + ~27s `Retry-After` davranışı tespit edildi. `_SlidingWindowLimiter` (per-host, varsayılan 8 istek/31s) tipik işi anında geçirir, ağır işi 429'suz pace'ler; gerçek 429'da sunucunun `Retry-After`'ı cooldown olarak uygulanır. `EMSAL_RATE_LIMIT_{MAX,WINDOW}` ile ayarlanır, `EMSAL_RATE_LIMIT_DISABLED=1` ile kapatılır. 3 hermetik test.
+- **`validate_tool_input` async desteği:** Dekoratör artık coroutine fonksiyonları algılayıp async wrapper döndürüyor; birincil araç `search_decisions` (ve diğer async araçlar) FastMCP tarafından doğru `await` ediliyor — eskiden await edilmeyen coroutine dönerek bozuluyordu. 2 regresyon testi.
+- **Graceful 404:** bedesten `get_document` 404'te (tam metin henüz yayımlanmamış — çok yeni kararlar) exception fırlatmak yerine `content_status=UNAVAILABLE` + uyarı dönüyor (değişmez #3). Tarih-bağımsız; 429/5xx hâlâ fırlatır. 1 test.
+- **Arama aracı yönlendirmesi:** `search_decisions` zorunlu birincil canlı araç olarak işaretlendi; yerel arama araçları (`hybrid_search`, `hybrid_search_rrf`, `semantic_search`, `embedding_search`, `search_local_cache`) "yalnızca yerel cache / araştırma aracı DEĞİL" sert uyarısıyla reranker olarak konumlandı. Boş/seyrek cache'te sonuç sözlüğüne runtime `hint` + `cache_document_count` eklendi (model'i canlı aramaya yönlendiren güvenlik ağı).
+- **`sort_direction` (bedesten):** Arama opsiyonel `sort_direction` filtresi (asc/desc) kabul ediyor, varsayılan `desc` (additive).
+- **MCP sunucu UX:** `emsal-mcp-server` interaktif/`--help`/`--version` çağrılınca JSON-RPC parse hatası yerine kısa kullanım notu basıp çıkıyor (gerçek istemci pipe yolu etkilenmez).
+
 ### Added
 - **M-69:** Hibrit embeddings GA — Reciprocal Rank Fusion (RRF) test kapsamı tamamlandı. `_rrf_fusion()` birim testleri (9 adet: 2'li/3'lü sıralayıcı, boş küme, limit, metadata koruma) ve `hybrid_search_rrf()` entegrasyon testleri (7 adet: temel arama, dense dahil, boş cache, determinizm, limit, tekilleştirme, RRF vs lineer karşılaştırma) eklendi. Mevcut RRF altyapısı (`semantic.py` — `_rrf_fusion`, `hybrid_search_rrf`, `_fts5_search`, `_tfidf_search`) doğrulandı. BM25 + TF-IDF + dense 3-sinyal RRF tümlemesi test edildi. Toplam 16 yeni test.
 - **M-70:** Hukuki sorgu anlama — `query_understanding.py` modülü eklendi: `normalize_law_ref()` (13 kanun kısaltması → tam referans: İYUK→2577, HMK→6100 vb.), `expand_query_terms()` (10 konuda belirlenimci eş anlamlı sözlüğü), `extract_query_filters()` (sorgudan mahkeme/daire deseni çıkarımı). Tüm eşlemeler sabit kodlu — uydurma yok. 30 birim test. CLI: `emsal-mcp query normalize/expand/filters`. MCP: 3 araç. `release.py` modül listesine eklendi.
