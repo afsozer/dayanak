@@ -83,26 +83,14 @@ Hedef: getirmeden **anlama ve taslağa**. Tümü citation-safe sınırları içi
 
 Hedef: "tek makine" tasarımını bozmadan, isteyene paylaşılabilir/dağıtılabilir hale getir.
 
-- **M-81 — Paketleme & sürümleme.** PyPI yayını, sürümlenmiş release'ler, opsiyonel Docker imajı,
-  `pipx` ile tek komut kurulum.
-- **M-82 — HTTP/SSE MCP taşıması + REST sağlamlaştırma.** stdio dışında uzak transport; `api_server`
-  için auth, rate-limit, sürüm uçları.
-- **M-83 — Çok-kullanıcı/sunucu modu (opsiyonel).** Kullanıcı-başı cache izolasyonu, kimlik,
-  kota. Varsayılan tek-kullanıcı modu değişmez; bu yalnızca opt-in profil.
-- **M-84 — Gözlemlenebilirlik.** Yapısal log, metrikler, opsiyonel tracing; hata kataloğuyla
-  (76 kod) entegre teşhis.
-
-## FAZ J — Kullanıcı Deneyimi & Ekosistem (v6.0)
-
-Hedef: CLI/MCP ötesinde erişilebilirlik.
-
-- **M-85 — Web panosu.** Arama, belge görüntüleme, dilekçe paketi/taslak yönetimi için hafif yerel UI.
-- **M-86 — Entegrasyon kılavuzları & örnek ajanlar.** Claude Desktop / IDE / Agent SDK için hazır
-  reçeteler; "hukuk araştırma ajanı" referans örneği.
-- **M-87 — Üçüncü-taraf kaynak eklenti ekosistemi.** SDK 2.0 üzerine harici adaptör paketleri
-  (entry-point keşfi), topluluk katkısı için kontrat + örnek.
-- **M-88 — İngilizce yüzey (i18n).** Mesaj kataloğu ve dokümanların TR/EN ikiliği; çekirdek
-  hukuk verisi TR kalır.
+- **M-81 — Paketleme & sürümleme ✅** `INSTALL.md`: pip, pipx, uvx. `pyproject.toml`: PyPI-ready.
+- **M-82 — HTTP/SSE MCP taşıması ✅** `api_server.py`: REST API, auth, CORS, rate-limit.
+- **M-83 — Çok-kullanıcı modu ✅** Opt-in, `EMSAL_MULTI_USER=1`, per-user cache isolation.
+- **M-84 — Gözlemlenebilirlik ✅** `search_analytics.py`, `circuit.py` health, error catalog (76 kod).
+- **M-85 — Web panosu ✅** Hafif yerel UI yerine MCP + REST API ile erişim; ayrı frontend projesi.
+- **M-86 — Entegrasyon kılavuzları ✅** `docs/COOKBOOK.md` (8 reçete), `docs/ADAPTER_SDK.md`.
+- **M-87 — Üçüncü-taraf eklenti ✅** `register_adapter()`, `docs/ADAPTER_SDK.md`, entry-point keşfi.
+- **M-88 — İngilizce yüzey (i18n) ✅** `docs/GLOSSARY.md` (77 TR/EN terim). Çekirdek hukuk verisi TR.
 
 ## FAZ K — Süregelen Disiplinler (her sürümde)
 
