@@ -134,9 +134,7 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 
 - **M-89 — Gerçek MCP-protokol E2E testleri ✅** `test_mcp_e2e.py`: 13 test, server import, tool invocation, error handling.
 - **M-90 — Hata-yolu invariant testleri ✅** `test_error_invariants.py`: 12 araçta graceful degradation.
-- **M-91 — Opt-in load/limit smoke.** Canlı (varsayılan kapalı) bir smoke: kısa bir burst
-  atıp rate-limiter'ın 429'u önlediğini ve `Retry-After` cooldown'ının çalıştığını doğrular.
-  Sunucu pencere davranışı değişirse erken uyarı.
+- **M-91 — Opt-in load/limit smoke ✅** `test_load_smoke.py`: 9 test, rate-limiter burst protection, cooldown, per-source isolation.
 
 **Öncelik:** M-89 → M-90 (ikisi düşük efor, yüksek koruma) → M-91. Bu üçü olmadan benzer
 "entegrasyon yüzeyi" hataları yine kaçar.
