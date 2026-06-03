@@ -133,10 +133,7 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 > Bu faz o boşlukları kapatır.
 
 - **M-89 — Gerçek MCP-protokol E2E testleri ✅** `test_mcp_e2e.py`: 13 test, server import, tool invocation, error handling.
-- **M-90 — Hata-yolu invariant testleri.** "Kaynak hatası → exception değil yapısal sonuç"
-  kuralını HER araçta zorla: 404/500/timeout/şema-bozuk senaryoları. Mevcut suite 404/500'ün
-  *raise* etmesini doğru sayıyordu (yanlış varsayım); bu, graceful-degradation değişmezini
-  test düzeyinde sabitler.
+- **M-90 — Hata-yolu invariant testleri ✅** `test_error_invariants.py`: 12 araçta graceful degradation.
 - **M-91 — Opt-in load/limit smoke.** Canlı (varsayılan kapalı) bir smoke: kısa bir burst
   atıp rate-limiter'ın 429'u önlediğini ve `Retry-After` cooldown'ının çalıştığını doğrular.
   Sunucu pencere davranışı değişirse erken uyarı.

@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - **`sort_direction` (bedesten):** Arama opsiyonel `sort_direction` filtresi (asc/desc) kabul ediyor, varsayılan `desc` (additive).
 - **MCP sunucu UX:** `emsal-mcp-server` interaktif/`--help`/`--version` çağrılınca JSON-RPC parse hatası yerine kısa kullanım notu basıp çıkıyor (gerçek istemci pipe yolu etkilenmez).
 - **M-89:** MCP-protokol E2E testleri — `test_mcp_e2e.py`: server import, async decorator, tool invocation (search_decisions, get_document, hybrid_search, citation_check), error handling. 13 test. 1644 toplam.
+- **M-90:** Hata-yolu invariant testleri — `test_error_invariants.py`: 12 kritik araçta exception yerine structured dict dönüşü doğrulandı (search, get, citation, hybrid, semantic, petition, legislation, build_error). 1656 toplam.
 
 ### Added
 - **M-69:** Hibrit embeddings GA — Reciprocal Rank Fusion (RRF) test kapsamı tamamlandı. `_rrf_fusion()` birim testleri (9 adet: 2'li/3'lü sıralayıcı, boş küme, limit, metadata koruma) ve `hybrid_search_rrf()` entegrasyon testleri (7 adet: temel arama, dense dahil, boş cache, determinizm, limit, tekilleştirme, RRF vs lineer karşılaştırma) eklendi. Mevcut RRF altyapısı (`semantic.py` — `_rrf_fusion`, `hybrid_search_rrf`, `_fts5_search`, `_tfidf_search`) doğrulandı. BM25 + TF-IDF + dense 3-sinyal RRF tümlemesi test edildi. Toplam 16 yeni test.
