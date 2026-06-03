@@ -4,10 +4,11 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import re
 import time
 from abc import ABC, abstractmethod
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any, Callable, Coroutine, TypeVar
 
@@ -371,11 +372,91 @@ def decode_b64(data: str) -> bytes:
         return b""
 
 
+# ── Server-side rate limiting ───────────────────────────────────────────────
+# Empirically, bedesten.adalet.gov.tr enforces ~10 requests per ~30s window,
+# then returns HTTP 429 with a ~27s `Retry-After`. Pacing is hardcoded HERE (in
+# the MCP, not the calling agent) so behaviour is identical regardless of which
+# client connects — a misbehaving agent can neither hammer the API nor stall it.
+# A per-host token bucket (burst capacity, steady refill) caps throughput; a
+# 429 response forces a cooldown derived from the server's own Retry-After.
+# The server uses a fixed/sliding window (~10 req / ~30s), NOT a leaky bucket:
+# a burst plus gradual refill still overflows the window. So we model it as a
+# sliding window — at most _RL_MAX requests in any _RL_WINDOW seconds. Typical
+# jobs (a search + a few fetches) run instantly; heavier jobs are paced to the
+# window edge and never trip 429. A real 429 forces a cooldown from Retry-After.
+# Tunable via env; disable with EMSAL_RATE_LIMIT_DISABLED=1 (e.g. for tests).
+_RL_DISABLED = os.getenv("EMSAL_RATE_LIMIT_DISABLED") == "1"
+_RL_MAX = int(os.getenv("EMSAL_RATE_LIMIT_MAX", "8"))             # requests per window (< observed ~10)
+_RL_WINDOW = float(os.getenv("EMSAL_RATE_LIMIT_WINDOW", "31.0"))  # window seconds (> observed ~30)
+_RL_MAX_COOLDOWN = 60.0  # cap on honored Retry-After (defensive)
+
+
+class _SlidingWindowLimiter:
+    """Async per-host sliding-window limiter with explicit 429 cooldown."""
+
+    def __init__(self, max_requests: int, window: float) -> None:
+        self.max = max_requests
+        self.window = window
+        self.times: deque[float] = deque()
+        self.cooldown_until = 0.0
+        self.lock = asyncio.Lock()
+
+    def _evict(self, now: float) -> None:
+        while self.times and now - self.times[0] >= self.window:
+            self.times.popleft()
+
+    async def acquire(self) -> None:
+        async with self.lock:
+            now = time.monotonic()
+            if now < self.cooldown_until:
+                await asyncio.sleep(self.cooldown_until - now)
+                now = time.monotonic()
+            self._evict(now)
+            if len(self.times) >= self.max:
+                wait = self.window - (now - self.times[0])
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                    now = time.monotonic()
+                self._evict(now)
+            self.times.append(now)
+
+    def penalize(self, retry_after: float) -> None:
+        self.cooldown_until = max(self.cooldown_until, time.monotonic() + retry_after)
+        self.times.clear()
+
+
+_BUCKETS: dict[str, _SlidingWindowLimiter] = {}
+
+
+def _get_bucket(host: str) -> _SlidingWindowLimiter:
+    b = _BUCKETS.get(host)
+    if b is None:
+        b = _SlidingWindowLimiter(_RL_MAX, _RL_WINDOW)
+        _BUCKETS[host] = b
+    return b
+
+
+async def _throttle_request(request: httpx.Request) -> None:
+    if not _RL_DISABLED:
+        await _get_bucket(request.url.host).acquire()
+
+
+async def _throttle_response(response: httpx.Response) -> None:
+    if response.status_code == 429:
+        ra = response.headers.get("Retry-After")
+        try:
+            secs = float(ra) if ra else _RL_WINDOW
+        except ValueError:
+            secs = _RL_WINDOW
+        _get_bucket(response.request.url.host).penalize(min(secs, _RL_MAX_COOLDOWN))
+
+
 def client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=30,
         follow_redirects=True,
         headers={"User-Agent": f"EmsalMcp/{__version__} (+https://github.com/brachindul/emsal-mcp)"},
+        event_hooks={"request": [_throttle_request], "response": [_throttle_response]},
     )
 
 

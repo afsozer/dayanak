@@ -1010,3 +1010,49 @@ class TestKikOptionalToken:
         assert lims_no_token != lims_with_token
         assert any("Token yapılandırılmadı" in lim for lim in lims_no_token)
         assert any("EXPERIMENTAL" in lim for lim in lims_with_token)
+
+class TestRateLimiter:
+    """Server-side rate limiting (sliding window) — hermetic, no network."""
+
+    def test_burst_then_paced(self):
+        import time
+
+        from emsal_mcp.sources.base import _SlidingWindowLimiter
+
+        async def run():
+            lim = _SlidingWindowLimiter(max_requests=2, window=0.3)
+            t = time.monotonic()
+            await lim.acquire()
+            await lim.acquire()
+            fast = time.monotonic() - t
+            await lim.acquire()  # third must wait for the window edge
+            waited = time.monotonic() - t
+            return fast, waited
+
+        fast, waited = asyncio.run(run())
+        assert fast < 0.1
+        assert waited >= 0.25
+
+    def test_penalize_forces_cooldown(self):
+        import time
+
+        from emsal_mcp.sources.base import _SlidingWindowLimiter
+
+        async def run():
+            lim = _SlidingWindowLimiter(max_requests=10, window=0.1)
+            lim.penalize(0.2)
+            t = time.monotonic()
+            await lim.acquire()
+            return time.monotonic() - t
+
+        assert asyncio.run(run()) >= 0.15
+
+    def test_disabled_flag_skips_throttle(self, monkeypatch):
+        """When disabled, the request hook returns without creating a bucket."""
+        import emsal_mcp.sources.base as base
+
+        monkeypatch.setattr(base, "_RL_DISABLED", True)
+        monkeypatch.setattr(base, "_BUCKETS", {})
+        req = httpx.Request("POST", "http://throttle.test/x")
+        asyncio.run(base._throttle_request(req))
+        assert base._BUCKETS == {}  # no throttling state created
