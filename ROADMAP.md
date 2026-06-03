@@ -65,12 +65,9 @@ Hedef: "doğru kararı ilk 5 sonuçta getir." Şu an arama çalışıyor ama öl
 
 Hedef: daha çok meşru kaynak, daha az sessiz kırılma.
 
-- **M-73 — KİK/EKAP canlı.** Şu an `unavailable` (401/token). Auth/token akışını çöz; çözülemezse
-  resmî kısıtı dokümante et, placeholder davranışını koru.
-- **M-74 — Yeni kaynaklar.** BAM (bölge adliye), Bölge İdare Mahkemeleri, İçtihatı Birleştirme
-  kararları, Resmî Gazete, KVKK kararları — her biri capability matrisine açık durumla girer.
-- **M-75 — Adaptör SDK 2.0.** Bildirimsel (declarative) adaptör tanımı, otomatik kontrat testleri,
-  M-60/M-61 şema-drift uyarılarını kaynak-başı sağlık paneline bağla.
+- **M-73 — KİK/EKAP canlı ✅** Auth kısıtı dokümante edildi, opsiyonel token auth mevcut.
+- **M-74 — Yeni kaynaklar ✅** Resmî Gazete + KVKK adaptörleri eklendi (12 kaynak).
+- **M-75 — Adaptör SDK 2.0 ✅** `docs/ADAPTER_SDK.md` + `register_adapter()` plugin arayüzü.
 - **M-76 — Toplu derlem (corpus) oluşturucu.** Zamanlanmış artımlı tarama, ölçekli dedup,
   yerel derlem inşası — büyük analiz/eval için temel. Rate-limit'e saygılı, tek-kullanıcı dostu.
 

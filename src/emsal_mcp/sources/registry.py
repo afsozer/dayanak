@@ -14,6 +14,8 @@ from .simple_public import (
     SayistayClient,
     UyusmazlikClient,
 )
+from .resmigazete import ResmiGazeteClient
+from .kvkk import KvkkClient
 from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceCapability, SourceSmokeResult, SourceStatus
 
 
@@ -430,6 +432,22 @@ class _SayistayClient(SayistayClient):
     ]
 
 
+class _ResmiGazeteClient(ResmiGazeteClient):
+    _capability_status = SourceStatus.EXPERIMENTAL
+    _known_limitations: list[str] = [
+        "HTML-only scraping; no structured API available.",
+        "Search may require session/cookie handling.",
+    ]
+
+
+class _KvkkClient(KvkkClient):
+    _capability_status = SourceStatus.EXPERIMENTAL
+    _known_limitations: list[str] = [
+        "HTML-only scraping; no structured API available.",
+        "Search may require session/cookie handling.",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Registry and capability matrix
 # ---------------------------------------------------------------------------
@@ -446,6 +464,8 @@ def registry() -> dict[str, Any]:
         "uyusmazlik": _UyusmazlikClient(),
         "rekabet": _RekabetClient(),
         "sayistay": _SayistayClient(),
+        "resmigazete": _ResmiGazeteClient(),
+        "kvkk": _KvkkClient(),
         "kik": _KikClient(),
     }
 

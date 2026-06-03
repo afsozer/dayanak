@@ -100,3 +100,28 @@ This approach:
 - Preserves backward compatibility (no breaking changes).
 - Allows early adopters to test if they have EKAP access.
 - Avoids making unauthenticated API calls that would fail with 401.
+
+---
+
+## M-73 Final Decision (2026-06-03)
+
+**Status: Documented constraint — KİK/EKAP remains UNAVAILABLE by default.**
+
+The 401 auth barrier requires credentials (API key/token/session) that are not
+publicly documented. The following has been implemented:
+
+1. **Optional token auth** (`KIK_API_TOKEN` / `EKAP_API_TOKEN` env vars):
+   when configured, the KİK adapter transitions from `UNAVAILABLE` →
+   `EXPERIMENTAL` and attempts authenticated calls.
+
+2. **Graceful fallback:** without a token, the existing `UNAVAILABLE`
+   placeholder behavior is preserved — no breaking changes, no spurious 401s.
+
+3. **API surface unknown:** the exact EKAP search/document endpoints, their
+   parameter names, and response schemas are not publicly documented. Any
+   implementation would be purely speculative and violate the "no fabrication"
+   invariant. The adapter will remain unavailable until official API docs or
+   credentials become available.
+
+**Recommendation**: If KİK/EKAP access is obtained, configure
+`KIK_API_TOKEN` and contribute the observed API schema via a PR.

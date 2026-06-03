@@ -262,6 +262,7 @@ class TestRegistryContract:
     EXPECTED = [
         "bedesten", "yargitay", "mevzuat", "aym", "danistay",
         "gib", "uyusmazlik", "rekabet", "sayistay", "kik",
+        "resmigazete", "kvkk",
     ]
 
     def test_all_sources_present(self):

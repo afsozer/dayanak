@@ -111,6 +111,7 @@ class TestSourceCapabilityModel:
 EXPECTED_SOURCES = [
     "bedesten", "yargitay", "mevzuat", "aym", "danistay",
     "gib", "uyusmazlik", "rekabet", "sayistay", "kik",
+    "resmigazete", "kvkk",
 ]
 
 
