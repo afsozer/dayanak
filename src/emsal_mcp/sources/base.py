@@ -116,6 +116,13 @@ class SourceClient(ABC):
         """
         if not expected_keys:
             return None, []
+        if not isinstance(data, dict):
+            # Some endpoints return null/non-dict `data` (e.g. empty/too-short
+            # phrase, past the last page). Treat as "no rows", not a crash.
+            return None, [
+                f"SCHEMA_DRIFT: {self.source_id} {context} response data is "
+                f"{type(data).__name__}, expected dict; treating as empty."
+            ]
         primary = expected_keys[0]
         warnings: list[str] = []
         # Check primary key presence

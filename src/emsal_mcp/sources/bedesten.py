@@ -55,6 +55,9 @@ class BedestenClient(SourceClient):
         data = raw_data.get("data", raw_data)
         # M-60: schema validation — never silently swallow an API shape change
         _ = self._check_response_schema(data, self._search_response_keys, "search")
+        if not isinstance(data, dict):
+            # Null/non-dict data (empty phrase, past last page) → no results.
+            return []
         items = data.get("emsalKararList") or data.get("data") or data.get("items") or data.get("content") or []
         out: list[SearchResult] = []
         for it in items[:limit]:

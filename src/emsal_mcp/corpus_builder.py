@@ -11,7 +11,121 @@ from typing import Any
 from .cache import Cache
 from .models import build_error
 
-CORPUS_BUILDER_VERSION = "1.0.0"
+CORPUS_BUILDER_VERSION = "1.1.0"
+
+
+def crawl_full_text(
+    source: str = "bedesten",
+    *,
+    phrase: str = "karar",
+    item_type: str = "YARGITAYKARARI",
+    sort_direction: str = "desc",
+    max_docs: int = 500,
+    max_pages: int = 200,
+    page_size: int = 100,
+    start_page: int = 1,
+    cache: Cache | None = None,
+) -> dict[str, Any]:
+    """Systematically crawl FULL-TEXT decisions into the local cache.
+
+    Paginates a broad search (``phrase`` appears in essentially every decision,
+    e.g. "karar"), fetches each hit, and stores ONLY documents whose full text
+    is actually available (content_status full_text / html_markdown). Documents
+    whose text is not published yet (HTTP 404 → UNAVAILABLE) or metadata-only
+    are skipped — never fabricated. Pacing is automatic (the client's built-in
+    rate limiter); no manual sleeps needed.
+
+    Resumable: pass ``start_page`` and read ``next_page`` from the result to
+    continue a long crawl in batches.
+
+    Args:
+        source: Source id. ``bedesten`` (= Yargıtay) is the full-text source.
+        phrase: Broad anchor term present in nearly all decisions.
+        item_type: Bedesten itemType. ``YARGITAYKARARI`` covers ALL Yargıtay
+            chambers in one stream.
+        sort_direction: ``desc`` = newest first, ``asc`` = oldest first.
+        max_docs: Stop after storing this many full-text documents.
+        max_pages: Safety cap on pages scanned.
+        page_size: Results per search page (server max 100).
+        start_page: Page to start from (for resuming).
+        cache: Optional Cache instance.
+
+    Returns:
+        Dict with ok, stored, scanned, skipped_unavailable, skipped_metadata,
+        pages_scanned, next_page, time_seconds, warnings.
+    """
+    import asyncio
+
+    from .models import ContentStatus, merge_search_metadata
+    from .sources.registry import get_source
+
+    if sort_direction not in {"desc", "asc"}:
+        return build_error("INVALID_SORT", "sort_direction must be 'desc' or 'asc'.")
+
+    own_cache = cache is None
+    c = cache or Cache()
+    start_time = datetime.now(timezone.utc)
+    stored = scanned = skipped_unavailable = skipped_metadata = pages_scanned = 0
+    warnings: list[str] = []
+    page = start_page
+    full_text_statuses = {ContentStatus.FULL_TEXT, ContentStatus.HTML_MARKDOWN}
+
+    async def _run() -> None:
+        nonlocal stored, scanned, skipped_unavailable, skipped_metadata, pages_scanned, page
+        client = get_source(source)
+        while stored < max_docs and pages_scanned < max_pages:
+            try:
+                results = await client.search(
+                    phrase, limit=page_size, page=page,
+                    item_type=item_type, sort_direction=sort_direction,
+                )
+            except Exception as exc:
+                warnings.append(f"search page {page} failed: {exc}")
+                break
+            if not results:
+                break  # past the last page
+            for sr in results:
+                if stored >= max_docs:
+                    break
+                scanned += 1
+                try:
+                    doc = await client.get_document(sr.document_id)
+                except Exception as exc:
+                    warnings.append(f"fetch {sr.document_id} failed: {exc}")
+                    continue
+                merge_search_metadata(doc, sr)
+                if doc.content_status in full_text_statuses and (doc.text or "").strip():
+                    try:
+                        c.store_document(doc)
+                        stored += 1
+                    except Exception as exc:
+                        warnings.append(f"store {sr.document_id} failed: {exc}")
+                elif doc.content_status == ContentStatus.UNAVAILABLE:
+                    skipped_unavailable += 1
+                else:
+                    skipped_metadata += 1
+            pages_scanned += 1
+            page += 1
+
+    try:
+        asyncio.run(_run())
+        elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+        return {
+            "ok": True,
+            "source": source,
+            "stored": stored,
+            "scanned": scanned,
+            "skipped_unavailable": skipped_unavailable,  # full text not published yet (404)
+            "skipped_metadata": skipped_metadata,
+            "pages_scanned": pages_scanned,
+            "next_page": page,  # pass as start_page to resume
+            "time_seconds": round(elapsed, 1),
+            "warnings": warnings[:50],
+            "version": CORPUS_BUILDER_VERSION,
+        }
+    finally:
+        if own_cache:
+            c.close()
 
 
 def build_corpus(

@@ -1910,6 +1910,31 @@ def corpus_build(
     _print(build_corpus(max_total=max_total, fetch_count=fetch_count), json_out)
 
 
+@corpus_app.command("crawl")
+def corpus_crawl(
+    source: str = typer.Option("bedesten", help="Kaynak id (bedesten = Yargıtay tam metin)"),
+    phrase: str = typer.Option("karar", help="Geniş çapa terim (her kararda geçer)"),
+    item_type: str = typer.Option("YARGITAYKARARI", help="Bedesten itemType; YARGITAYKARARI = TÜM Yargıtay daireleri"),
+    sort: str = typer.Option("desc", help="desc=yeniden eskiye, asc=eskiden yeniye"),
+    max_docs: int = typer.Option(500, help="Bu kadar TAM METİN belge depolayınca dur"),
+    max_pages: int = typer.Option(200, help="Taranacak azami sayfa (güvenlik sınırı)"),
+    page_size: int = typer.Option(100, help="Sayfa başına sonuç (sunucu max 100)"),
+    start_page: int = typer.Option(1, help="Bu sayfadan başla (devam için next_page'i ver)"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Yalnızca tam metni olan kararları yerel cache'e tarar (tüm daireler, sayfalı).
+
+    Tam metni yayımlanmamış (404) ve yalnız-metadata kararları atlar; uydurmaz.
+    Pacing otomatik (yerleşik rate limiter). Uzun taramayı `next_page` ile parça
+    parça sürdürebilirsin.
+    """
+    from .corpus_builder import crawl_full_text
+    _print(crawl_full_text(
+        source=source, phrase=phrase, item_type=item_type, sort_direction=sort,
+        max_docs=max_docs, max_pages=max_pages, page_size=page_size, start_page=start_page,
+    ), json_out)
+
+
 @corpus_app.command("status")
 def corpus_status_cmd(
     json_out: bool = typer.Option(False, "--json"),
