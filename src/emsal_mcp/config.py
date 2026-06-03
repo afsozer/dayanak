@@ -246,17 +246,6 @@ class EmsalConfig:
             self._log_level = env_val if env_val in valid else "WARNING"
         return self._log_level
 
-    # ── KIK / EKAP API token ───────────────────────────────────────────
-
-    @property
-    def kik_api_token(self) -> str | None:
-        """Optional API token for KİK/EKAP v2 access.
-
-        Env: KIK_API_TOKEN (primary), EKAP_API_TOKEN (fallback).
-        When set, the KİK source becomes EXPERIMENTAL instead of UNAVAILABLE.
-        """
-        return os.environ.get("KIK_API_TOKEN") or os.environ.get("EKAP_API_TOKEN")
-
     # ── PDF / OCR extraction ──────────────────────────────────────────
 
     @property

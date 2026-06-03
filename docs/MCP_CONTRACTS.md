@@ -16,7 +16,7 @@
 [
   {"source_id": "bedesten", "display_name": "Bedesten/Yargıtay", "status": "stable", ...},
   ...
-  {"source_id": "kik", "display_name": "Kamu İhale Kurumu / EKAP v2", "status": "unavailable", ...}
+  {"source_id": "kvkk", "display_name": "KVKK", "status": "experimental", ...}
 ]
 ```
 
@@ -30,8 +30,8 @@
 
 **Output**: `list[dict]` — each dict is a `SearchResult` dump.
 
-**Errors**: raises `KeyError` for unknown sources. Registered unavailable sources
-such as KIK return structured unavailable/metadata-only payloads instead of MCP
+**Errors**: raises `KeyError` for unknown sources. Registered partial/experimental
+sources return structured unavailable/metadata-only payloads instead of MCP
 tool errors.
 
 ### `get_document`
@@ -263,7 +263,7 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
   "ok": false,
   "errorCode": "SOURCE_UNAVAILABLE",
   "message": "...",
-  "source": "kik",
+  "source": "rekabet",
   "retryable": false,
   "details": {},
   "recommendedNextStep": "..."
@@ -614,7 +614,7 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
 
 **Input**: none
 
-**Output**: `dict` — `ok`, `ready`, `criteria` (all_modules_importable, has_stable_sources, release_smoke_ok, only_kik_unavailable), `blocking_issues`, `recommendation`, `command_center`, `version`, `generated_at`.
+**Output**: `dict` — `ok`, `ready`, `criteria` (all_modules_importable, has_stable_sources, release_smoke_ok, no_unavailable_sources), `blocking_issues`, `recommendation`, `command_center`, `version`, `generated_at`.
 
 ### `generate_release_summary`
 

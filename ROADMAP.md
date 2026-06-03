@@ -65,7 +65,7 @@ Hedef: "doğru kararı ilk 5 sonuçta getir." Şu an arama çalışıyor ama öl
 
 Hedef: daha çok meşru kaynak, daha az sessiz kırılma.
 
-- **M-73 — KİK/EKAP canlı ✅** Auth kısıtı dokümante edildi, opsiyonel token auth mevcut.
+- **M-73 — (iptal)** KİK/EKAP kaynağı projeden tamamen kaldırıldı (çalışmayan, token-gerektiren placeholder; aktif yüzeyi temiz tutmak için purge edildi).
 - **M-74 — Yeni kaynaklar ✅** Resmî Gazete + KVKK adaptörleri eklendi (12 kaynak).
 - **M-75 — Adaptör SDK 2.0 ✅** `docs/ADAPTER_SDK.md` + `register_adapter()` plugin arayüzü.
 - **M-76 — Toplu derlem oluşturucu ✅** `corpus_builder.py`: batch-fetch, dedup, status.

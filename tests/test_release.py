@@ -237,7 +237,7 @@ class TestFinalV1Readiness:
         assert "all_modules_importable" in criteria
         assert "has_stable_sources" in criteria
         assert "release_smoke_ok" in criteria
-        assert "only_kik_unavailable" in criteria
+        assert "no_unavailable_sources" in criteria
 
     def test_v1_recommendation_format(self):
         result = final_v1_readiness()

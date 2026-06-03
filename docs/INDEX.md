@@ -39,7 +39,6 @@ Documents are grouped by category for easy navigation.
 | [GLOSSARY.md](GLOSSARY.md) | Bilingual Turkish-English glossary of 77 legal and technical terms |
 | [ERROR_CATALOG.md](ERROR_CATALOG.md) | Complete error code catalog (76 codes) with recommended actions |
 | [dead_code_report.md](dead_code_report.md) | Dead code analysis report (M-45 audit) |
-| [KIK_RESEARCH.md](KIK_RESEARCH.md) | Research notes on the KIK (Kamu İhale Kurumu) API |
 
 > Historical release reports and session changelogs were consolidated into
 > [CHANGELOG.md](../CHANGELOG.md); older standalone files were removed (history in git).

@@ -160,36 +160,3 @@ class TestGlobalSingleton:
         assert path1 == path2
 
 
-class TestKikApiToken:
-    """Tests for the KIK/EKAP API token config property."""
-
-    def test_kik_api_token_default_none(self, fresh_config, monkeypatch):
-        """Without env vars, kik_api_token is None."""
-        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
-        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
-        assert fresh_config.kik_api_token is None
-
-    def test_kik_api_token_from_kik_env(self, fresh_config, monkeypatch):
-        """KIK_API_TOKEN env var is read."""
-        monkeypatch.setenv("KIK_API_TOKEN", "kik-token-123")
-        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
-        assert fresh_config.kik_api_token == "kik-token-123"
-
-    def test_kik_api_token_from_ekap_env(self, fresh_config, monkeypatch):
-        """EKAP_API_TOKEN env var is read as fallback."""
-        monkeypatch.setenv("EKAP_API_TOKEN", "ekap-token-456")
-        monkeypatch.delenv("KIK_API_TOKEN", raising=False)
-        assert fresh_config.kik_api_token == "ekap-token-456"
-
-    def test_kik_api_token_kik_preferred_over_ekap(self, fresh_config, monkeypatch):
-        """KIK_API_TOKEN takes precedence when both are set."""
-        monkeypatch.setenv("KIK_API_TOKEN", "kik-first")
-        monkeypatch.setenv("EKAP_API_TOKEN", "ekap-second")
-        assert fresh_config.kik_api_token == "kik-first"
-
-    def test_kik_api_token_in_doctor(self, fresh_config, monkeypatch):
-        """Doctor report includes KIK token presence (without leaking value)."""
-        monkeypatch.setenv("KIK_API_TOKEN", "secret-token")
-        monkeypatch.delenv("EKAP_API_TOKEN", raising=False)
-        # kik_api_token is accessible from config
-        assert fresh_config.kik_api_token == "secret-token"

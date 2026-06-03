@@ -70,7 +70,7 @@ def _make_registry(**overrides: dict[str, bool]) -> dict[str, _FakeClient]:
         "uyusmazlik": {"supports_full_text": False, "supports_pdf_link": True},
         "rekabet": {"supports_full_text": False, "supports_pdf_link": True},
         "sayistay": {},
-        "kik": {
+        "limited": {
             "supports_search": False,
             "supports_full_text": False,
             "supports_pdf_link": False,
@@ -97,7 +97,7 @@ class TestGetCapableSources:
         assert "bedesten" in result
         assert "yargitay" in result
         assert "aym" in result
-        assert "kik" not in result
+        assert "limited" not in result
         assert "uyusmazlik" not in result
         assert "rekabet" not in result
 
@@ -112,12 +112,12 @@ class TestGetCapableSources:
         assert "rekabet" in result
         assert "uyusmazlik" in result
         assert "bedesten" not in result
-        assert "kik" not in result
+        assert "limited" not in result
 
     def test_search(self):
         reg = _make_registry()
         result = get_capable_sources("search", sources_override=reg)
-        assert "kik" not in result  # kik search requires token
+        assert "limited" not in result  # limited search requires token
         assert "bedesten" in result
 
     def test_unknown_capability_returns_empty(self):
@@ -170,10 +170,10 @@ class TestGetSourceByCapability:
 
     def test_prefer_order_skips_incapable(self):
         reg = _make_registry()
-        # kik doesn't support full_text, should skip to next
+        # limited doesn't support full_text, should skip to next
         result = get_source_by_capability(
             "full_text",
-            prefer_order=["kik", "bedesten"],
+            prefer_order=["limited", "bedesten"],
             sources_override=reg,
         )
         assert result == "bedesten"
@@ -202,7 +202,7 @@ class TestRouteSearch:
         )
         eligible = result["routing"]["eligible_sources"]
         assert "bedesten" in eligible
-        assert "kik" not in eligible
+        assert "limited" not in eligible
         assert "uyusmazlik" not in eligible
         assert "rekabet" not in eligible
 
@@ -221,28 +221,28 @@ class TestRouteSearch:
         reg = _make_registry()
         result = route_search(
             "query",
-            exclude_sources=["kik"],
+            exclude_sources=["limited"],
             sources_override=reg,
         )
-        assert "kik" not in result["routing"]["eligible_sources"]
-        assert "kik" in result["routing"]["excluded_sources"]
+        assert "limited" not in result["routing"]["eligible_sources"]
+        assert "limited" in result["routing"]["excluded_sources"]
 
     def test_exclude_multiple(self):
         reg = _make_registry()
         result = route_search(
             "query",
-            exclude_sources=["kik", "bedesten"],
+            exclude_sources=["limited", "bedesten"],
             sources_override=reg,
         )
-        assert "kik" not in result["routing"]["eligible_sources"]
+        assert "limited" not in result["routing"]["eligible_sources"]
         assert "bedesten" not in result["routing"]["eligible_sources"]
-        assert set(result["routing"]["excluded_sources"]) == {"kik", "bedesten"}
+        assert set(result["routing"]["excluded_sources"]) == {"limited", "bedesten"}
 
     def test_no_capabilities_all_sources(self):
         reg = _make_registry()
         result = route_search("query", sources_override=reg)
         eligible = result["routing"]["eligible_sources"]
-        # All sources should be eligible (kik is in the registry, just with search=False)
+        # All sources should be eligible (limited is in the registry, just with search=False)
         assert len(eligible) == len(reg)
 
     def test_per_source_capability_match(self):
@@ -253,7 +253,7 @@ class TestRouteSearch:
             sources_override=reg,
         )
         for sid, info in result["per_source"].items():
-            if sid in ("kik", "uyusmazlik", "rekabet"):
+            if sid in ("limited", "uyusmazlik", "rekabet"):
                 assert info["capability_match"] is False
             else:
                 assert info["capability_match"] is True
@@ -273,13 +273,13 @@ class TestRouteSearch:
         reg = _make_registry()
         result = route_search(
             "query",
-            preferred_sources=["kik", "aym"],
-            exclude_sources=["kik"],
+            preferred_sources=["limited", "aym"],
+            exclude_sources=["limited"],
             sources_override=reg,
         )
         eligible = result["routing"]["eligible_sources"]
-        # kik excluded even though preferred
-        assert "kik" not in eligible
+        # limited excluded even though preferred
+        assert "limited" not in eligible
         assert eligible[0] == "aym"
 
 
@@ -313,12 +313,12 @@ class TestRouteGetDocument:
         result = route_get_document(
             "doc:123",
             required_capabilities=["full_text"],
-            preferred_source="kik",
+            preferred_source="limited",
             sources_override=reg,
         )
         eligible = result["routing"]["eligible_sources"]
-        # kik doesn't support full_text, so it shouldn't be first
-        assert eligible[0] != "kik"
+        # limited doesn't support full_text, so it shouldn't be first
+        assert eligible[0] != "limited"
         assert "aym" in eligible or "bedesten" in eligible
 
     def test_required_capabilities_filters(self):
@@ -329,7 +329,7 @@ class TestRouteGetDocument:
             sources_override=reg,
         )
         eligible = result["routing"]["eligible_sources"]
-        assert "kik" not in eligible
+        assert "limited" not in eligible
         assert "uyusmazlik" not in eligible
 
     def test_deterministic(self):
@@ -372,8 +372,8 @@ class TestEdgeCases:
             sources_override=reg,
         )
         eligible = result["routing"]["eligible_sources"]
-        # kik has workflow=False, full_text=False → excluded
-        assert "kik" not in eligible
+        # limited has workflow=False, full_text=False → excluded
+        assert "limited" not in eligible
 
 
 # ---------------------------------------------------------------------------

@@ -44,7 +44,6 @@ _STABLE_ORDER: list[str] = [
     "sayistay",
     "uyusmazlik",
     "rekabet",
-    "kik",
 ]
 
 

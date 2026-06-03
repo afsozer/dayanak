@@ -1974,7 +1974,7 @@ def main() -> None:
             query: Search query string.
             required_capabilities: List of capabilities needed (e.g. ['full_text']).
             preferred_sources: Try these sources first.
-            exclude_sources: Skip these sources (e.g. ['kik']).
+            exclude_sources: Skip these sources (e.g. ['rekabet']).
 
         Returns:
             Dict with ok, query, routing (eligible_sources, excluded_sources),

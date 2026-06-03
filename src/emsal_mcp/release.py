@@ -55,10 +55,7 @@ def readiness_dashboard() -> dict[str, Any]:
         Dict with ok, version, readiness_score, release_decision, smoke, risks.
     """
     smoke = release_smoke()
-    risks = []
-    for cap in capabilities():
-        if cap.get("source_id") == "kik" and cap.get("status") == "unavailable":
-            risks.append("KİK disabled/unavailable; HTTP 401 requires auth/token flow.")
+    risks: list[str] = []
     score = 100 - len(risks) * 10
     return {"ok": True, "version": __version__, "generated_at": _now(), "readiness_score": score, "release_decision": "ship" if score >= 80 else "review", "smoke": smoke, "risks": risks}
 
@@ -366,12 +363,11 @@ def final_v1_readiness(cache: Any | None = None) -> dict[str, Any]:
     if not criteria["release_smoke_ok"]:
         blocking_issues.append("Release smoke test failed.")
 
-    # Criteria: no unavailable sources (KİK is expected unavailable)
+    # Criteria: no unavailable sources
     unavailable = src_caps.get("unavailable_sources", [])
-    non_kik_unavailable = [s for s in unavailable if s != "kik"]
-    criteria["only_kik_unavailable"] = len(non_kik_unavailable) == 0
-    if non_kik_unavailable:
-        blocking_issues.append(f"Non-KİK unavailable sources: {non_kik_unavailable}")
+    criteria["no_unavailable_sources"] = len(unavailable) == 0
+    if unavailable:
+        blocking_issues.append(f"Unavailable sources: {unavailable}")
 
     ready = all(criteria.values())
 

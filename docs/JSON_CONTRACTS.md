@@ -63,27 +63,6 @@ Returned by `capabilities()`, CLI `emsal-mcp sources --json`, and MCP
 The `citationSafeRule` and `noFabrication` keys are kept for consumers that
 relied on the v0.1 capability shape. New code should use the snake_case keys.
 
-### KIK entry
-
-```json
-{
-  "source_id": "kik",
-  "display_name": "Kamu İhale Kurumu / EKAP v2",
-  "status": "unavailable",
-  "supports_search": false,
-  "supports_get_document": true,
-  "supports_full_text": false,
-  "supports_pdf_link": false,
-  "supports_metadata_only": true,
-  "supports_workflow": false,
-  "live_smoke_recommended": false,
-  "known_limitations": ["Canlı EKAP v2 search önceki QC'de HTTP 401 döndürdü."],
-  "notes": "KİK intentionally registered as unavailable placeholder for contract stability.",
-  "citationSafeRule": "Only documents with content_status full_text/html_markdown and non-empty text are quote/draft usable.",
-  "noFabrication": true
-}
-```
-
 ## SearchResult
 
 ```json
@@ -1281,7 +1260,7 @@ Same output as `build_semantic_index` with `force_rebuild=True`. All existing FT
   "checks_total": 3,
   "checks": {
     "release_smoke": {"ok": true, "version": "0.13.0", "...": "..."},
-    "source_capabilities": {"ok": true, "source_count": 10, "stable_sources": ["bedesten", "aym"], "unavailable_sources": ["kik"]},
+    "source_capabilities": {"ok": true, "source_count": 11, "stable_sources": ["bedesten", "aym"], "unavailable_sources": []},
     "module_imports": {"ok": true, "passed": ["emsal_mcp.citation", "..."], "failed": [], "total": 13},
     "search_index": {"ok": true, "fts5_exists": true, "vectors_count": 42, "unindexed_documents": 0},
     "chambers": {"ok": true, "total_chambers": 8, "total_documents": 150},
@@ -1313,7 +1292,7 @@ Same output as `build_semantic_index` with `force_rebuild=True`. All existing FT
     "all_modules_importable": true,
     "has_stable_sources": true,
     "release_smoke_ok": true,
-    "only_kik_unavailable": true
+    "no_unavailable_sources": true
   },
   "blocking_issues": [],
   "recommendation": "SHIP: v1.0.0 çıkışa hazır.",
@@ -1334,7 +1313,7 @@ Same output as `build_semantic_index` with `force_rebuild=True`. All existing FT
     "generated_at": "2026-05-29T12:00:00+00:00",
     "readiness": 85,
     "modules": {"total": 13, "importable": 13, "failed": 0},
-    "sources": {"total": 10, "stable": 7, "unavailable": ["kik"]},
+    "sources": {"total": 11, "stable": 7, "unavailable": []},
     "chambers": 8,
     "cached_documents": 150,
     "udf_toolkit_available": false,

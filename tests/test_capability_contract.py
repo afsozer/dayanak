@@ -2,7 +2,7 @@
 
 Covers:
 - SourceCapability model round-trip
-- Unavailable KIK behaviour
+- Unavailable source behaviour
 - CLI ``sources --json`` output shape
 - MCP / server import
 - Capability matrix completeness
@@ -15,7 +15,7 @@ pytestmark = [pytest.mark.unit]
 
 import json
 from emsal_mcp.models import SourceCapability, SourceStatus
-from emsal_mcp.sources.registry import capabilities, get_source, registry
+from emsal_mcp.sources.registry import capabilities, registry
 
 
 # ── SourceCapability model ──────────────────────────────────────────────
@@ -34,8 +34,8 @@ class TestSourceCapabilityModel:
 
     def test_construct_unavailable(self):
         cap = SourceCapability(
-            source_id="kik",
-            display_name="KIK",
+            source_id="example_unavail",
+            display_name="Example Unavailable",
             status=SourceStatus.UNAVAILABLE,
             supports_search=False,
             supports_get_document=True,
@@ -110,7 +110,7 @@ class TestSourceCapabilityModel:
 
 EXPECTED_SOURCES = [
     "bedesten", "yargitay", "mevzuat", "aym", "danistay",
-    "gib", "uyusmazlik", "rekabet", "sayistay", "kik",
+    "gib", "uyusmazlik", "rekabet", "sayistay",
     "resmigazete", "kvkk",
 ]
 
@@ -146,60 +146,6 @@ class TestRegistryCompleteness:
             assert len(cap["source_id"]) > 0
 
 
-# ── Unavailable KIK ─────────────────────────────────────────────────────
-
-class TestKikUnavailable:
-    def test_kik_in_capabilities(self):
-        caps = capabilities()
-        kik = [c for c in caps if c["source_id"] == "kik"]
-        assert len(kik) == 1
-        assert kik[0]["status"] == "unavailable"
-        assert kik[0]["supports_search"] is False
-        # supports_get_document is True (metadata-only placeholder)
-        assert kik[0]["supports_get_document"] is True
-        assert kik[0]["supports_metadata_only"] is True
-        assert kik[0]["live_smoke_recommended"] is False
-        assert len(kik[0]["known_limitations"]) > 0
-
-    def test_kik_get_source_returns_client(self):
-        """get_source('kik') returns the client so MCP can call it gracefully."""
-        client = get_source("kik")
-        assert client.source_id == "kik"
-
-    def test_kik_search_returns_unavailable_result(self):
-        """search() returns one SearchResult with content_status UNAVAILABLE, no throw."""
-        import asyncio
-        client = registry()["kik"]
-        results = asyncio.run(client.search("test"))
-        assert len(results) == 1
-        sr = results[0]
-        assert sr.content_status.value == "unavailable"
-        assert sr.recommended_next_step is not None
-        assert sr.summary is not None
-
-    def test_kik_get_document_returns_metadata_placeholder(self):
-        """get_document() returns metadata-only Document placeholder, no throw."""
-        import asyncio
-        client = registry()["kik"]
-        doc = asyncio.run(client.get_document("123"))
-        assert doc.content_status.value == "metadata_only"
-        assert doc.recommended_next_step is not None
-        assert doc.document_id == "123"
-
-    def test_kik_in_registry(self):
-        assert "kik" in registry()
-
-    def test_kik_display_name(self):
-        caps = capabilities()
-        kik = [c for c in caps if c["source_id"] == "kik"]
-        assert kik[0]["display_name"] == "Kamu İhale Kurumu / EKAP v2"
-
-    def test_kik_public_true(self):
-        caps = capabilities()
-        kik = [c for c in caps if c["source_id"] == "kik"]
-        assert kik[0]["public"] is True
-
-
 # ── CLI sources --json output shape ─────────────────────────────────────
 
 class TestCliSourcesJson:
@@ -212,13 +158,6 @@ class TestCliSourcesJson:
         assert isinstance(parsed, list)
         assert len(parsed) == len(EXPECTED_SOURCES)
 
-    def test_kik_status_in_json(self):
-        data = capabilities()
-        kik = [c for c in data if c["source_id"] == "kik"][0]
-        # Verify it serialises with correct status
-        blob = json.dumps(kik)
-        assert '"unavailable"' in blob
-        assert '"supports_search": false' in blob
 
     def test_active_sources_have_true_capabilities(self):
         data = capabilities()

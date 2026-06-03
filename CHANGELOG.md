@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Kaldırıldı (Removed)
+- **KİK/EKAP kaynağı tamamen kaldırıldı.** Çalışmayan, token-gerektiren bir
+  placeholder olduğu için (canlı arama yok, 401) ve bir LLM tüketicisinin tool
+  yüzeyinde kafa karışıklığı/yanlış kullanım riski oluşturduğu için projeden
+  purge edildi: `_KikClient`, registry kaydı, `config.kik_api_token`,
+  `release` KİK readiness kriteri (`only_kik_unavailable` → `no_unavailable_sources`),
+  router listesi, `docs/KIK_RESEARCH.md` ve tüm KİK testleri (~35 test). Aktif
+  kaynak sayısı 11. Geçmiş (dated) CHANGELOG kayıtları tarihsel doğruluk için korunur.
+
+- **Yargıtay tam metin crawler:** `emsal-mcp corpus crawl` ile ~986 tam metin
+  Yargıtay kararı yerel cache'e indirildi (rate-limiter pacing'iyle, citation-safe).
+
 ### Agent uyumu & dayanıklılık (mini update)
 - **Sunucu-taraflı hız limiti:** Pacing artık MCP'nin içinde (`base.py` `client()` httpx hook'ları), bağlanan agent'tan bağımsız. Ampirik limit testiyle bedesten'in ~10 istek/~30s sabit penceresi + ~27s `Retry-After` davranışı tespit edildi. `_SlidingWindowLimiter` (per-host, varsayılan 8 istek/31s) tipik işi anında geçirir, ağır işi 429'suz pace'ler; gerçek 429'da sunucunun `Retry-After`'ı cooldown olarak uygulanır. `EMSAL_RATE_LIMIT_{MAX,WINDOW}` ile ayarlanır, `EMSAL_RATE_LIMIT_DISABLED=1` ile kapatılır. 3 hermetik test.
 - **`validate_tool_input` async desteği:** Dekoratör artık coroutine fonksiyonları algılayıp async wrapper döndürüyor; birincil araç `search_decisions` (ve diğer async araçlar) FastMCP tarafından doğru `await` ediliyor — eskiden await edilmeyen coroutine dönerek bozuluyordu. 2 regresyon testi.
