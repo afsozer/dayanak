@@ -84,9 +84,11 @@ def crawl_full_text(
                 break
             if not results:
                 break  # past the last page
+            # Process the WHOLE page (never break mid-page) so resuming from
+            # next_page can't skip the unprocessed tail of a page. A batch may
+            # store slightly more than max_docs; the outer while stops at the
+            # next clean page boundary.
             for sr in results:
-                if stored >= max_docs:
-                    break
                 scanned += 1
                 try:
                     doc = await client.get_document(sr.document_id)
@@ -246,7 +248,7 @@ def corpus_status(cache: Cache | None = None) -> dict[str, Any]:
         stats = c.cache_stats()
         overview = {
             "ok": True,
-            "total_documents": stats.get("document_count", 0),
+            "total_documents": stats.get("documents_v2", 0),
             "cache_stats": stats,
             "version": CORPUS_BUILDER_VERSION,
         }
