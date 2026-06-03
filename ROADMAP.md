@@ -68,8 +68,7 @@ Hedef: daha çok meşru kaynak, daha az sessiz kırılma.
 - **M-73 — KİK/EKAP canlı ✅** Auth kısıtı dokümante edildi, opsiyonel token auth mevcut.
 - **M-74 — Yeni kaynaklar ✅** Resmî Gazete + KVKK adaptörleri eklendi (12 kaynak).
 - **M-75 — Adaptör SDK 2.0 ✅** `docs/ADAPTER_SDK.md` + `register_adapter()` plugin arayüzü.
-- **M-76 — Toplu derlem (corpus) oluşturucu.** Zamanlanmış artımlı tarama, ölçekli dedup,
-  yerel derlem inşası — büyük analiz/eval için temel. Rate-limit'e saygılı, tek-kullanıcı dostu.
+- **M-76 — Toplu derlem oluşturucu ✅** `corpus_builder.py`: batch-fetch, dedup, status.
 
 ## FAZ H — Akıl Yürütme & Belge Üretimi (v5.0)
 

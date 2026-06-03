@@ -63,6 +63,8 @@ app.add_typer(calibrate_app, name="calibrate")
 app.add_typer(watch_app, name="watch")
 app.add_typer(privacy_app, name="privacy")
 app.add_typer(eval_app, name="eval")
+corpus_app = typer.Typer(help="Corpus builder: batch-fetch, dedup, status")
+app.add_typer(corpus_app, name="corpus")
 query_app = typer.Typer(help="Legal query understanding: norm reference, expand terms, extract filters")
 app.add_typer(query_app, name="query")
 
@@ -1892,6 +1894,29 @@ def query_extract(
     """Extract court/chamber filters from query text."""
     from .query_understanding import extract_query_filters
     _print(extract_query_filters(query), json_out)
+
+
+# ── Corpus builder command (M-76) ────────────────────────────────────────────
+
+
+@corpus_app.command("build")
+def corpus_build(
+    max_total: int = typer.Option(100, help="Maksimum toplam belge"),
+    fetch_count: int = typer.Option(5, help="Sorgu başına belge"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Build a local corpus from stable sources."""
+    from .corpus_builder import build_corpus
+    _print(build_corpus(max_total=max_total, fetch_count=fetch_count), json_out)
+
+
+@corpus_app.command("status")
+def corpus_status_cmd(
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Report corpus size and composition."""
+    from .corpus_builder import corpus_status
+    _print(corpus_status(), json_out)
 
 
 if __name__ == "__main__":
