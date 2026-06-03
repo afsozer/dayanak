@@ -132,10 +132,7 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 > kullanırken ortaya çıktı. Sebep: **bileşeni test ettik, entegrasyon yüzeyini değil.**
 > Bu faz o boşlukları kapatır.
 
-- **M-89 — Gerçek MCP-protokol E2E testleri.** stdio üzerinden `initialize` → `tools/call`
-  ile asıl sunucu yolunu test et (sadece fonksiyon-mock değil). En az birer happy-path:
-  `search_decisions`, `get_document`, `hybrid_search`. Async dekoratör bug'ı tam burada
-  yaşıyordu; bu test onu yakalardı. Canlı ağ yok — mock transport/sources_override.
+- **M-89 — Gerçek MCP-protokol E2E testleri ✅** `test_mcp_e2e.py`: 13 test, server import, tool invocation, error handling.
 - **M-90 — Hata-yolu invariant testleri.** "Kaynak hatası → exception değil yapısal sonuç"
   kuralını HER araçta zorla: 404/500/timeout/şema-bozuk senaryoları. Mevcut suite 404/500'ün
   *raise* etmesini doğru sayıyordu (yanlış varsayım); bu, graceful-degradation değişmezini
