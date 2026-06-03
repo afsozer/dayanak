@@ -74,14 +74,10 @@ Hedef: daha çok meşru kaynak, daha az sessiz kırılma.
 
 Hedef: getirmeden **anlama ve taslağa**. Tümü citation-safe sınırları içinde.
 
-- **M-77 — Argüman madenciliği.** Karardan *holding* / *ratio decidendi* / uyuşmazlık konusu
-  çıkarımı (metinden, işaretli; uydurma değil). Belirsizse `warnings` + düşük confidence.
-- **M-78 — Çapraz referans çözücü.** Madde ↔ karar ↔ gerekçe bağlama; bir kararın atıf yaptığı
-  mevzuatı ve onu izleyen içtihadı otomatik ilişkilendirme (M-72 atıf grafiği üzerine).
-- **M-79 — Tutarlılık/çelişki denetleyici.** Bir dilekçede atfedilen otoriteler arası çelişki
-  (örn. bozulmuş/değiştirilmiş içtihat) tespiti ve uyarı.
-- **M-80 — Yapılandırılmış taslak üretimi.** Şablonlu dilekçe/mütalaa üretimi; her cümle bir
-  alıntı-güvenli kaynağa bağlı, bağlanamayan ifade `[DOĞRULANMADI]` ile işaretli.
+- **M-77 — Argüman madenciliği ✅** `legal_reasoning.mine_arguments()`: holding/ratio/dispute extraction.
+- **M-78 — Çapraz referans çözücü ✅** `legal_reasoning.resolve_cross_references()`: mevzuat↔karar bağlama.
+- **M-79 — Tutarlılık denetleyici ✅** `legal_reasoning.check_consistency()`: çelişki/eskimiş karar tespiti.
+- **M-80 — Yapılandırılmış taslak ✅** `structured_draft.generate_structured_draft()`: citation-linked, [DOĞRULANMADI] marker.
 
 ## FAZ I — Platform & Dağıtım (v5.5)
 
