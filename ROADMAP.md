@@ -2,7 +2,8 @@
 
 **Mevcut sürüm:** v3.1.0 · **Oluşturulma:** 2026-06-02
 **Durum:** M-01…M-68 tamamlandı (1526 test geçiyor, mypy temiz, ruff 0 hata, CI yeşil).
-**Sıradaki ufuk:** v4.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…K, M-69+).
+**Sıradaki ufuk:** v4.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
+**Aktif sıradaki:** FAZ L — Karar Arama & Semantik Parite (M-92…M-96), YargiMCP-Pro kıyas bulguları.
 
 > **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
@@ -118,6 +119,31 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 
 **Öncelik:** M-89 → M-90 (ikisi düşük efor, yüksek koruma) → M-91. Bu üçü olmadan benzer
 "entegrasyon yüzeyi" hataları yine kaçar.
+
+---
+
+## FAZ L — Karar Arama & Semantik Parite (v4.1) 🆕
+
+> **Gerekçe:** YargiMCP-Pro (hosted connector) ile karşılaştırma sonucu çıkan
+> bulgular. İki konuda gerideyiz: (1) Bedesten karar aramasının yetenekleri MCP
+> katmanına açılmamış, (2) "semantik" arama aslında leksik (hash placeholder).
+> Bu faz pariteyi kapatır. **Ulusal korpus semantiği bilinçli olarak kapsam
+> dışı** — pratikte tek makinede yeniden üretilemez; bunun yerine niş korpus
+> (M-76 `crawl_full_text`) + gerçek embedding yeterli.
+>
+> Tüm milestone'lar 5 değişmeze ve doğrulama geçidine tabidir. Testte canlı ağ yok.
+
+- **M-92 — Çok-mahkeme + filtreleri MCP'ye aç.** Şu an [`BedestenClient.search`](src/emsal_mcp/sources/bedesten.py:26) `chamber`, `start_date`, `end_date`, `item_type` filtrelerini **kabul ediyor** ama [`search_decisions`](src/emsal_mcp/server.py:197) MCP aracı yalnızca `(source, query, limit, page)` geçiriyor. Yapılacak: (a) `search_decisions` imzasına `court_types: list[str]`, `birimAdi: str = "ALL"`, `karar_tarihi_start/end`, `esas_no`, `karar_no` ekle ve client'a aktar. (b) [`bedesten.py:36`](src/emsal_mcp/sources/bedesten.py:36) `itemTypeList`'i tek elemandan **liste**ye çevir (tek çağrıda Yargıtay+Danıştay+Yerel+İstinaf+KYB). (c) `esas_no`/`karar_no` `YIL/SIRA` formatını parse edip upstream'in `esasNoYil/esasNoSira`, `kararNoYil/kararNoSira` int alanlarına gönder. **Bitti sayılır:** çok-mahkeme arama + tarih + esas/karar no filtreleri MCP'den çalışır; eski tek-tür çağrı regresyonsuz korunur (additive).
+
+- **M-93 — Daire enum'u + açıklamaları.** `birimAdi` için 79 seçenekli doğrulanmış enum (Yargıtay H1–H23/C1–C23/HGK/CGK/BGK…, Danıştay D1–D17/IDDK/VDDK/IBK…, Askeri AYIM…) + her kodun TR/EN açıklaması. Geçersiz kod → graceful hata dict'i (`build_error`), exception değil. **Bitti sayılır:** enum dökümante, model doğru daire kodunu seçebiliyor, geçersiz kodda yapısal uyarı döner.
+
+- **M-94 — Sorgu hijyeni & Solr cookbook (docstring).** ✅ `server.py:197` — docstring genişletildi: query hygiene (2–5 terim, diakritik uyarısı), Bedesten Solr operatör cookbook'u (`+`, `-`, `"exact"`, AND/OR/NOT, gruplama, `*`), 5 worked example. Sıfır kod, saf docstring. **Bitti sayılır:** araç açıklaması operatörleri ve query hygiene'i örnekle anlatır; README drift testi (M-58) geçer.
+
+- **M-95 — Gerçek embedding varsayılanı.** Şu an `embedding_search` varsayılanı `LocalHashProvider` (anlam taşımayan hash). [`embeddings.py`](src/emsal_mcp/embeddings.py) altyapısı (`embedding_vectors` tablosu, brute-force cosine, `build_embedding_index`) zaten yazılı. Yapılacak: `fastembed` (opsiyonel `embeddings` extra, zaten var) ile gerçek bir çok-dilli/Türkçe model (ör. `intfloat/multilingual-e5-small` veya BGE-m3) sağlayıcısı ekle; config ile seçilebilir yap; `fastembed` yoksa hash'e **graceful fallback** (çekirdek stdlib+sqlite3 değişmezi korunur). **Bitti sayılır:** `embeddings` extra kuruluyken gerçek embedding ile anlamsal arama çalışır; kurulu değilken eski davranış bozulmaz; eval (M-71) recall@k düşmez.
+
+- **M-96 — Niş korpus reçetesi + eval.** [`crawl_full_text`](src/emsal_mcp/corpus_builder.py:16) ile konu-bazlı korpus inşa akışını dökümante et (`docs/COOKBOOK.md`'ye reçete) ve `eval/golden_queries.json`'a semantik-arama vakaları ekle; M-95 öncesi/sonrası recall@k + nDCG farkını ölç. **Bitti sayılır:** "niş korpus crawl → embed → semantik arama" reçetesi çalışır biçimde belgeli; eval gerçek embedding kazancını sayısal gösterir.
+
+**Öncelik (FAZ L içi):** M-94 (sıfır efor, yüksek getiri) → M-92 + M-93 (altyapı zaten var) → M-95 → M-96. Ulusal korpus (eski "M-?") **kapsam dışı**.
 
 ---
 
