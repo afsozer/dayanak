@@ -396,40 +396,93 @@ _RL_DISABLED = os.getenv("EMSAL_RATE_LIMIT_DISABLED") == "1"
 _RL_MAX = int(os.getenv("EMSAL_RATE_LIMIT_MAX", "8"))             # requests per window (< observed ~10)
 _RL_WINDOW = float(os.getenv("EMSAL_RATE_LIMIT_WINDOW", "31.0"))  # window seconds (> observed ~30)
 _RL_MAX_COOLDOWN = 60.0  # cap on honored Retry-After (defensive)
+# Cross-process state: a fresh process otherwise resets its in-memory window and
+# bursts at process boundaries (the cause of 429s when an agent invokes the CLI
+# repeatedly). Persisting recent request timestamps (wall-clock) lets the next
+# process see them and keep pacing. Sequential single-user runs need no lock.
+_RL_PERSIST = os.getenv("EMSAL_RATE_LIMIT_NO_PERSIST") != "1"
+_RL_STATE_PATH = Path(
+    os.getenv("EMSAL_RATE_LIMIT_STATE") or (Path.home() / ".emsal-mcp" / ".rate_limit.json")
+)
 
 
 class _SlidingWindowLimiter:
-    """Async per-host sliding-window limiter with explicit 429 cooldown."""
+    """Async per-host sliding-window limiter with explicit 429 cooldown.
 
-    def __init__(self, max_requests: int, window: float) -> None:
+    Uses wall-clock time so state can be shared across processes via an optional
+    JSON file (``persist_path``); without a path it is a pure in-memory limiter.
+    """
+
+    def __init__(
+        self, max_requests: int, window: float, *,
+        persist_path: Path | None = None, host_key: str = "",
+    ) -> None:
         self.max = max_requests
         self.window = window
         self.times: deque[float] = deque()
         self.cooldown_until = 0.0
         self.lock = asyncio.Lock()
+        self.persist_path = persist_path
+        self.host_key = host_key
 
     def _evict(self, now: float) -> None:
         while self.times and now - self.times[0] >= self.window:
             self.times.popleft()
 
+    def _load(self) -> None:
+        if not self.persist_path:
+            return
+        try:
+            data = json.loads(self.persist_path.read_text(encoding="utf-8"))
+            st = data.get(self.host_key) or {}
+            self.times = deque(float(t) for t in st.get("times", []))
+            self.cooldown_until = float(st.get("cooldown_until", 0.0))
+        except Exception:
+            pass  # missing/corrupt → start empty
+
+    def _save(self) -> None:
+        if not self.persist_path:
+            return
+        try:
+            self.persist_path.parent.mkdir(parents=True, exist_ok=True)
+            data: dict[str, Any] = {}
+            try:
+                loaded = json.loads(self.persist_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    data = loaded
+            except Exception:
+                data = {}
+            data[self.host_key] = {
+                "times": list(self.times),
+                "cooldown_until": self.cooldown_until,
+            }
+            tmp = self.persist_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(data), encoding="utf-8")
+            tmp.replace(self.persist_path)
+        except Exception:
+            pass  # persistence is best-effort; retry-on-429 is the safety net
+
     async def acquire(self) -> None:
         async with self.lock:
-            now = time.monotonic()
+            self._load()
+            now = time.time()
             if now < self.cooldown_until:
                 await asyncio.sleep(self.cooldown_until - now)
-                now = time.monotonic()
+                now = time.time()
             self._evict(now)
             if len(self.times) >= self.max:
                 wait = self.window - (now - self.times[0])
                 if wait > 0:
                     await asyncio.sleep(wait)
-                    now = time.monotonic()
+                    now = time.time()
                 self._evict(now)
             self.times.append(now)
+            self._save()
 
     def penalize(self, retry_after: float) -> None:
-        self.cooldown_until = max(self.cooldown_until, time.monotonic() + retry_after)
+        self.cooldown_until = max(self.cooldown_until, time.time() + retry_after)
         self.times.clear()
+        self._save()
 
 
 _BUCKETS: dict[str, _SlidingWindowLimiter] = {}
@@ -438,7 +491,11 @@ _BUCKETS: dict[str, _SlidingWindowLimiter] = {}
 def _get_bucket(host: str) -> _SlidingWindowLimiter:
     b = _BUCKETS.get(host)
     if b is None:
-        b = _SlidingWindowLimiter(_RL_MAX, _RL_WINDOW)
+        b = _SlidingWindowLimiter(
+            _RL_MAX, _RL_WINDOW,
+            persist_path=_RL_STATE_PATH if _RL_PERSIST else None,
+            host_key=host,
+        )
         _BUCKETS[host] = b
     return b
 

@@ -821,3 +821,32 @@ class TestRateLimiter:
         req = httpx.Request("POST", "http://throttle.test/x")
         asyncio.run(base._throttle_request(req))
         assert base._BUCKETS == {}  # no throttling state created
+
+    def test_state_persists_across_instances(self, tmp_path):
+        """A fresh limiter instance inherits recent timestamps via the state file."""
+        import time
+
+        from emsal_mcp.sources.base import _SlidingWindowLimiter
+
+        state = tmp_path / "rl.json"
+
+        async def run():
+            a = _SlidingWindowLimiter(2, 5.0, persist_path=state, host_key="h")
+            await a.acquire()
+            await a.acquire()  # fills the window (max=2)
+            # New instance (simulating a new process) must see the 2 timestamps
+            # and therefore block on its first acquire until the window frees up.
+            b = _SlidingWindowLimiter(2, 5.0, persist_path=state, host_key="h")
+            assert len(b.times) == 0  # not loaded until acquire
+            t = time.time()
+            await b.acquire()
+            return time.time() - t
+
+        waited = asyncio.run(run())
+        assert waited >= 1.0  # had to wait out part of the window, not instant
+
+    def test_no_persist_path_is_in_memory(self, tmp_path):
+        from emsal_mcp.sources.base import _SlidingWindowLimiter
+
+        lim = _SlidingWindowLimiter(2, 0.3)  # no persist_path
+        assert lim.persist_path is None
