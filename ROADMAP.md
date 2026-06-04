@@ -141,7 +141,7 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 
 - **M-95 — Gerçek embedding varsayılanı.** ✅ `embeddings.py` — `FastEmbedMultilingualProvider` eklendi (`intfloat/multilingual-e5-small`, 384 dims, 100+ dil). E5 query/passage prefix destegi (`embed_query`/`embed_document`). Config ile secilebilir (`EMSAL_EMBEDDING_PROVIDER`). `get_embedding_provider()` fallback mekanizmasi: fastembed yoksa `LocalHashProvider`'a döner (strict=False). 3 provider metadata listeleniyor. 87 embedding testi geçer, 191 genis test geçer. **Bitti sayılır:** `embeddings` extra kuruluyken gerçek embedding ile anlamsal arama çalışır; kurulu değilken eski davranış bozulmaz; eval (M-71) recall@k düşmez.
 
-- **M-96 — Niş korpus reçetesi + eval.** [`crawl_full_text`](src/emsal_mcp/corpus_builder.py:16) ile konu-bazlı korpus inşa akışını dökümante et (`docs/COOKBOOK.md`'ye reçete) ve `eval/golden_queries.json`'a semantik-arama vakaları ekle; M-95 öncesi/sonrası recall@k + nDCG farkını ölç. **Bitti sayılır:** "niş korpus crawl → embed → semantik arama" reçetesi çalışır biçimde belgeli; eval gerçek embedding kazancını sayısal gösterir.
+- **M-96 — Niş korpus reçetesi + eval.** ✅ `docs/COOKBOOK.md` Reçete 9 — crawl_full_text → build_embedding_index → embedding_search akışı, hash vs multilingual E5 kıyaslaması, eval entegrasyonu. `eval/golden_queries.json` — 6 semantik vaka eklendi (diakritik dayanıklılık, eşanlamlı, çok-terimli). Toplam 11 sorgu. **Bitti sayılır:** "niş korpus crawl → embed → semantik arama" reçetesi çalışır biçimde belgeli; eval gerçek embedding kazancını sayısal gösterir.
 
 **Öncelik (FAZ L içi):** M-94 (sıfır efor, yüksek getiri) → M-92 + M-93 (altyapı zaten var) → M-95 → M-96. Ulusal korpus (eski "M-?") **kapsam dışı**.
 
