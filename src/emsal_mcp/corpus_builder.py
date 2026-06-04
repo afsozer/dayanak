@@ -70,15 +70,35 @@ def crawl_full_text(
     page = start_page
     full_text_statuses = {ContentStatus.FULL_TEXT, ContentStatus.HTML_MARKDOWN}
 
+    import httpx
+
+    rl_429 = 0
+
+    async def _retry_429(factory: Any, attempts: int = 6) -> Any:
+        """Retry a request on HTTP 429. The client's response hook records the
+        server Retry-After as a cooldown, so the next call's acquire() waits it
+        out — we just re-issue. Prevents dropping documents/pages on rate limit
+        (the cause of ~25 skipped pages in the first overnight run)."""
+        nonlocal rl_429
+        for i in range(attempts):
+            try:
+                return await factory()
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code if exc.response is not None else None
+                if code == 429 and i < attempts - 1:
+                    rl_429 += 1
+                    continue
+                raise
+
     async def _run() -> None:
         nonlocal stored, scanned, skipped_unavailable, skipped_metadata, pages_scanned, page
         client = get_source(source)
         while stored < max_docs and pages_scanned < max_pages:
             try:
-                results = await client.search(
+                results = await _retry_429(lambda: client.search(
                     phrase, limit=page_size, page=page,
                     item_type=item_type, sort_direction=sort_direction,
-                )
+                ))
             except Exception as exc:
                 warnings.append(f"search page {page} failed: {exc}")
                 break
@@ -91,7 +111,7 @@ def crawl_full_text(
             for sr in results:
                 scanned += 1
                 try:
-                    doc = await client.get_document(sr.document_id)
+                    doc = await _retry_429(lambda sr=sr: client.get_document(sr.document_id))
                 except Exception as exc:
                     warnings.append(f"fetch {sr.document_id} failed: {exc}")
                     continue
@@ -121,6 +141,7 @@ def crawl_full_text(
             "skipped_metadata": skipped_metadata,
             "pages_scanned": pages_scanned,
             "next_page": page,  # pass as start_page to resume
+            "rate_limit_retries": rl_429,  # 429s recovered via wait+retry (not dropped)
             "time_seconds": round(elapsed, 1),
             "warnings": warnings[:50],
             "version": CORPUS_BUILDER_VERSION,
