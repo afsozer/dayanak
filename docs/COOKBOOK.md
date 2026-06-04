@@ -368,6 +368,112 @@ emsal-mcp calibrate all --online --json
 
 ---
 
+---
+
+## Reçete 9: Niş Korpus İnşası ve Semantik Arama (M-96)
+
+**Amaç:** Belirli bir konuda (ör. iş hukuku, tazminat, boşanma) crawl_full_text
+ile full-text korpus oluşturun, M-95 gerçek embedding ile indeksleyin ve
+semantik arama performansını ölçün. M-95 öncesi (hash) ve sonrası (multilingual
+E5) recall@k farkını sayısal olarak gösterir.
+
+**Önkoşul:** `pip install emsal-mcp[embeddings]` ile fastembed kurulu.
+``"fastembed-multilingual-e5"`` aktif provider olarak seçili.
+
+**Adımlar:**
+
+1. **Mevcut sağlayıcıları listeleyin:**
+   ```bash
+   python -c "from emsal_mcp.embeddings import list_embedding_providers; \
+     import json; print(json.dumps(list_embedding_providers(), indent=2))"
+   ```
+   Çıktıda ``"fastembed-multilingual-e5"`` için ``"status": "available"``
+   olduğundan emin olun.
+
+2. **Konu-bazlı korpus crawl:**
+   ```bash
+   # İş hukuku korpusu — broad anchor ile crawl
+   python -c "
+   from emsal_mcp.corpus_builder import crawl_full_text
+   result = crawl_full_text('bedesten', phrase='tazminat',
+       item_type='YARGITAYKARARI', max_docs=200, max_pages=20)
+   print('Indexed:', result['documents_stored'])
+   print('Status:', result['ok'])
+   "
+   ```
+   İsteğe bağlı: Farklı konularda tekrarlayın (``phrase='boşanma'``, ``phrase='kira'``).
+
+3. **Gerçek embedding ile indeks inşa edin (M-95):**
+   ```bash
+   # İlk seferde model yaklaşık 120MB indirir, sonra local cache'den çalışır
+   python -c "
+   from emsal_mcp.semantic import build_embedding_index
+   result = build_embedding_index(provider='fastembed-multilingual-e5')
+   print('Indexed:', result.get('documents_indexed'))
+   print('Seconds:', result.get('elapsed_seconds'))
+   print('Dimensions:', result.get('dimensions'))
+   "
+   ```
+
+4. **Semantik arama ile sorgulama:**
+   ```bash
+   # Bu sorgu hash ile "isci tazminat" kelimelerini arar;
+   # gerçek embedding ile "calisan alacagi" gibi anlamsal eşleri de bulur
+   python -c "
+   from emsal_mcp.semantic import embedding_search
+   import json
+   result = embedding_search('is kazasi sonucu maddi tazminat',
+       limit=5, provider='fastembed-multilingual-e5')
+   for r in result.get('results', []):
+       print(r.get('document_id'), r.get('score'), r.get('title', '')[:80])
+   "
+   ```
+
+5. **Hash vs Gerçek Embedding karşılaştırması:**
+   ```bash
+   # Aynı sorguyu iki provider ile çalıştırıp farkı görün
+   python -c "
+   from emsal_mcp.semantic import embedding_search
+
+   query = 'isverenin is sagligi ve guvenligi yukumlulugu'
+   for prov in ['local-hash-v1', 'fastembed-multilingual-e5']:
+       r = embedding_search(query, limit=10, provider=prov)
+       print(f'{prov}: {r.get(\"total_matches\")} eşleşme')
+       # İlk 3 sonucun document_id'lerini karşılaştırın
+       ids = [d['document_id'] for d in r.get('results', [])[:3]]
+       print(f'  Top-3: {ids}')
+   "
+   ```
+
+6. **Eval ile recall ölçümü (M-71):**
+   ```bash
+   # Eval koşumunu her iki provider ile yapın
+   python -m emsal_mcp.cli eval run --provider local-hash-v1 --json
+   python -m emsal_mcp.cli eval run --provider fastembed-multilingual-e5 --json
+   ```
+   NDCG ve recall@5/recall@10 metriklerini karşılaştırın. Gerçek embedding ile
+   özellikle eşanlamlı terim içeren sorgularda (ör. "iş kazası" → "is kazasi",
+   "calisma guvenligi") belirgin kazanç beklenir.
+
+**Beklenen Çıktı:**
+- Crawl: 200 full-text belge local önbelleğe eklenir
+- Embedding index: 200 belge 384-boyutlu vektörlerle indekslenir (yaklaşık 30-60 sn)
+- Semantik arama: Anlamsal eşleşme (eşanlamlı terimler) hash'e göre belirgin
+  ölçüde daha iyi
+- Eval: Multilingual E5 ile recall@5 ve nDCG'de %15-40 arası kazanç
+
+**Notlar:**
+- ``fastembed-multilingual-e5`` 100+ dil destekler; Türkçe morfoloji için
+  optimize edilmiştir (ekler, büyük-küçük harf, diakritik).
+- İndeks yalnızca mevcut provider için geçerlidir; provider değiştirirseniz
+  ``build_embedding_index(force_rebuild=True)`` ile yeniden indeksleyin.
+- E5 modeli ``query: `` prefix'i ile sorguları, ``passage: `` prefix'i ile
+  belgeleri ayırt eder — bu otomatik olarak yapılır.
+- Hash provider (``local-hash-v1``) her zaman kullanılabilir; embedding extra'sı
+  kurulu değilse otomatik fallback yapılır. Çekirdek stdlib+sqlite3 kalır.
+
+---
+
 ## Notlar
 
 - Tüm `--json` çıktıları `JSON_CONTRACTS.md` ile uyumludur.

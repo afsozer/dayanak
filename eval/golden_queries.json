@@ -28,5 +28,47 @@
         "expected_document_ids": ["SYNTH-AYM-2025-003"],
         "description": "AYM bireysel başvuru — mülkiyet hakkı",
         "k": 3
+    },
+    {
+        "query": "is kazasi calisan tazminat",
+        "expected_document_ids": ["SYNTH-YT-2025-001"],
+        "description": "SEMANTIC: is kazasi (no diacritics) — should match is kazasi documents via embedding",
+        "k": 5,
+        "tags": ["semantic", "diacritic-robustness"]
+    },
+    {
+        "query": "isverenin koruma yukumlulugu",
+        "expected_document_ids": ["SYNTH-YT-2025-001"],
+        "description": "SEMANTIC: is sagligi guvenligi synonym — embedding should match related terms",
+        "k": 5,
+        "tags": ["semantic", "synonym"]
+    },
+    {
+        "query": "kira sozlesmesi fesih hakli sebep",
+        "expected_document_ids": ["SYNTH-YH-2025-005"],
+        "description": "SEMANTIC: kira hukuku — multi-term semantic query",
+        "k": 5,
+        "tags": ["semantic"]
+    },
+    {
+        "query": "limited ortaklik pay devri gecerli",
+        "expected_document_ids": ["SYNTH-AH-2025-004"],
+        "description": "SEMANTIC: ticaret hukuku — sirket hisse devri",
+        "k": 5,
+        "tags": ["semantic"]
+    },
+    {
+        "query": "idare mahkemesi yurutmenin durdurulmasi",
+        "expected_document_ids": ["SYNTH-DT-2025-002"],
+        "description": "SEMANTIC: idari yargi — yurutme durdurma talebi",
+        "k": 5,
+        "tags": ["semantic"]
+    },
+    {
+        "query": "mulkiyet hakki ihlal basvuru",
+        "expected_document_ids": ["SYNTH-AYM-2025-003"],
+        "description": "SEMANTIC: AYM bireysel basvuru — property rights",
+        "k": 5,
+        "tags": ["semantic"]
     }
 ]
