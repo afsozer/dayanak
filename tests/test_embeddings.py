@@ -292,9 +292,15 @@ class TestProviderFactory:
             # Either outcome is valid
 
     def test_unknown_provider_returns_none(self) -> None:
-        """Unknown provider name returns None."""
-        p = get_embedding_provider("nonexistent-provider")
+        """Unknown provider with strict=True returns None (no fallback)."""
+        p = get_embedding_provider("nonexistent-provider", strict=True)
         assert p is None
+
+    def test_unknown_provider_falls_back_to_hash(self) -> None:
+        """Default (strict=False) returns LocalHashProvider for unknown providers."""
+        p = get_embedding_provider("nonexistent-provider")
+        assert p is not None
+        assert p.id == "local-hash-v1"
 
     def test_fastembed_alias(self) -> None:
         """'fastembed' alias resolves to fastembed provider or None."""
@@ -314,10 +320,14 @@ class TestProviderFactory:
 class TestListEmbeddingProviders:
     """Tests for list_embedding_providers()."""
 
-    def test_returns_two_providers(self) -> None:
-        """Returns metadata for both known providers."""
+    def test_returns_all_providers(self) -> None:
+        """Returns metadata for all known providers (3: hash + 2 fastembed)."""
         providers = list_embedding_providers()
-        assert len(providers) == 2
+        assert len(providers) == 3
+        ids = {p["id"] for p in providers}
+        assert "local-hash-v1" in ids
+        assert "fastembed-minilm-l6-v2" in ids
+        assert "fastembed-multilingual-e5" in ids
 
     def test_local_hash_available(self) -> None:
         """local-hash-v1 is always available."""
@@ -590,14 +600,15 @@ class TestEmbeddingSearch:
             cache.close()
 
     def test_provider_unavailable(self, tmp_path: Path) -> None:
-        """Invalid provider returns error."""
+        """Invalid provider with strict=True returns error (M-95 fallback disabled)."""
         cache = Cache(tmp_path / "emb_bad_prov.sqlite3")
-        try:
+        # Override get_embedding_provider to return None for this test
+        from unittest.mock import patch as _patch
+        with _patch("emsal_mcp.embeddings.get_embedding_provider", return_value=None):
             result = embedding_search("test", provider="nonexistent", cache=cache)
-            assert result["ok"] is False
-            assert "EMBEDDING_BACKEND_UNAVAILABLE" in result.get("errorCode", "")
-        finally:
-            cache.close()
+        assert result["ok"] is False
+        assert "EMBEDDING_BACKEND_UNAVAILABLE" in result.get("errorCode", "")
+        cache.close()
 
     def test_result_structure(self, tmp_path: Path) -> None:
         """Each result has expected keys."""

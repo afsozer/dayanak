@@ -1366,8 +1366,11 @@ def build_embedding_index(
                     skipped += 1
                     return
 
-            # Embed
-            vec = prov.embed_text(text)
+            # Embed — use embed_document() if provider supports it (E5 prefix)
+            if hasattr(prov, "embed_document"):
+                vec = prov.embed_document(text)  # type: ignore[union-attr]
+            else:
+                vec = prov.embed_text(text)
             blob = pack_vector(vec)
             norm = math.sqrt(sum(v * v for v in vec))
 
@@ -1446,8 +1449,11 @@ def embedding_search(
                 "Embedding provider unavailable.",
             )
 
-        # Embed query
-        q_vec = prov.embed_text(query)
+        # Embed query — use embed_query() if provider supports it (E5 prefix)
+        if hasattr(prov, "embed_query"):
+            q_vec = prov.embed_query(query)  # type: ignore[union-attr]
+        else:
+            q_vec = prov.embed_text(query)
         q_norm = math.sqrt(sum(v * v for v in q_vec))
 
         if q_norm == 0:

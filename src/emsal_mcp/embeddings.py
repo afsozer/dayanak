@@ -101,7 +101,7 @@ class FastEmbedProvider(EmbeddingProvider):
 
     Lazy-imports fastembed. If not installed, raises RuntimeError on first use.
     ID: fastembed-minilm-l6-v2, Dims: 384
-    Model: sentence-transformers/all-MiniLM-L6-v2
+    Model: sentence-transformers/all-MiniLM-L6-v2 (English-optimized)
     """
 
     id = "fastembed-minilm-l6-v2"
@@ -109,6 +109,7 @@ class FastEmbedProvider(EmbeddingProvider):
 
     _MAX_TEXT_CHARS = 8000
     _BATCH_SIZE = 16
+    _MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
     def __init__(self, cache_dir: str | None = None) -> None:
         self._cache_dir = cache_dir
@@ -123,7 +124,7 @@ class FastEmbedProvider(EmbeddingProvider):
                 if self._cache_dir:
                     kwargs["cache_dir"] = self._cache_dir
                 self._model = TextEmbedding(
-                    model_name="sentence-transformers/all-MiniLM-L6-v2",
+                    model_name=self._MODEL_NAME,
                     **kwargs,
                 )
             except ImportError:
@@ -150,45 +151,114 @@ class FastEmbedProvider(EmbeddingProvider):
         return embeddings
 
 
+# ── M-95: Multilingual provider (Turkish-native, 100+ languages) ─────
+
+
+class FastEmbedMultilingualProvider(FastEmbedProvider):
+    """Fastembed multilingual provider — Turkish-native model (M-95).
+
+    Uses ``intfloat/multilingual-e5-small`` which supports 100+ languages
+    including Turkish with proper tokenization.  Same dimensions (384) as
+    MiniLM, so drop-in compatible with existing indices.
+
+    ID: fastembed-multilingual-e5, Dims: 384
+    Model: intfloat/multilingual-e5-small
+
+    Gracefully falls back to ``LocalHashProvider`` when ``fastembed`` is
+    not installed (invariant #6 — core stdlib+sqlite3 preserved).
+    """
+
+    id = "fastembed-multilingual-e5"
+    dimensions = 384
+    _MODEL_NAME = "intfloat/multilingual-e5-small"
+
+    # E5 prefix: prepend "query: " for queries and "passage: " for docs
+    # to signal the model whether the text is a query or document.
+    _QUERY_PREFIX = "query: "
+    _DOC_PREFIX = "passage: "
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a search query with the E5 query prefix."""
+        return self.embed_text(self._QUERY_PREFIX + text)
+
+    def embed_document(self, text: str) -> list[float]:
+        """Embed a document/passage with the E5 passage prefix."""
+        return self.embed_text(self._DOC_PREFIX + text)
+
+    def embed_documents_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of documents with the passage prefix."""
+        prefixed = [self._DOC_PREFIX + self._normalize(t) for t in texts]
+        return self.embed_batch(prefixed)
+
+    def embed_queries_batch(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of queries with the query prefix."""
+        prefixed = [self._QUERY_PREFIX + self._normalize(t) for t in texts]
+        return self.embed_batch(prefixed)
+
+
 # ---------------------------------------------------------------------------
 # Provider Factory
 # ---------------------------------------------------------------------------
 
-def get_embedding_provider(provider: str | None = None) -> EmbeddingProvider | None:
-    """Factory: provider arg > EMSAL_EMBEDDING_PROVIDER env > default local-hash-v1.
+def get_embedding_provider(
+    provider: str | None = None,
+    *,
+    strict: bool = False,
+) -> EmbeddingProvider | None:
+    """Factory: provider arg > EMSAL_EMBEDDING_PROVIDER env > default.
 
-    Returns EmbeddingProvider instance.
-    Returns None if provider is invalid or unavailable (caller handles graceful).
+    Priority:
+    1. Explicit ``provider`` argument
+    2. ``EMSAL_EMBEDDING_PROVIDER`` environment variable
+    3. ``EMSAL_EMBEDDING_PROVIDER`` config
+    4. Default: ``local-hash-v1`` (always available, zero deps)
+
+    If ``strict=True``, returns None when the requested provider is
+    unavailable.  If ``strict=False`` (default), falls back to
+    ``local-hash-v1`` when the requested provider is unavailable — the
+    caller always gets *some* provider back (graceful degradation).
+
+    Returns:
+        EmbeddingProvider instance, or None only if strict=True and
+        the requested provider is truly unavailable.
     """
     resolved = provider or os.environ.get("EMSAL_EMBEDDING_PROVIDER", "local-hash-v1")
 
+    # ── Built-in providers ──────────────────────────────────────
     if resolved == "local-hash-v1":
         return LocalHashProvider()
-    elif resolved in ("fastembed-minilm-l6-v2", "fastembed"):
+
+    # ── fastembed-based providers ───────────────────────────────
+    if resolved in ("fastembed-minilm-l6-v2", "fastembed"):
         try:
             from .config import config
 
             cache_dir = str(config.embedding_cache_dir) if config.embedding_cache_dir else None
             return FastEmbedProvider(cache_dir=cache_dir)
         except RuntimeError:
-            return None  # fastembed not installed
-    else:
-        return None  # unknown provider
+            if strict:
+                return None
+            return LocalHashProvider()
+
+    if resolved in ("fastembed-multilingual-e5", "fastembed-multilingual", "fastembed-turkish"):
+        try:
+            from .config import config
+
+            cache_dir = str(config.embedding_cache_dir) if config.embedding_cache_dir else None
+            return FastEmbedMultilingualProvider(cache_dir=cache_dir)
+        except RuntimeError:
+            if strict:
+                return None
+            return LocalHashProvider()
+
+    # ── Unknown provider ────────────────────────────────────────
+    if strict:
+        return None
+    return LocalHashProvider()
 
 
 def list_embedding_providers() -> list[dict]:
     """Return metadata for all known providers."""
-    providers: list[dict] = [
-        {
-            "id": "local-hash-v1",
-            "dimensions": 128,
-            "label": "Local Hash Provider",
-            "status": "available",
-            "is_default": True,
-            "needs_download": False,
-        },
-    ]
-
     fastembed_available = False
     try:
         import fastembed  # noqa: F401  # type: ignore[import-untyped]
@@ -197,17 +267,40 @@ def list_embedding_providers() -> list[dict]:
     except ImportError:
         pass
 
-    providers.append(
+    providers: list[dict] = [
+        {
+            "id": "local-hash-v1",
+            "dimensions": 128,
+            "label": "Local Hash Provider (always available)",
+            "description": "Deterministic hash-based embeddings — no model download, pure stdlib. Suitable for exact-match recall, not semantic search.",
+            "status": "available",
+            "is_default": True,
+            "needs_download": False,
+            "languages": ["any"],
+        },
         {
             "id": "fastembed-minilm-l6-v2",
             "dimensions": 384,
-            "label": "FastEmbed MiniLM L6 v2",
+            "label": "FastEmbed MiniLM L6 v2 (English)",
+            "description": "English-optimized sentence embeddings via fastembed. Requires pip install emsal-mcp[embeddings].",
             "status": "available" if fastembed_available else "unavailable",
             "is_default": False,
             "needs_download": True,
             "model": "sentence-transformers/all-MiniLM-L6-v2",
-        }
-    )
+            "languages": ["en"],
+        },
+        {
+            "id": "fastembed-multilingual-e5",
+            "dimensions": 384,
+            "label": "FastEmbed Multilingual E5 Small (Turkish+100 langs, M-95)",
+            "description": "Turkish-native sentence embeddings via fastembed. Supports 100+ languages including full Turkish morphology. Requires pip install emsal-mcp[embeddings]. Recommended for Turkish legal text.",
+            "status": "available" if fastembed_available else "unavailable",
+            "is_default": False,
+            "needs_download": True,
+            "model": "intfloat/multilingual-e5-small",
+            "languages": ["tr", "en", "fr", "de", "es", "ar", "zh", "ja", "ko", "+90 more"],
+        },
+    ]
 
     # Mark the selected/default
     default_id = os.environ.get("EMSAL_EMBEDDING_PROVIDER", "local-hash-v1")
