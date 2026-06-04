@@ -24,15 +24,41 @@ class BedestenClient(SourceClient):
     _get_document_response_keys = ["content", "document", "data"]
 
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
-        item_type = filters.get("item_type") or filters.get("court") or self._default_item_type
-        # Normalize item_type: accept common variations
-        if item_type and not item_type.isupper():
-            item_type = item_type.upper().replace(" ", "").replace("İ", "I").replace("Ş", "S").replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
+        # ── court_types → itemTypeList ────────────────────────────────
+        # Accept a list of court types for multi-court search in a single call.
+        # Falls back to single item_type (backward-compatible).
+        court_types: list[str] | None = filters.get("court_types") or filters.get("court_types_list")
+        if court_types and isinstance(court_types, list) and len(court_types) > 0:
+            item_type_list = court_types
+        else:
+            item_type = filters.get("item_type") or filters.get("court") or self._default_item_type
+            # Normalize item_type: accept common variations
+            if item_type and not item_type.isupper():
+                item_type = item_type.upper().replace(" ", "").replace("İ", "I").replace("Ş", "S").replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
+            item_type_list = [item_type]
+
+        # ── esas_no / karar_no parsing (YIL/SIRA → int fields) ───────
+        def _parse_yy_slash_ss(raw: str | None) -> tuple[int | None, int | None]:
+            """Parse 'YIL/SIRA' (e.g. '2023/1234') into (year, sequence) ints."""
+            if not raw:
+                return None, None
+            parts = raw.split("/")
+            if len(parts) != 2:
+                return None, None
+            try:
+                yil = int(parts[0].strip())
+                sira = int(parts[1].strip())
+                return yil, sira
+            except (ValueError, TypeError):
+                return None, None
+
+        esas_yil, esas_sira = _parse_yy_slash_ss(filters.get("esas_no"))
+        karar_yil, karar_sira = _parse_yy_slash_ss(filters.get("karar_no"))
 
         data_payload: dict[str, Any] = {
             "pageSize": min(int(limit), 100),
             "pageNumber": filters.get("page", 1),
-            "itemTypeList": [item_type],
+            "itemTypeList": item_type_list,
             "phrase": query,
             "sortFields": ["KARAR_TARIHI"],
             "sortDirection": filters.get("sort_direction") or "desc",
@@ -42,12 +68,22 @@ class BedestenClient(SourceClient):
             "applicationName": "UyapMevzuat",
             "paging": True,
         }
-        if filters.get("chamber"):
-            data_payload["birimAdi"] = filters["chamber"]
-        if filters.get("start_date"):
-            data_payload["kararTarihiStart"] = filters["start_date"]
-        if filters.get("end_date"):
-            data_payload["kararTarihiEnd"] = filters["end_date"]
+        # birimAdi: accept both "chamber" (legacy) and "birimAdi" (new, direct)
+        birim = filters.get("birimAdi") or filters.get("chamber")
+        if birim:
+            data_payload["birimAdi"] = birim
+        if filters.get("start_date") or filters.get("karar_tarihi_start"):
+            data_payload["kararTarihiStart"] = filters.get("start_date") or filters.get("karar_tarihi_start")
+        if filters.get("end_date") or filters.get("karar_tarihi_end"):
+            data_payload["kararTarihiEnd"] = filters.get("end_date") or filters.get("karar_tarihi_end")
+        if esas_yil is not None:
+            data_payload["esasNoYil"] = esas_yil
+        if esas_sira is not None:
+            data_payload["esasNoSira"] = esas_sira
+        if karar_yil is not None:
+            data_payload["kararNoYil"] = karar_yil
+        if karar_sira is not None:
+            data_payload["kararNoSira"] = karar_sira
         async with client() as c:
             r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
             check_http_response(r, self.source_id)

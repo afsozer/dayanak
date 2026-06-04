@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 # M-52: All domain imports moved inside main() for faster cold-start.
 # Only stdlib (json) is imported at module level.
@@ -194,7 +195,18 @@ def main() -> None:
 
     @mcp.tool()
     @validate_tool_input(query=validate_non_empty, limit=validate_positive_int)
-    async def search_decisions(source: str, query: str, limit: int = 10, page: int = 1) -> list[dict]:
+    async def search_decisions(
+        source: str,
+        query: str,
+        limit: int = 10,
+        page: int = 1,
+        court_types: list[str] | None = None,
+        birimAdi: str | None = None,
+        karar_tarihi_start: str | None = None,
+        karar_tarihi_end: str | None = None,
+        esas_no: str | None = None,
+        karar_no: str | None = None,
+    ) -> list[dict]:
         """✅ PRIMARY, MANDATORY TOOL FOR ALL CASE-LAW / DECISION / MEVZUAT RESEARCH.
 
         For ANY question about court decisions, precedents, case law, or
@@ -257,11 +269,40 @@ def main() -> None:
                 craft a short 2–5 term keyword query using the operators above.
             limit: Max results (default 10, must be positive).
             page: Page number for pagination (default 1).
+            court_types: Optional list of court item types for multi-court search
+                in a single call. Bedesten values: YARGITAYKARARI, DANISTAYKARARI,
+                YERELKARARI, ISTINAFKARARI, KYBKARAR. Defaults to the source's
+                default type when omitted.
+            birimAdi: Optional chamber/unit code (e.g. "1. Daire", "HGK").
+                For the validated 79-option enum, see source_capabilities tool.
+            karar_tarihi_start: Optional start date filter (ISO format,
+                e.g. "2023-01-01"). Inclusive.
+            karar_tarihi_end: Optional end date filter (ISO format,
+                e.g. "2024-12-31"). Inclusive.
+            esas_no: Optional case file number in YIL/SIRA format
+                (e.g. "2023/1234"). Parsed into separate year/sequence int
+                fields for the upstream API.
+            karar_no: Optional decision number in YIL/SIRA format
+                (e.g. "2023/5678"). Parsed into separate year/sequence int
+                fields for the upstream API.
 
         Returns:
             List of matching document dicts.
         """
-        results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page)]
+        filters: dict[str, Any] = {}
+        if court_types:
+            filters["court_types"] = court_types
+        if birimAdi:
+            filters["birimAdi"] = birimAdi
+        if karar_tarihi_start:
+            filters["karar_tarihi_start"] = karar_tarihi_start
+        if karar_tarihi_end:
+            filters["karar_tarihi_end"] = karar_tarihi_end
+        if esas_no:
+            filters["esas_no"] = esas_no
+        if karar_no:
+            filters["karar_no"] = karar_no
+        results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page, **filters)]
         # Store search results in cache for later local search
         cache = Cache()
         cache.set(f"search:{source}:{query}:{limit}:{page}", results)

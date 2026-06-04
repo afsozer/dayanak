@@ -408,6 +408,172 @@ class TestBedestenMocked:
         assert any("404" in w for w in warnings)
 
 
+    def test_search_court_types_multi(self):
+        """Multi-court search with court_types list."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(json_data={
+            "data": {
+                "emsalKararList": [
+                    {
+                        "id": "1",
+                        "itemType": {"description": "Yargıtay"},
+                        "birimAdi": "1. Daire",
+                        "kararTarihiStr": "2024-01-01",
+                        "esasNo": "2024/1",
+                        "kararNo": "100",
+                    },
+                    {
+                        "id": "2",
+                        "itemType": {"description": "Danıştay"},
+                        "birimAdi": "5. Daire",
+                        "kararTarihiStr": "2024-02-01",
+                        "esasNo": "2024/2",
+                        "kararNo": "200",
+                    },
+                ]
+            }
+        })
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            results = asyncio.run(ci.search("test", limit=5, court_types=["YARGITAYKARARI", "DANISTAYKARARI"]))
+        assert len(results) == 2
+        assert results[0].court == "Yargıtay"
+        assert results[1].court == "Danıştay"
+
+    def test_search_esas_no_karar_no_parsing(self):
+        """YIL/SIRA format parsed into separate int fields for upstream API."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(json_data={
+            "data": {"emsalKararList": []}
+        })
+        sent_payload = []
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            async def _capture_post(*args, **kwargs):
+                sent_payload.append(kwargs.get("json", {}))
+                return mock_resp
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            asyncio.run(ci.search("test", limit=5, esas_no="2023/1234", karar_no="2023/5678"))
+        assert len(sent_payload) == 1
+        data_payload = sent_payload[0].get("data", {})
+        assert data_payload.get("esasNoYil") == 2023
+        assert data_payload.get("esasNoSira") == 1234
+        assert data_payload.get("kararNoYil") == 2023
+        assert data_payload.get("kararNoSira") == 5678
+
+    def test_search_esas_no_invalid_format_graceful(self):
+        """Invalid YIL/SIRA format is silently ignored (no crash)."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(json_data={
+            "data": {"emsalKararList": [{"id": "1", "itemType": {"description": "Yargıtay"}, "kararTarihiStr": "2024-01-01"}]}
+        })
+        sent_payload = []
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            async def _capture_post(*args, **kwargs):
+                sent_payload.append(kwargs.get("json", {}))
+                return mock_resp
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            # Invalid format: no slash, non-numeric
+            results = asyncio.run(ci.search("test", limit=5, esas_no="bogus", karar_no="not/valid"))
+        assert len(results) == 1
+        data_payload = sent_payload[0].get("data", {})
+        assert "esasNoYil" not in data_payload
+        assert "kararNoYil" not in data_payload
+
+    def test_search_birimadi_filter(self):
+        """birimAdi filter is passed through to the API payload."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(json_data={
+            "data": {"emsalKararList": []}
+        })
+        sent_payload = []
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            async def _capture_post(*args, **kwargs):
+                sent_payload.append(kwargs.get("json", {}))
+                return mock_resp
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            asyncio.run(ci.search("test", limit=5, birimAdi="10. Daire"))
+        data_payload = sent_payload[0].get("data", {})
+        assert data_payload.get("birimAdi") == "10. Daire"
+
+    def test_search_tarih_range_filter(self):
+        """karar_tarihi_start/end passed through to API payload."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(json_data={
+            "data": {"emsalKararList": []}
+        })
+        sent_payload = []
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            async def _capture_post(*args, **kwargs):
+                sent_payload.append(kwargs.get("json", {}))
+                return mock_resp
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            asyncio.run(ci.search("test", limit=5, karar_tarihi_start="2023-01-01", karar_tarihi_end="2024-12-31"))
+        data_payload = sent_payload[0].get("data", {})
+        assert data_payload.get("kararTarihiStart") == "2023-01-01"
+        assert data_payload.get("kararTarihiEnd") == "2024-12-31"
+
+    def test_search_legacy_chamber_still_works(self):
+        """Old 'chamber' parameter still maps to birimAdi (backward compat)."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(json_data={
+            "data": {"emsalKararList": []}
+        })
+        sent_payload = []
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            async def _capture_post(*args, **kwargs):
+                sent_payload.append(kwargs.get("json", {}))
+                return mock_resp
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            asyncio.run(ci.search("test", limit=5, chamber="HGK"))
+        data_payload = sent_payload[0].get("data", {})
+        assert data_payload.get("birimAdi") == "HGK"
+
+    def test_search_legacy_start_date_still_works(self):
+        """Old 'start_date' parameter still works (backward compat)."""
+        from emsal_mcp.sources.bedesten import BedestenClient
+        ci = BedestenClient()
+        mock_resp = _mock_httpx_response(json_data={
+            "data": {"emsalKararList": []}
+        })
+        sent_payload = []
+        with patch("emsal_mcp.sources.bedesten.client") as mc:
+            cm = AsyncMock()
+            async def _capture_post(*args, **kwargs):
+                sent_payload.append(kwargs.get("json", {}))
+                return mock_resp
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            asyncio.run(ci.search("test", limit=5, start_date="2023-01-01", end_date="2024-01-01"))
+        data_payload = sent_payload[0].get("data", {})
+        assert data_payload.get("kararTarihiStart") == "2023-01-01"
+        assert data_payload.get("kararTarihiEnd") == "2024-01-01"
+
+
 class TestYargitayMocked:
     def test_source_id_preserved(self):
         from emsal_mcp.sources.registry import YargitayClient
