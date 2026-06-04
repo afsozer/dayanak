@@ -215,9 +215,46 @@ def main() -> None:
         Fetched results are cached so the local re-ranking tools can operate on
         them afterward within the same session.
 
+        --- QUERY HYGIENE (CRITICAL) ---
+        - Do NOT paste the user's full question into the query string. The Bedesten
+          Solr engine matches tokens, not natural language. Reduce the question to
+          2–5 precise legal keywords.  Good: "işçi alacağı zamanaşımı" (3 terms).
+          Bad: "işçinin fazla mesai ve kıdem tazminatı konusunda zamanaşımı süresi"
+          (verbatim user question, too many noise tokens).
+        - Preserve Turkish diacritics exactly. The Solr index is Turkish-aware;
+          stripping diacritics silently drops matches. Use "kararı" ✓ not "karari" ✗,
+          "geçici iş göremezlik" ✓ not "gecici is goremezlik" ✗.
+
+        --- BEDESTEN SOLR OPERATOR COOKBOOK ---
+        The Bedesten backend runs Apache Solr with StandardQueryParser.
+        You can use these operators inside the `query` string:
+
+        +required    Prefix + forces the term to appear (MUST match).  +tazminat
+        -excluded    Prefix - excludes documents containing the term.  -bölge
+        "exact"      Double quotes for phrase/exact match.  "iş kazası"
+        AND / OR     UPPERCASE boolean operators (lowercase and/or are treated
+                     as plain terms).  tazminat AND zamanaşımı
+        NOT          UPPERCASE exclusion.  tazminat NOT manevi
+        (grouping)   Parentheses for sub-expressions.  (+işçi OR +memur) +tazminat
+        * wildcard   Suffix wildcard (use sparingly).  tazmin*
+
+        Worked examples (query string → what it does):
+          +işçi +tazminat                    → docs with BOTH "işçi" AND "tazminat"
+          "iş kazası" tazminat               → exact phrase "iş kazası" AND term "tazminat"
+          (+işçi OR +memur) +tazminat -manevi → (işçi OR memur) AND tazminat, exclude "manevi"
+          boşanma tazminat*                  → "boşanma" AND any word starting "tazminat"
+          kıdem AND ihbar AND tazminat       → all three terms required
+
+        Notes:
+        - Solr AND is the default operator for bare terms (tazminat zamanaşımı means
+          tazminat AND zamanaşımı). OR must be explicit.
+        - Overly broad queries (single common term like "karar") return noise; add
+          at least one specific legal-term constraint.
+
         Args:
             source: Source identifier (e.g. 'bedesten', 'mevzuat').
-            query: Search query string (must not be empty).
+            query: Search query string (must not be empty). For best results,
+                craft a short 2–5 term keyword query using the operators above.
             limit: Max results (default 10, must be positive).
             page: Page number for pagination (default 1).
 
