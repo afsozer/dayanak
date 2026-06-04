@@ -96,6 +96,7 @@ def main() -> None:
         get_index_sync_status as get_index_sync_status_impl,
     )
     from .models import Document
+    from .birim_enum import validate_birim_adi as _validate_birim_adi, list_birim_codes as _list_birim_codes
     from .petition import (
         build_multi_issue_pack as build_multi_issue_pack_impl,
         inspect_multi_issue_pack as inspect_multi_issue_pack_impl,
@@ -206,7 +207,7 @@ def main() -> None:
         karar_tarihi_end: str | None = None,
         esas_no: str | None = None,
         karar_no: str | None = None,
-    ) -> list[dict]:
+    ) -> list[dict] | dict:
         """✅ PRIMARY, MANDATORY TOOL FOR ALL CASE-LAW / DECISION / MEVZUAT RESEARCH.
 
         For ANY question about court decisions, precedents, case law, or
@@ -289,6 +290,11 @@ def main() -> None:
         Returns:
             List of matching document dicts.
         """
+        # M-93: validate birimAdi against 79-code enum
+        if birimAdi:
+            birim_err = _validate_birim_adi(birimAdi)
+            if birim_err is not None:
+                return birim_err
         filters: dict[str, Any] = {}
         if court_types:
             filters["court_types"] = court_types
@@ -338,6 +344,25 @@ def main() -> None:
     def source_capabilities() -> list[dict]:
         """Return capability matrix for all registered sources."""
         return capabilities()
+
+    @mcp.tool()
+    def list_birim_codes(court: str | None = None) -> list[dict]:
+        """Return the 79 validated birimAdi (chamber/unit) codes.
+
+        Use these codes as the ``birimAdi`` parameter in ``search_decisions``
+        to filter results by a specific Yargitay/Danistay chamber or assembly.
+
+        Each entry includes the code, Turkish description, English description,
+        and the parent court (Yargitay, Danistay, or Askeri).
+
+        Args:
+            court: Optional filter — "Yargitay", "Danistay", or "Askeri".
+                   Returns all 79 codes when omitted.
+
+        Returns:
+            List of ``{code, description_tr, description_en, court}`` dicts.
+        """
+        return _list_birim_codes(court=court)
 
     @mcp.tool()
     def source_smoke(online: bool = False) -> dict:
