@@ -4,10 +4,32 @@ Provides session-scoped cache fixtures to avoid repeated Cache() construction.
 """
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_real_cache():
+    """Redirect the default Cache() path to a throwaway DB for the whole session.
+
+    Some tests construct a no-arg Cache() (default path). Without this, they
+    would read/write the user's REAL corpus (~/.emsal-mcp/cache.sqlite3),
+    polluting it with test rows and risking lock contention with other
+    processes. Honors the EMSAL_CACHE_PATH override added in cache.py.
+    """
+    with tempfile.TemporaryDirectory(prefix="emsal_realcache_") as d:
+        prev = os.environ.get("EMSAL_CACHE_PATH")
+        os.environ["EMSAL_CACHE_PATH"] = str(Path(d) / "isolated_cache.sqlite3")
+        try:
+            yield
+        finally:
+            if prev is None:
+                os.environ.pop("EMSAL_CACHE_PATH", None)
+            else:
+                os.environ["EMSAL_CACHE_PATH"] = prev
 
 
 @pytest.fixture(scope="session")

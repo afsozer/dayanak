@@ -21,7 +21,10 @@ def fresh_config():
 class TestConfigDefaults:
     """Default values without env overrides."""
 
-    def test_cache_path_default(self, fresh_config):
+    def test_cache_path_default(self, fresh_config, monkeypatch):
+        # The session-wide isolation fixture sets EMSAL_CACHE_PATH; clear it to
+        # assert the true built-in default.
+        monkeypatch.delenv("EMSAL_CACHE_PATH", raising=False)
         assert fresh_config.cache_path == Path.home() / ".emsal_mcp" / "cache.sqlite3"
 
     def test_user_agent_default(self, fresh_config):

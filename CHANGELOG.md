@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Düzeltildi / İyileştirildi (bu oturum)
+- **Cache izolasyonu:** `Cache()` artık `EMSAL_CACHE_PATH` env değişkenine saygı duyuyor (`cache.py` sabit yolu yok sayıyordu). Test suite'ine session-genelinde autouse izolasyon fixture'ı eklendi → testler bir daha kullanıcının gerçek korpusuna (`~/.emsal-mcp/cache.sqlite3`) yazmıyor. Gerçek korpustaki eski `fake_source`/`test` satırları (6 adet) temizlendi.
+- **Yerel Yargıtay derlemi:** `corpus crawl` ile ~20.000 tam metin Yargıtay kararı yerel cache'e indirildi (24 daire, citation-safe). Rate-limiter durumu süreçler arası kalıcı + 429 retry sayesinde sıfır kayıp.
+
 ### Kaldırıldı (Removed)
 - **KİK/EKAP kaynağı tamamen kaldırıldı.** Çalışmayan, token-gerektiren bir
   placeholder olduğu için (canlı arama yok, 401) ve bir LLM tüketicisinin tool

@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +20,16 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE = Path.home() / ".emsal-mcp" / "cache.sqlite3"
 
+
+def _default_cache_path() -> Path:
+    """Resolve the default cache path, honoring the EMSAL_CACHE_PATH override.
+
+    Lets tests (and alternate deployments) point Cache() at an isolated DB so
+    they never touch the user's real corpus.
+    """
+    env = os.environ.get("EMSAL_CACHE_PATH")
+    return Path(env) if env else DEFAULT_CACHE
+
 # Schema version constant — bump when adding new migrations
 CACHE_SCHEMA_VERSION = 4
 
@@ -28,7 +39,7 @@ class Cache:
     SCHEMA_VERSION = 2
 
     def __init__(self, path: Path | None = None):
-        self.path = path or DEFAULT_CACHE
+        self.path = Path(path) if path else _default_cache_path()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
