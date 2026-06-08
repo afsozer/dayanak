@@ -378,10 +378,10 @@ def convert_docx_to_udf_experimental(
             warning=DOCX_TO_UDF_EXPERIMENTAL_WARNING,
         )
 
-    status = get_udf_toolkit_status()
-    if not status["ok"]:
-        return _toolkit_unavailable(action)
-
+    # NOTE: This path does NOT need the LibreOffice/UDF toolkit — it extracts
+    # text from the DOCX (a zip) and writes a UDF (also a zip) in pure Python.
+    # The toolkit gate here was copied from the udf->docx/pdf converters (which
+    # genuinely need LibreOffice) and wrongly blocked an offline-capable op.
     src = Path(file_path)
     if not src.exists():
         return build_error("FILE_NOT_FOUND", f"DOCX file not found: {src}", action=action)

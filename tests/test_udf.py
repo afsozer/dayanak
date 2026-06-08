@@ -257,12 +257,36 @@ class TestConvertDocxToUdfExperimental:
         assert result["errorCode"] == "EXPERIMENTAL_REQUIRED"
         assert DOCX_TO_UDF_EXPERIMENTAL_WARNING in result["warning"]
 
-    def test_missing_toolkit_returns_error(self, tmp_path):
+    def test_invalid_docx_returns_empty_document(self, tmp_path):
+        """A non-DOCX (un-extractable) file degrades to EMPTY_DOCUMENT, not a crash."""
         path = tmp_path / "test.docx"
-        path.write_bytes(b"fake docx")
+        path.write_bytes(b"fake docx")  # not a real zip
         result = convert_docx_to_udf_experimental(path, experimental=True)
         assert result["ok"] is False
-        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
+        assert result["errorCode"] == "EMPTY_DOCUMENT"
+
+    def test_converts_without_toolkit(self, tmp_path, monkeypatch):
+        """DOCX -> UDF is pure-python and must work with NO LibreOffice/toolkit."""
+        import zipfile
+
+        # Ensure the toolkit is definitively unavailable.
+        monkeypatch.delenv("EMSAL_UDF_TOOLKIT_DIR", raising=False)
+        monkeypatch.delenv("UDF_TOOLKIT_DIR", raising=False)
+        monkeypatch.setattr(udf_mod.shutil, "which", lambda *_a, **_k: None)
+
+        docx = tmp_path / "in.docx"
+        with zipfile.ZipFile(docx, "w") as zf:
+            zf.writestr(
+                "word/document.xml",
+                '<w:document><w:body><w:p><w:r><w:t>Merhaba Dünya</w:t></w:r>'
+                "</w:p></w:body></w:document>",
+            )
+        out = tmp_path / "out.udf"
+        result = convert_docx_to_udf_experimental(docx, out, experimental=True)
+        assert result["ok"] is True
+        assert out.exists()
+        # round-trips through our own reader
+        assert "Merhaba Dünya" in read_udf(out)
 
     def test_file_not_found_when_toolkit_available(self, tmp_path, monkeypatch):
         """When toolkit is available but file doesn't exist, returns file_not_found."""
