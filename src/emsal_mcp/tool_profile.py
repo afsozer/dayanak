@@ -39,26 +39,11 @@ CORE_TOOLS: list[str] = [
 # core profile above.
 
 CATEGORY_TOOLS: dict[str, list[str]] = {
-    "cache_admin": [
-        "get_cache_stats",
-        "list_cached_documents",
-        "cache_vacuum",
-        "cache_cleanup_orphans",
-        "cache_integrity_check",
-        "sync_cache",
-    ],
-    # M-103: release category removed
-    "routing": [
-        "get_capable_sources",
-        "route_search",
-        "route_get_document",
-    ],
+    # M-105: cache_admin removed (CLI-only: emsal-mcp cache ...)
+    # M-105: routing removed (search_decisions handles routing)
     "health_admin": [
         "circuit_breaker_status",
         "source_health",
-        "reset_circuit",
-        "error_catalog",
-        "active_requests_count",
         "source_smoke",
     ],
     "citation_graph": [
@@ -69,14 +54,7 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
         "citation_graph_stats",
         "export_citation_graph",
     ],
-    "dedup": [
-        "find_duplicates",
-        "get_dedup_cluster",
-        "dedup_stats",
-        "merge_dedup_cluster",
-        "find_fuzzy_duplicates",
-        "fuzzy_dedup_stats",
-    ],
+    # M-105: dedup removed (corpus_builder handles dedup automatically)
     "watch": [
         "watch_add",
         "watch_list",
@@ -95,26 +73,14 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
         "find_similar_chambers",
     ],
     "indexing": [
-        "build_semantic_index",
         "index_status",
-        "rebuild_search_index",
-        "build_embedding_index",
-        "embedding_index_status",
-        "list_embedding_providers",
-        "update_indexes",
-        "index_sync_status",
     ],
     "drafting_advanced": [
         "inspect_petition_pack",
         "build_multi_issue_pack",
         "inspect_multi_issue_pack",
-        "diff_drafts",
-        "track_placeholders",
-        "get_fill_report",
-        "save_draft_version",
         "list_petition_templates",
         "get_petition_template",
-        "render_template_skeleton",
         "build_argument_chain",
         "score_argument",
         "get_argument_strength_report",
@@ -124,7 +90,6 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
     ],
     "udf_admin": [
         "udf_toolkit_status",
-        "install_udf_toolkit_tool",
         "udf_authoring_instructions",
         "pdf_toolkit_status",
         "promote_pdf_to_full_text",

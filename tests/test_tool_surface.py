@@ -132,18 +132,18 @@ class TestCoreProfile:
         tools = _capture_tools("core")
         before = len(tools)
 
-        result = tools["load_extended_tools"](["cache_admin"])
+        result = tools["load_extended_tools"](["citation_graph"])
 
         assert result["ok"] is True
         assert len(tools) > before
-        assert "get_cache_stats" in tools
-        assert callable(tools["get_cache_stats"])
+        assert "build_citation_graph" in tools
+        assert callable(tools["build_citation_graph"])
         assert result["loaded_tools"]
 
-        second = tools["load_extended_tools"](["cache_admin"])
+        second = tools["load_extended_tools"](["citation_graph"])
 
         assert second["ok"] is True
-        assert "get_cache_stats" in second["already_loaded"]
+        assert "build_citation_graph" in second["already_loaded"]
 
     def test_load_extended_tools_invalid_category_is_structured_error(self) -> None:
         tools = _capture_tools("core")
@@ -161,24 +161,24 @@ class TestCoreProfile:
 
         def failing_tool(*args, **kwargs):
             def decorator(fn):
-                if getattr(fn, "__name__", "") == "get_cache_stats":
+                if getattr(fn, "__name__", "") == "build_citation_graph":
                     raise RuntimeError("registration failed")
                 return original_tool(*args, **kwargs)(fn)
             return decorator
 
         mcp.tool = failing_tool
 
-        result = tools["load_extended_tools"](["cache_admin"])
+        result = tools["load_extended_tools"](["citation_graph"])
 
         assert result["ok"] is False
-        assert {"tool": "get_cache_stats", "error": "registration failed"} in result["errors"]
-        assert "get_cache_stats" not in result["loaded_tools"]
+        assert {"tool": "build_citation_graph", "error": "registration failed"} in result["errors"]
+        assert "build_citation_graph" not in result["loaded_tools"]
 
 
 class TestFullProfile:
-    """Full profile: all tools (>= 113, regression guard)."""
+    """Full profile: all tools (>= 82, M-105 post-cut snapshot)."""
 
-    FULL_TOOL_COUNT_SNAPSHOT = 113
+    FULL_TOOL_COUNT_SNAPSHOT = 82
 
     def test_full_profile_count_meets_snapshot(self) -> None:
         tools = _capture_tools("full")

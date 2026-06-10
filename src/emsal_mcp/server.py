@@ -43,8 +43,7 @@ def main() -> None:
 
     from .cache import Cache
     from .server_utils import (
-        get_active_requests,
-        get_error_codes,
+        # M-105: get_active_requests, get_error_codes removed (tools removed from MCP)
         validate_is_dict_with_keys,
         validate_non_empty,
         validate_positive_int,
@@ -88,13 +87,9 @@ def main() -> None:
         promote_pdf_to_full_text as promote_pdf_to_full_text_impl,
     )
     from .semantic import (
-        build_semantic_index as build_semantic_index_impl,
         get_index_status as get_index_status_impl,
         hybrid_search as hybrid_search_impl,
-        rebuild_index as rebuild_index_impl,
         semantic_search as semantic_search_impl,
-        update_indexes as update_indexes_impl,
-        get_index_sync_status as get_index_sync_status_impl,
     )
     from .models import Document, build_error
     from .birim_enum import validate_birim_adi as _validate_birim_adi, list_birim_codes as _list_birim_codes
@@ -109,14 +104,9 @@ def main() -> None:
     from .templates import (
         get_template as get_template_impl,
         list_templates as list_templates_impl,
-        render_template_to_skeleton as render_template_impl,
     )
-    from .draft_diff import (
-        diff_drafts as diff_drafts_impl,
-        get_fill_report as get_fill_report_impl,
-        save_draft_version as save_draft_version_impl,
-        track_placeholders as track_placeholders_impl,
-    )
+    # M-105: draft_diff imports removed (save_draft_version, get_fill_report,
+    #        track_placeholders, diff_drafts removed from MCP; CLI-only)
     from .argument import (
         build_argument_chain as build_argument_chain_impl,
         score_argument as score_argument_impl,
@@ -138,7 +128,7 @@ def main() -> None:
         convert_udf_to_pdf,
         get_udf_authoring_instructions,
         get_udf_toolkit_status,
-        install_udf_toolkit,
+        # M-105: install_udf_toolkit removed (install_udf_toolkit_tool MCP removed)
         probe_udf,
         read_udf as read_udf_impl,
         write_udf as write_udf_impl,
@@ -178,23 +168,13 @@ def main() -> None:
         "health_check":               "core",
         # ── Extended: cache_admin ───────────────────────────────────────
         "search_local_cache":         "extended",
-        "get_cache_stats":            "extended",
-        "list_cached_documents":      "extended",
-        "cache_vacuum":              "extended",
-        "cache_cleanup_orphans":      "extended",
-        "cache_integrity_check":      "extended",
-        "sync_cache":                 "extended",
+        # M-105: cache_admin tools removed from MCP (CLI-only)
         # M-103: release tools removed from MCP surface
-        # ── Extended: routing ───────────────────────────────────────────
-        "get_capable_sources":        "extended",
-        "route_search":               "extended",
-        "route_get_document":         "extended",
+        # M-105: routing tools removed from MCP (search_decisions handles routing)
         # ── Extended: health_admin ──────────────────────────────────────
         "circuit_breaker_status":     "extended",
         "source_health":              "extended",
-        "reset_circuit":              "extended",
-        "error_catalog":              "extended",
-        "active_requests_count":      "extended",
+        # M-105: reset_circuit, error_catalog, active_requests_count removed
         "source_smoke":               "extended",
         # ── Extended: citation_graph ────────────────────────────────────
         "build_citation_graph":       "extended",
@@ -204,12 +184,7 @@ def main() -> None:
         "citation_graph_stats":       "extended",
         "export_citation_graph":      "extended",
         # ── Extended: dedup ─────────────────────────────────────────────
-        "find_duplicates":            "extended",
-        "get_dedup_cluster":          "extended",
-        "dedup_stats":                "extended",
-        "merge_dedup_cluster":        "extended",
-        "find_fuzzy_duplicates":      "extended",
-        "fuzzy_dedup_stats":          "extended",
+        # M-105: dedup tools removed from MCP (corpus_builder handles dedup)
         # ── Extended: watch ─────────────────────────────────────────────
         "watch_add":                  "extended",
         "watch_list":                 "extended",
@@ -225,18 +200,12 @@ def main() -> None:
         "chamber_timeline":           "extended",
         "find_similar_chambers":      "extended",
         # ── Extended: indexing ──────────────────────────────────────────
-        "build_semantic_index":       "extended",
+        # M-105: indexing tools removed from MCP except index_status
+        "index_status":               "extended",
         "semantic_search":            "extended",
         "hybrid_search":              "extended",
         "hybrid_search_rrf":          "extended",
-        "index_status":               "extended",
-        "rebuild_search_index":       "extended",
-        "build_embedding_index":      "extended",
         "embedding_search":           "extended",
-        "embedding_index_status":     "extended",
-        "list_embedding_providers":   "extended",
-        "update_indexes":             "extended",
-        "index_sync_status":          "extended",
         # ── Extended: drafting_advanced ─────────────────────────────────
         "build_input_pack":           "extended",
         "draft_document":             "extended",
@@ -249,11 +218,8 @@ def main() -> None:
         "inspect_multi_issue_pack":   "extended",
         "list_petition_templates":    "extended",
         "get_petition_template":      "extended",
-        "render_template_skeleton":   "extended",
-        "diff_drafts":                "extended",
-        "track_placeholders":         "extended",
-        "get_fill_report":            "extended",
-        "save_draft_version":         "extended",
+        # M-105: render_template_skeleton, diff_drafts, track_placeholders,
+        #        get_fill_report, save_draft_version removed from MCP
         "build_argument_chain":       "extended",
         "score_argument":             "extended",
         "get_argument_strength_report":"extended",
@@ -273,7 +239,7 @@ def main() -> None:
         "read_udf":                   "extended",
         "write_udf":                  "extended",
         "udf_toolkit_status":         "extended",
-        "install_udf_toolkit_tool":   "extended",
+        # M-105: install_udf_toolkit_tool removed from MCP (CLI-only)
         "udf_authoring_instructions":  "extended",
         "convert_udf_to_docx_tool":   "extended",
         "convert_udf_to_pdf_tool":    "extended",
@@ -311,21 +277,13 @@ def main() -> None:
         "health_check":                 "admin",
         # Extended categories
         "search_local_cache":           "cache_admin",
-        "get_cache_stats":              "cache_admin",
-        "list_cached_documents":        "cache_admin",
-        "cache_vacuum":                "cache_admin",
-        "cache_cleanup_orphans":        "cache_admin",
-        "cache_integrity_check":        "cache_admin",
-        "sync_cache":                   "cache_admin",
+        # M-105: cache_admin tools removed from MCP surface
         # M-103: release category removed
-        "get_capable_sources":          "routing",
-        "route_search":                 "routing",
-        "route_get_document":           "routing",
+        # M-105: routing tools removed from MCP surface
+        # M-103: release category removed
         "circuit_breaker_status":       "health_admin",
         "source_health":                "health_admin",
-        "reset_circuit":                "health_admin",
-        "error_catalog":                "health_admin",
-        "active_requests_count":        "health_admin",
+        # M-105: reset_circuit, error_catalog, active_requests_count removed
         "source_smoke":                 "health_admin",
         "build_citation_graph":         "citation_graph",
         "get_citation_graph":           "citation_graph",
@@ -333,12 +291,7 @@ def main() -> None:
         "find_cited_documents":         "citation_graph",
         "citation_graph_stats":         "citation_graph",
         "export_citation_graph":        "citation_graph",
-        "find_duplicates":              "dedup",
-        "get_dedup_cluster":            "dedup",
-        "dedup_stats":                  "dedup",
-        "merge_dedup_cluster":          "dedup",
-        "find_fuzzy_duplicates":        "dedup",
-        "fuzzy_dedup_stats":            "dedup",
+        # M-105: dedup tools removed from MCP surface
         "watch_add":                    "watch",
         "watch_list":                   "watch",
         "watch_run":                    "watch",
@@ -350,18 +303,12 @@ def main() -> None:
         "profile_chamber":              "chambers",
         "chamber_timeline":             "chambers",
         "find_similar_chambers":        "chambers",
-        "build_semantic_index":         "indexing",
+        # M-105: indexing tools removed from MCP except index_status
         "semantic_search":              "indexing",
         "hybrid_search":                "indexing",
         "hybrid_search_rrf":            "indexing",
         "index_status":                 "indexing",
-        "rebuild_search_index":         "indexing",
-        "build_embedding_index":        "indexing",
         "embedding_search":             "indexing",
-        "embedding_index_status":       "indexing",
-        "list_embedding_providers":     "indexing",
-        "update_indexes":               "indexing",
-        "index_sync_status":            "indexing",
         "build_input_pack":             "drafting_advanced",
         "draft_document":               "drafting_advanced",
         "export_bundle":               "drafting_advanced",
@@ -373,11 +320,8 @@ def main() -> None:
         "inspect_multi_issue_pack":     "drafting_advanced",
         "list_petition_templates":      "drafting_advanced",
         "get_petition_template":        "drafting_advanced",
-        "render_template_skeleton":     "drafting_advanced",
-        "diff_drafts":                  "drafting_advanced",
-        "track_placeholders":           "drafting_advanced",
-        "get_fill_report":              "drafting_advanced",
-        "save_draft_version":           "drafting_advanced",
+        # M-105: render_template_skeleton, diff_drafts, track_placeholders,
+        #        get_fill_report, save_draft_version removed from MCP
         "build_argument_chain":         "drafting_advanced",
         "score_argument":               "drafting_advanced",
         "get_argument_strength_report": "drafting_advanced",
@@ -394,7 +338,7 @@ def main() -> None:
         "read_udf":                     "udf_admin",
         "write_udf":                    "udf_admin",
         "udf_toolkit_status":           "udf_admin",
-        "install_udf_toolkit_tool":     "udf_admin",
+        # M-105: install_udf_toolkit_tool removed from MCP
         "udf_authoring_instructions":   "udf_admin",
         "convert_udf_to_docx_tool":     "udf_admin",
         "convert_udf_to_pdf_tool":      "udf_admin",
@@ -705,14 +649,7 @@ def main() -> None:
         """Check UDF toolkit (LibreOffice/unoconv) availability."""
         return get_udf_toolkit_status()
 
-    @_tool
-    def install_udf_toolkit_tool(
-        target_dir: str | None = None,
-        repo_url: str = "https://github.com/saidsurucu/UDF-Toolkit.git",
-        update: bool = False,
-    ) -> dict:
-        """Install or update the managed UDF-Toolkit clone used by converters."""
-        return install_udf_toolkit(target_dir, repo_url=repo_url, update=update)
+    # M-105: install_udf_toolkit_tool removed from MCP (CLI-only)
 
     @_tool
     def udf_authoring_instructions(format: str = "json") -> dict:
@@ -797,90 +734,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @_tool
-    def get_cache_stats() -> dict:
-        """Return cache statistics: document counts, sources, DB size."""
-        cache = Cache()
-        try:
-            return cache.cache_stats()
-        finally:
-            cache.close()
-
-    @_tool
-    def list_cached_documents(
-        source: str | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[dict]:
-        """List cached documents with optional source filter."""
-        cache = Cache()
-        try:
-            return cache.list_cached_documents(source=source, limit=limit, offset=offset)
-        finally:
-            cache.close()
-
-    @_tool
-    def cache_vacuum() -> dict:
-        """Run VACUUM to reclaim space and defragment the cache database.
-
-        Returns dict with ok, size_before, size_after, freed_bytes.
-        """
-        cache = Cache()
-        try:
-            return cache.vacuum_cache()
-        finally:
-            cache.close()
-
-    @_tool
-    def cache_cleanup_orphans() -> dict:
-        """Remove orphan rows from search_vectors and documents_v2_fts.
-
-        An orphan is a row whose (document_id, source) pair doesn't exist
-        in documents_v2.
-
-        Returns dict with ok, orphans_removed, details.
-        """
-        cache = Cache()
-        try:
-            return cache.cleanup_orphans()
-        finally:
-            cache.close()
-
-    @_tool
-    def cache_integrity_check() -> dict:
-        """Run comprehensive integrity checks on the cache database.
-
-        Checks: SQLite PRAGMA integrity_check, orphan counts, schema version,
-        content hash consistency, and table row counts.
-
-        Returns dict with ok, checks (per-check results), warnings.
-        """
-        cache = Cache()
-        try:
-            return cache.check_integrity_full()
-        finally:
-            cache.close()
-
-    @_tool
-    def sync_cache(other_db_path: str) -> dict:
-        """Sync documents from another cache database (multi-machine merge).
-
-        Merges documents_v2 rows from the other database into this one.
-        Conflict resolution: newest retrieved_at wins for same
-        (document_id, source). If same retrieved_at, existing is kept.
-        Content hashes compared — mismatches produce warnings.
-
-        Args:
-            other_db_path: Path to the other cache database file.
-
-        Returns:
-            Dict with ok, synced, skipped, conflicts, total_in_other, warnings.
-        """
-        cache = Cache()
-        try:
-            return cache.sync_cache(other_db_path)
-        finally:
-            cache.close()
+    # M-105: cache_admin MCP tools removed (CLI-only: emsal-mcp cache ...)
 
     # ── Research v0.5 MCP tools ────────────────────────────────────────
 
@@ -1281,89 +1135,8 @@ def main() -> None:
         """
         return get_template_impl(name)
 
-    @_tool
-    def render_template_skeleton(name: str) -> dict:
-        """Render a petition template as a draft-skeleton.md compatible markdown.
-
-        Output includes DISCLAIMER_HEADER and uses the {{PLACEHOLDER}} convention.
-        Placeholders are preserved for manual filling.
-
-        Args:
-            name: Template identifier (e.g. 'dava_dilekcesi').
-        """
-        try:
-            md = render_template_impl(name)
-            return {"ok": True, "name": name, "markdown": md}
-        except KeyError as exc:
-            return {"ok": False, "error": str(exc)}
-
-    # ── Draft Diff & Versioning MCP tools (M-14) ──────────────────────────
-
-    @_tool
-    def diff_drafts(draft_a: str, draft_b: str) -> dict:
-        """Compare two draft files and report changes.
-
-        Computes unified diff, identifies added/removed/modified sections,
-        and reports placeholder fill status changes.
-
-        Args:
-            draft_a: Path to the first (older) draft file.
-            draft_b: Path to the second (newer) draft file.
-
-        Returns:
-            Dict with ok, draft_a, draft_b, diff_lines, changes, unified_diff,
-            sections_added, sections_removed, placeholders_filled, warnings.
-        """
-        return diff_drafts_impl(draft_a, draft_b)
-
-    @_tool
-    def track_placeholders(draft_path: str) -> dict:
-        """Analyze a draft for placeholder fill status.
-
-        Finds all {{PLACEHOLDER}} patterns and reports which are filled
-        (no longer present as raw tokens) vs unfilled.
-
-        Args:
-            draft_path: Path to the draft file.
-
-        Returns:
-            Dict with ok, total_placeholders, filled, unfused, fill_ratio,
-            placeholders, unfilled_list, ready_for_submission, warnings.
-        """
-        return track_placeholders_impl(draft_path)
-
-    @_tool
-    def get_fill_report(draft_path: str, pack_dir: str | None = None) -> dict:
-        """Generate a fill report for a draft.
-
-        Lists unfilled placeholders with section context, suggests
-        citation-safe sources from the pack, and provides readiness assessment.
-
-        Args:
-            draft_path: Path to the draft file.
-            pack_dir: Optional petition pack directory for source suggestions.
-
-        Returns:
-            Dict with ok, total_placeholders, filled, unfilled, fill_ratio,
-            readiness, items, suggestions, warnings.
-        """
-        return get_fill_report_impl(draft_path, pack_dir=pack_dir)
-
-    @_tool
-    def save_draft_version(draft_dir: str, version_label: str | None = None) -> dict:
-        """Save a snapshot of current draft state for later diff.
-
-        Copies draft files to a versioned subdirectory with metadata.
-
-        Args:
-            draft_dir: Directory containing draft files.
-            version_label: Optional human-readable label for this version.
-
-        Returns:
-            Dict with ok, version_id, version_label, version_dir,
-            files_copied, metadata_path, warnings.
-        """
-        return save_draft_version_impl(draft_dir, version_label=version_label)
+    # M-105: render_template_skeleton, diff_drafts, track_placeholders,
+    #        get_fill_report, save_draft_version removed from MCP
 
     # ── Argument Builder v0.12 MCP tools ──────────────────────────────────
 
@@ -1592,22 +1365,7 @@ def main() -> None:
 
     # ── Semantic v0.11 MCP tools ──────────────────────────────────────────
 
-    @_tool
-    def build_semantic_index(
-        force_rebuild: bool = False,
-    ) -> dict:
-        """Build FTS5 + TF-IDF search indices on cached documents.
-
-        Creates SQLite FTS5 virtual table and TF-IDF vectors for hybrid search.
-        Run this after importing or caching documents.
-
-        Args:
-            force_rebuild: If True, drop and recreate all indices.
-
-        Returns:
-            Dict with ok, fts5_row_count, vectors_count, documents_total, warnings.
-        """
-        return build_semantic_index_impl(force_rebuild=force_rebuild)
+    # M-105: build_semantic_index removed from MCP (CLI-only)
 
     @_tool
     def semantic_search(
@@ -1714,40 +1472,11 @@ def main() -> None:
         """
         return get_index_status_impl()
 
-    @_tool
-    def rebuild_search_index() -> dict:
-        """Force rebuild of FTS5 and TF-IDF search indices.
-
-        Drops and recreates all search indices from cached documents.
-
-        Returns:
-            Dict with ok, fts5_row_count, vectors_count, documents_total.
-        """
-        return rebuild_index_impl()
+    # M-105: rebuild_search_index removed from MCP (CLI-only)
 
     # ── Dense Embedding v2.1 MCP tools (M-24) ──────────────────────────
 
-    @_tool
-    def build_embedding_index(
-        provider: str | None = None,
-        force_rebuild: bool = False,
-    ) -> dict:
-        """Build dense embedding index from cached documents.
-
-        Uses the configured embedding provider (default: local-hash-v1).
-        Skips documents whose content_hash hasn't changed unless
-        force_rebuild=True.
-
-        Args:
-            provider: Optional provider ID (local-hash-v1, fastembed-minilm-l6-v2).
-            force_rebuild: If True, re-embed all documents.
-
-        Returns:
-            Dict with ok, documents_indexed, skipped, provider, dimensions.
-        """
-        from .semantic import build_embedding_index as _build_emb
-
-        return _build_emb(provider=provider, force_rebuild=force_rebuild)
+    # M-105: build_embedding_index removed from MCP (CLI-only)
 
     @_tool
     def embedding_search(
@@ -1782,59 +1511,8 @@ def main() -> None:
 
         return _attach_corpus_hint(_emb_search(query=query, limit=limit, provider=provider))
 
-    @_tool
-    def embedding_index_status() -> dict:
-        """Check dense embedding index status.
-
-        Returns per-provider vector counts and dimensions.
-
-        Returns:
-            Dict with ok, providers list, version.
-        """
-        from .semantic import get_embedding_index_status as _emb_status
-
-        return _emb_status()
-
-    @_tool
-    def list_embedding_providers() -> list[dict]:
-        """List available embedding providers and their status.
-
-        Returns:
-            List of provider metadata dicts with id, dimensions, label,
-            status, is_default, needs_download.
-        """
-        from .embeddings import list_embedding_providers as _list_emb
-
-        return _list_emb()
-
-    @_tool
-    def update_indexes(provider: str | None = None) -> dict:
-        """Incrementally update both TF-IDF and dense indexes.
-
-        Only processes documents that are new or have changed content.
-        Uses content_hash comparison to skip unchanged documents.
-        After update, cleans orphan vectors.
-
-        Args:
-            provider: Optional embedding provider for dense index updates.
-
-        Returns:
-            Dict with ok, tfidf_updated, dense_updated, skipped, warnings.
-        """
-        return update_indexes_impl(provider=provider)
-
-    @_tool
-    def index_sync_status() -> dict:
-        """Report how many documents are out of sync with indexes.
-
-        Compares total documents with text content against indexed
-        counts in TF-IDF and dense embedding stores.
-
-        Returns:
-            Dict with ok, total_documents, tfidf_indexed, dense_indexed,
-            tfidf_out_of_sync, dense_out_of_sync.
-        """
-        return get_index_sync_status_impl()
+    # M-105: embedding_index_status, list_embedding_providers, update_indexes,
+    #        index_sync_status removed from MCP (CLI-only)
 
     # ── Chamber Profiling v0.12 MCP tools ──────────────────────────────────
 
@@ -2045,201 +1723,9 @@ def main() -> None:
             max_depth=max_depth,
         )
 
-    # ── Dedup v0.15 MCP tools ─────────────────────────────────────────────
+    # M-105: dedup tools removed from MCP (corpus_builder handles dedup)
 
-    @_tool
-    def find_duplicates(dry_run: bool = False) -> dict:
-        """Find duplicate documents across sources (same court+esas_no+karar_no).
-
-        Groups documents by matching court, esas_no, and karar_no.
-        Only documents with non-empty esas_no AND karar_no are considered.
-        Never false-merges: strict matching only.
-
-        Args:
-            dry_run: If True, compute plan without modifying DB.
-
-        Returns:
-            Dict with ok, clusters_found, total_duplicates, dry_run, clusters.
-        """
-        from .dedup import find_duplicates as find_duplicates_impl
-        cache = Cache()
-        try:
-            return find_duplicates_impl(cache=cache, dry_run=dry_run)
-        finally:
-            cache.close()
-
-    @_tool
-    def get_dedup_cluster(document_id: str, source: str) -> dict:
-        """Find which dedup cluster a document belongs to.
-
-        Args:
-            document_id: Document ID to look up.
-            source: Source identifier.
-
-        Returns:
-            Dict with ok, in_cluster, cluster_id, canonical, all_members.
-        """
-        from .dedup import get_dedup_cluster as get_dedup_cluster_impl
-        cache = Cache()
-        try:
-            return get_dedup_cluster_impl(document_id=document_id, source=source, cache=cache)
-        finally:
-            cache.close()
-
-    @_tool
-    def dedup_stats() -> dict:
-        """Get deduplication statistics.
-
-        Returns:
-            Dict with ok, total_clusters, total_duplicate_docs,
-            space_saved_estimate, sources_most_duplicates.
-        """
-        from .dedup import get_dedup_stats as get_dedup_stats_impl
-        cache = Cache()
-        try:
-            return get_dedup_stats_impl(cache=cache)
-        finally:
-            cache.close()
-
-    @_tool
-    def merge_dedup_cluster(cluster_id: str) -> dict:
-        """Merge a dedup cluster: enrich canonical record with alt source URLs.
-
-        Adds alternative source URLs from non-canonical members to the
-        canonical document's metadata without overwriting existing fields.
-
-        Args:
-            cluster_id: The dedup cluster ID to merge.
-
-        Returns:
-            Dict with ok, cluster_id, canonical, enriched_fields, members_merged.
-        """
-        from .dedup import merge_cluster as merge_cluster_impl
-        cache = Cache()
-        try:
-            return merge_cluster_impl(cluster_id=cluster_id, cache=cache)
-        finally:
-            cache.close()
-
-    @_tool
-    def find_fuzzy_duplicates(
-        provider: str | None = None,
-        threshold: float = 0.85,
-        max_date_diff_days: int = 365,
-    ) -> dict:
-        """Find near-duplicate documents using dense embedding similarity.
-
-        Reports suspected_duplicate pairs based on embedding cosine similarity
-        within the same court. Never auto-merges — all merges require explicit
-        confirmation. Requires embedding vectors from build_embedding_index().
-
-        Args:
-            provider: Embedding provider (default: from config).
-            threshold: Cosine similarity threshold (0.0-1.0, default 0.85).
-            max_date_diff_days: Max date difference in days (default 365).
-
-        Returns:
-            Dict with ok, suspected_duplicates, total_suspected, warnings.
-        """
-        from .dedup import find_fuzzy_duplicates as find_fuzzy_duplicates_impl
-        cache = Cache()
-        try:
-            return find_fuzzy_duplicates_impl(
-                cache=cache, provider=provider,
-                cosine_threshold=threshold, max_date_diff_days=max_date_diff_days,
-            )
-        finally:
-            cache.close()
-
-    @_tool
-    def fuzzy_dedup_stats() -> dict:
-        """Report fuzzy dedup readiness.
-
-        Shows embedding availability for near-duplicate detection.
-
-        Returns:
-            Dict with ok, embedded_documents, providers, ready flag.
-        """
-        from .dedup import get_fuzzy_dedup_stats as get_fuzzy_dedup_stats_impl
-        cache = Cache()
-        try:
-            return get_fuzzy_dedup_stats_impl(cache=cache)
-        finally:
-            cache.close()
-
-    # ── Capability Router MCP tools (M-19) ──────────────────────────────
-
-    @_tool
-    def get_capable_sources(capability: str) -> list[str]:
-        """Get list of source_ids that support a given capability.
-
-        Args:
-            capability: Capability name (e.g. 'full_text', 'search', 'pdf_link',
-                       'article_search', 'type_filter', 'workflow').
-
-        Returns:
-            List of source_ids sorted by preference (stable sources first).
-        """
-        from .router import get_capable_sources as get_capable_sources_impl
-
-        return get_capable_sources_impl(capability)
-
-    @_tool
-    def route_search(
-        query: str,
-        required_capabilities: list[str] | None = None,
-        preferred_sources: list[str] | None = None,
-        exclude_sources: list[str] | None = None,
-    ) -> dict:
-        """Route a search request to capable sources based on capability matrix.
-
-        Returns routing metadata with eligible sources, exclusions, and
-        per-source capability match info. Does NOT execute searches.
-
-        Args:
-            query: Search query string.
-            required_capabilities: List of capabilities needed (e.g. ['full_text']).
-            preferred_sources: Try these sources first.
-            exclude_sources: Skip these sources (e.g. ['rekabet']).
-
-        Returns:
-            Dict with ok, query, routing (eligible_sources, excluded_sources),
-            results (empty), per_source capability match info.
-        """
-        from .router import route_search as route_search_impl
-
-        return route_search_impl(
-            query=query,
-            required_capabilities=required_capabilities,
-            preferred_sources=preferred_sources,
-            exclude_sources=exclude_sources,
-        )
-
-    @_tool
-    def route_get_document(
-        document_id: str,
-        required_capabilities: list[str] | None = None,
-        preferred_source: str | None = None,
-    ) -> dict:
-        """Route a get_document request to capable sources.
-
-        Tries preferred source first, then falls back to other capable sources.
-
-        Args:
-            document_id: Document ID to look up.
-            required_capabilities: List of capabilities needed.
-            preferred_source: Try this source first.
-
-        Returns:
-            Dict with ok, document_id, routing (eligible_sources), results (empty).
-        """
-        from .router import route_get_document as route_get_document_impl
-
-        return route_get_document_impl(
-            document_id=document_id,
-            required_capabilities=required_capabilities,
-            preferred_source=preferred_source,
-        )
+    # M-105: routing tools removed from MCP (search_decisions handles routing)
 
     # ── Circuit Breaker MCP tools (M-17) ──────────────────────────────
 
@@ -2277,48 +1763,7 @@ def main() -> None:
             return get_source_health_impl(source)
         return get_all_sources_health_impl()
 
-    @_tool
-    def reset_circuit(source: str) -> dict:
-        """Manually reset a circuit breaker to CLOSED state.
-
-        Args:
-            source: Source identifier to reset.
-
-        Returns:
-            Dict with ok, source_id, state, previous_state.
-        """
-        from .circuit import reset_circuit as reset_circuit_impl
-
-        return reset_circuit_impl(source)
-
-    # ── Server Hardening MCP tools (M-22) ───────────────────────────
-
-    @_tool
-    def error_catalog() -> dict:
-        """Return all known error codes used in build_error() calls.
-
-        Useful for integration tests and error-code validation.
-
-        Returns:
-            Dict with ok, known_codes list, total count.
-        """
-        catalog = get_error_codes()
-        return {"ok": True, **catalog}
-
-    @_tool
-    def active_requests_count() -> dict:
-        """Return the number of currently active MCP tool requests.
-
-        Informational counter — single-user design assumption preserved.
-
-        Returns:
-            Dict with ok, active_requests, note.
-        """
-        return {
-            "ok": True,
-            "active_requests": get_active_requests(),
-            "note": "Informational counter. Single-user design: no concurrency locks.",
-        }
+    # M-105: reset_circuit, error_catalog, active_requests_count removed from MCP
 
     # ── PDF Extraction MCP tools (M-27) ──────────────────────────────────
 
@@ -2945,21 +2390,17 @@ def main() -> None:
                 "=== GENİŞLETİLMİŞ ARAÇ KATEGORİLERİ ===\n\n"
                 "Core profilde 14 araç bulunur. Aşağıdaki kategoriler load_extended_tools\n"
                 "ile dinamik olarak yüklenebilir:\n\n"
-                "  cache_admin    — Cache yönetimi, bakım, senkronizasyon\n"
-                "  analytics      — Arama analitiği, sorgu istatistikleri\n"
-                "  routing        — Akıllı kaynak yönlendirme\n"
-                "  health_admin   — Circuit breaker, kaynak sağlığı, hata kataloğu\n"
+                "  health_admin   — Circuit breaker, kaynak sağlığı\n"
                 "  citation_graph — Atıf grafı oluşturma ve sorgulama\n"
-                "  dedup          — Mükerrer belge tespiti ve birleştirme\n"
                 "  watch          — Araştırma izleme (watch) listeleri\n"
                 "  privacy        — PII tarama, maskeleme, denetim\n"
                 "  chambers       — Daire profili, timeline, benzer daire bulma\n"
-                "  indexing       — Semantik indeks oluşturma, embedding yönetimi\n"
+                "  indexing       — Semantik indeks durumu (index_status)\n"
                 "  drafting_advanced — Gelişmiş dilekçe hazırlama araçları\n"
                 "  udf_admin      — UDF dönüştürme, PDF araçları\n"
                 "  research_admin — Araştırma kalite dashboard, evaluasyon\n"
                 "  query_tools    — Sorgu normalizasyonu, genişletme, filtre çıkarma\n\n"
-                "Kullanım: load_extended_tools(categories=['cache_admin', 'dedup'])\n"
+                "Kullanım: load_extended_tools(categories=['health_admin', 'citation_graph'])\n"
             ),
         }
         if topic and topic in sections:
@@ -2998,8 +2439,9 @@ def main() -> None:
             and a note if the MCP client may need to refresh its tool list.
         """
         valid_categories = {
-            "cache_admin", "analytics", "routing", "health_admin",
-            "citation_graph", "dedup", "watch", "privacy", "chambers", "indexing",
+            # M-105: cache_admin, analytics, routing, dedup removed from MCP
+            "health_admin",
+            "citation_graph", "watch", "privacy", "chambers", "indexing",
             "drafting_advanced", "udf_admin", "research_admin", "query_tools",
         }
         invalid = [c for c in categories if c not in valid_categories]

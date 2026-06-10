@@ -413,8 +413,7 @@ class TestToolDocstrings:
             "hybrid_search",
             "build_input_pack",
             "citation_safety",
-            "error_catalog",
-            "active_requests_count",
+            # M-105: error_catalog, active_requests_count removed from MCP
         ]
         for name in critical_tools:
             assert name in tools, f"Tool {name} not registered"

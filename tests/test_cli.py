@@ -53,12 +53,15 @@ def test_server_main_registers_tools():
     expected_tools = [
         "search_decisions", "get_document", "source_capabilities", "source_smoke",
         "citation_safety", "build_input_pack", "draft_document", "export_bundle",
-        "read_udf", "write_udf", "udf_toolkit_status", "install_udf_toolkit_tool",
-        "search_local_cache", "get_cache_stats", "list_cached_documents",
+        "read_udf", "write_udf", "udf_toolkit_status",
+        # M-105: install_udf_toolkit_tool removed from MCP
+        "search_local_cache",
+        # M-105: get_cache_stats, list_cached_documents removed from MCP
         "format_legal_citation", "verify_legal_citation",
         "search_legislation", "get_legislation_document",
-        "build_semantic_index", "semantic_search",
-        "hybrid_search", "index_status", "rebuild_search_index",
+        # M-105: build_semantic_index, rebuild_search_index removed from MCP
+        "semantic_search",
+        "hybrid_search", "index_status",
         "chamber_overview", "profile_chamber", "chamber_timeline",
         "find_similar_chambers",
     ]
