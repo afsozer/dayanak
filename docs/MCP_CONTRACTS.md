@@ -1,64 +1,52 @@
 ﻿# docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
-> **emsal-mcp v1.0.0** — 113 MCP tools across 10 modules.
+> **emsal-mcp v5.0.0** — 14 core MCP tools (default) · 82 tools in full profile.
 > Input parameters use Python type hints; output shapes are documented per tool.
+> Source of truth for profiles/categories: `src/emsal_mcp/tool_profile.py`.
 
-## Tool Profiles (FAZ M)
+## Tool Profiles (FAZ M / FAZ O)
 
 The server exposes two tool profiles to control which MCP tools are registered:
 
 | Profile | Tools | Description |
 |---------|-------|-------------|
-| `core` | 14 | Default profile. Core tools (source_capabilities, search_decisions, get_document, citation_safety, build_input_pack, draft_document, export_bundle, read_udf, write_udf, release_smoke, release_dashboard, release_notes_tool, release_archive, load_extended_tools). |
-| `full` | 131 | All tools including extended modules (research, citation, petition, UDF toolkit, legislation, semantic search, chamber profiling, release). |
+| `core` | 14 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `research_topic`, `citation_check`, `prepare_petition`, `export_document`, `read_legal_file`, `list_sources`, `legal_research_guide`, `load_extended_tools`, `health_check`. |
+| `full` | 82 | Core + all extended categories + legacy (facade-absorbed) tool names. |
 
 Select via the `EMSAL_TOOL_PROFILE` environment variable:
 
 ```
 EMSAL_TOOL_PROFILE=core   # default — 14 tools
-EMSAL_TOOL_PROFILE=full   # all 131 tools
+EMSAL_TOOL_PROFILE=full   # all 82 tools
 ```
 
 ### `load_extended_tools`
 
-Dynamically loads extended tool modules at runtime without restarting the server. Only available when the server starts with `EMSAL_TOOL_PROFILE=core`.
+Dynamically loads extended tool categories into the running server (core profile).
 
 **Input**:
-- `categories: list[str] | None = None` — Categories to load. If `None`, loads all extended categories.
-- `force: bool = False` — Reload even if already loaded.
+- `categories: list[str]` — Categories to load.
 
-**Valid categories**:
-- `research` — Research v0.5 tools (4 tools)
-- `citation` — Citation v0.6 tools (2 tools)
-- `petition` — Petition v0.7–0.8 tools (8 tools)
-- `udf_toolkit` — UDF Toolkit v0.9 tools (5 tools)
-- `legislation` — Legislation v0.10 tools (9 tools)
-- `semantic_search` — Semantic Search v0.11 tools (5 tools)
-- `chamber_profiling` — Chamber Profiling v0.12 tools (4 tools)
-- `release` — Release v0.13 tools (4 tools)
-- `cache_v2` — Cache v2 tools (3 tools)
+**Valid categories** (M-105 sonrası):
 
-**Output**: `dict` — `ok`, `loaded_categories[]`, `total_tools_now`, `newly_loaded[]`, `warnings`.
+| Category | Tools |
+|----------|-------|
+| `health_admin` | circuit_breaker_status, source_health, source_smoke |
+| `citation_graph` | build_citation_graph, get_citation_graph, find_citing_documents, find_cited_documents, citation_graph_stats, export_citation_graph |
+| `watch` | watch_add, watch_list, watch_run, watch_remove |
+| `privacy` | privacy_scan, privacy_redact, privacy_audit |
+| `chambers` | chamber_overview, profile_chamber, chamber_timeline, find_similar_chambers |
+| `indexing` | index_status |
+| `drafting_advanced` | inspect_petition_pack, build_multi_issue_pack, inspect_multi_issue_pack, list_petition_templates, get_petition_template, build_argument_chain, score_argument, get_argument_strength_report, draft_document, build_input_pack, prepare_drafting_input_pack |
+| `udf_admin` | udf_toolkit_status, udf_authoring_instructions, pdf_toolkit_status, promote_pdf_to_full_text |
 
-**Behavior**: After calling with a category, those tools become available in the same session for subsequent MCP calls. Categories already loaded are skipped unless `force=True`.
+**Output**: `dict` — `ok`, `loaded_tools[]`, `already_loaded[]`, `errors[]`, `categories_requested`, `note`.
 
-### Category summary
+**Behavior**: Idempotent — already-loaded categories return `already_loaded`. Invalid category → structured `INVALID_INPUT` error with `valid_categories`. Registration failures land in `errors[]` (never silently reported as loaded).
 
-| Category | Tools | Version |
-|----------|-------|---------|
-| core | 14 | v0.1–0.4 |
-| cache_v2 | 3 | v0.3 |
-| research | 4 | v0.5 |
-| citation | 2 | v0.6 |
-| petition | 8 | v0.7–0.8 |
-| udf_toolkit | 5 | v0.9 |
-| legislation | 9 | v0.10 |
-| semantic_search | 5 | v0.11 |
-| chamber_profiling | 4 | v0.12 |
-| release | 4 | v0.13 |
-| **Total** | **58** (core+extended) | |
-
-> **Note**: The 14 core tools are always registered. Extended categories add up to 44 additional tools (58 total registered in `core` profile with `load_extended_tools`, 131 in `full` profile which includes additional internal/helper tools).
+> **M-105 (v5.0.0):** cache yönetimi, routing, dedup, index kurma ve taslak
+> sürümleme araçları MCP yüzeyinden kaldırıldı; CLI'da yaşamaya devam ederler
+> (`emsal-mcp cache/router/dedup/semantic ...`).
 
 ## Core Tools (v0.1–0.4)
 
@@ -140,32 +128,16 @@ tool errors.
 
 UDF file operations (read/write round-trip).
 
-### `release_smoke`
-
-**Input**: none
-
-**Output**: `dict` — `ok`, `version`, `generated_at`, `checks` (offline_smoke, cache_integrity, source_smoke, source_smoke_ok, citation_safety, udf, mcp_surface).
-
-### `release_dashboard`
-
-**Input**: none
-
-**Output**: `dict` — `ok`, `version`, `readiness_score` (0–100), `release_decision` ("ship" / "review"), `smoke`, `risks`.
-
-### `release_notes_tool`
-
-**Input**: none
-
-**Output**: `dict` with key `markdown` — release notes in Markdown format.
-
-### `release_archive`
-
-**Input**:
-- `out_dir: str` — Output directory
-
-**Output**: `dict` — `ok`, `out_dir`, `manifest` with `version`, `files`.
+> **M-103 (v5.0.0):** `release_smoke`, `release_dashboard`, `release_notes_tool`,
+> `release_archive` MCP araçları kaldırıldı. Hazırlık kontrolü:
+> CLI `emsal-mcp release v1-readiness --json`.
 
 ## Cache v2 Tools (v0.3)
+
+> **M-105 (v5.0.0):** `get_cache_stats` ve `list_cached_documents` MCP'den
+> kaldırıldı (CLI: `emsal-mcp cache ...`). `search_local_cache` yalnızca
+> `full` profilde kayıtlıdır; core profilde karşılığı `search_local_corpus`
+> facade'ıdır.
 
 ### `search_local_cache`
 
