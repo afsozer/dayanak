@@ -1,9 +1,9 @@
 # ROADMAP.md — Emsal-mcp
 
 **Mevcut sürüm:** v5.0.0 · **Oluşturulma:** 2026-06-02
-**Durum:** M-01…M-106 tamamlandı (FAZ O kesim tamamlandı, v5.0.0).
-**Sıradaki ufuk:** v5.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
-**Aktif sıradaki:** FAZ P — Doküman Drift Koruması (M-107): MCP_CONTRACTS drift testi.
+**Durum:** M-01…M-107 tamamlandı (tüm fazlar tamamlandı, v5.0.0).
+**Sıradaki ufuk:** —
+**Aktif sıradaki:** —
 
 > **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
@@ -122,7 +122,7 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 
 ---
 
-### Karar Arama & Semantik Parite (v4.1) 🆕
+### Karar Arama & Semantik Parite (v4.1) ✅
 
 > **Gerekçe:** YargiMCP-Pro (hosted connector) ile karşılaştırma sonucu çıkan
 > bulgular. İki konuda gerideyiz: (1) Bedesten karar aramasının yetenekleri MCP
@@ -557,15 +557,14 @@ araştırma→taslak zincirinin parçası mı?" sorusunun cevabı hayırsa sil.*
 
 ---
 
-## FAZ P — Doküman Drift Koruması (M-107) 🆕 — Aktif
+## FAZ P — Doküman Drift Koruması (M-107) ✅ Tamamlandı
 
 > **Gerekçe:** FAZ M/N/O'nun üçünde de aynı desen tekrarladı: uygulayıcı model
-> kodu doğru, dokümantasyonu yarım veya **uydurma** teslim etti. Son örnek:
-> `MCP_CONTRACTS.md`'deki profil/kategori tablosu var olmayan kategoriler
-> (`cache_v2`, `semantic_search`...), yanlış core listesi ve var olmayan bir
-> `force` parametresi içeriyordu — bir ajan buna güvenseydi olmayan kategorileri
-> yüklemeye çalışırdı. README için bu sorun M-58 drift testiyle çözülmüştü;
-> aynı sigorta MCP sözleşme dokümanına da lazım.
+> kodu doğru, dokümantasyonu yarım veya **uydurma** teslim etti.
+> → **Çözüm:** `tests/test_contracts_drift.py` (5 test): core listesi,
+>   kategori adları, kategori içerikleri, core sayısı (14), full sayısı (82)
+>   `MCP_CONTRACTS.md` ↔ `tool_profile.py` arasında karşılaştırılır.
+>   HTML yorum işaretçileri (`<!-- drift:... -->`) ile parse hedeflidir.
 
 ### M-107 — MCP_CONTRACTS drift testi
 
@@ -592,6 +591,9 @@ araştırma→taslak zincirinin parçası mı?" sorusunun cevabı hayırsa sil.*
   ile karşılaştırılır (rehber araç da drift'e açık).
 - **Bitti sayılır:** doküman kasten bozulduğunda (kategori adı değiştir,
   araç ekle/sil) test fail eder; mevcut dokümanla geçer; geçit yeşil.
+  → **Tamam:** `tests/test_contracts_drift.py` (5 test): core listesi,
+    kategori adları/içerikleri, sayılar (14/82) karşılaştırıldı.
+    `MCP_CONTRACTS.md`'ye `<!-- drift:... -->` işaretçileri eklendi.
 
 ---
 

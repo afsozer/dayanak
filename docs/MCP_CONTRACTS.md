@@ -10,7 +10,9 @@ The server exposes two tool profiles to control which MCP tools are registered:
 
 | Profile | Tools | Description |
 |---------|-------|-------------|
+<!-- drift:core-tools-start -->
 | `core` | 14 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `research_topic`, `citation_check`, `prepare_petition`, `export_document`, `read_legal_file`, `list_sources`, `legal_research_guide`, `load_extended_tools`, `health_check`. |
+<!-- drift:core-tools-end -->
 | `full` | 82 | Core + all extended categories + legacy (facade-absorbed) tool names. |
 
 Select via the `EMSAL_TOOL_PROFILE` environment variable:
@@ -28,7 +30,7 @@ Dynamically loads extended tool categories into the running server (core profile
 - `categories: list[str]` — Categories to load.
 
 **Valid categories** (M-105 sonrası):
-
+<!-- drift:categories-start -->
 | Category | Tools |
 |----------|-------|
 | `health_admin` | circuit_breaker_status, source_health, source_smoke |
@@ -39,6 +41,7 @@ Dynamically loads extended tool categories into the running server (core profile
 | `indexing` | index_status |
 | `drafting_advanced` | inspect_petition_pack, build_multi_issue_pack, inspect_multi_issue_pack, list_petition_templates, get_petition_template, build_argument_chain, score_argument, get_argument_strength_report, draft_document, build_input_pack, prepare_drafting_input_pack |
 | `udf_admin` | udf_toolkit_status, udf_authoring_instructions, pdf_toolkit_status, promote_pdf_to_full_text |
+<!-- drift:categories-end -->
 
 **Output**: `dict` — `ok`, `loaded_tools[]`, `already_loaded[]`, `errors[]`, `categories_requested`, `note`.
 
