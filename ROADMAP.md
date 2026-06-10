@@ -3,7 +3,7 @@
 **Mevcut sürüm:** v5.0.0 · **Oluşturulma:** 2026-06-02
 **Durum:** M-01…M-106 tamamlandı (FAZ O kesim tamamlandı, v5.0.0).
 **Sıradaki ufuk:** v5.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
-**Aktif sıradaki:** FAZ O tamamlandı — v5.0.0 released.
+**Aktif sıradaki:** FAZ P — Doküman Drift Koruması (M-107): MCP_CONTRACTS drift testi.
 
 > **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
@@ -554,6 +554,44 @@ full MCP yüzeyi 131 → 82, CLI ~160 → 138, test süresi kısaldı.
 Şüphede kalınan her sınır vakası için kural: **"ajan bunu kendi başına
 çağırmalı mı?" sorusunun cevabı hayırsa MCP'den sök; "bu modül citation-safe
 araştırma→taslak zincirinin parçası mı?" sorusunun cevabı hayırsa sil.**
+
+---
+
+## FAZ P — Doküman Drift Koruması (M-107) 🆕 — Aktif
+
+> **Gerekçe:** FAZ M/N/O'nun üçünde de aynı desen tekrarladı: uygulayıcı model
+> kodu doğru, dokümantasyonu yarım veya **uydurma** teslim etti. Son örnek:
+> `MCP_CONTRACTS.md`'deki profil/kategori tablosu var olmayan kategoriler
+> (`cache_v2`, `semantic_search`...), yanlış core listesi ve var olmayan bir
+> `force` parametresi içeriyordu — bir ajan buna güvenseydi olmayan kategorileri
+> yüklemeye çalışırdı. README için bu sorun M-58 drift testiyle çözülmüştü;
+> aynı sigorta MCP sözleşme dokümanına da lazım.
+
+### M-107 — MCP_CONTRACTS drift testi
+
+- Yeni test: `tests/test_contracts_drift.py` (~30 satır, hermetik, ağ yok).
+  `docs/MCP_CONTRACTS.md`'yi okuyup `src/emsal_mcp/tool_profile.py`'deki
+  gerçeklerle karşılaştırır:
+  1. **Core liste:** "Tool Profiles" tablosundaki 14 araç adı `CORE_TOOLS`
+     ile birebir aynı (sıra önemsiz).
+  2. **Kategori adları:** dokümandaki "Valid categories" tablosunda geçen
+     kategori adları kümesi `CATEGORY_TOOLS.keys()` ile birebir aynı —
+     eksik de fazla da fail.
+  3. **Kategori içerikleri:** her kategori satırındaki araç adları
+     `CATEGORY_TOOLS[cat]` ile birebir aynı.
+  4. **Sayılar:** dokümandaki core/full sayıları (`14`, `82`) gerçek
+     sayımlarla eşleşir (full sayısı `test_tool_surface.py`'deki
+     `_capture_tools("full")` helper'ı yeniden kullanılarak doğrulanabilir;
+     pahalıysa `FULL_TOOL_COUNT_SNAPSHOT` sabitine eşitlik yeterli).
+- Parse yaklaşımı kırılgan olmasın: dokümanda test'in okuduğu bölümler
+  `<!-- drift:core-tools -->` gibi HTML yorum işaretçileriyle çevrelenebilir;
+  işaretçi yoksa tablo başlığından regex ile yakala — ikisinden birini seç,
+  seçimi test docstring'ine yaz.
+- İsteğe bağlı güçlendirme (aynı milestone içinde, ucuzsa):
+  `legal_research_guide` çıktısındaki kategori listesi de `CATEGORY_TOOLS`
+  ile karşılaştırılır (rehber araç da drift'e açık).
+- **Bitti sayılır:** doküman kasten bozulduğunda (kategori adı değiştir,
+  araç ekle/sil) test fail eder; mevcut dokümanla geçer; geçit yeşil.
 
 ---
 
