@@ -5,6 +5,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **FAZ M (Araç Yüzeyi Diyeti):** MCP yüzeyi 119 → 14 araç. Varsayılan core profil, `EMSAL_TOOL_PROFILE=full` ile 119 araç geri gelir.
+  - **M-97:** Tool profile altyapısı — `tool_profile.py`: `CORE_TOOLS` (14 ad), `CATEGORY_TOOLS` (15 kategori), `EXTENDED_TOOLS`, `TOOL_CATEGORY`/`TOOL_PROFILE` eşlemeleri, `get_active_profile()`/`is_tool_active()`/`get_category_summary()`. `EMSAL_TOOL_PROFILE` env değişkeni (`core`/`full`). `server.py`'de `_register_tool` dekoratörü profile-güdümlü filtre ekendi.
+  - **M-98:** 14 araçlık core profil facade'ları — `facades.py`: `search_local_corpus` (4 arama modunu unified), `get_legislation` (document/article_tree/gerekce dispatch), `citation_check` (verify/format/safety dispatch), `prepare_petition` (input_pack/outline/controlled_draft dispatch), `export_document` (docx/udf/pdf/plain/bundle dispatch), `read_legal_file` (udf/pdf dispatch), `list_sources` (capabilities/birim_codes/legislation_types), `legal_research_guide` (saf-metin rehber, topic filtresi), `health_check` (smoke+circuit+index tek dict'te). 9 yeni facade; mevcut araçlar aynen korundu.
+  - **M-99:** `load_extended_tools(categories: list[str]) -> dict` — 15 kategoriden dinamik araç yükleme (`cache_admin`, `release`, `analytics`, `routing`, `health_admin`, `citation_graph`, `dedup`, `watch`, `privacy`, `chambers`, `indexing`, `drafting_advanced`, `udf_admin`, `research_admin`, `query_tools`). Idempotent (aynı kategori iki kez → `already_loaded`). Geçersiz kategori → `build_error` + geçerli liste.
+  - **M-100:** Dokümantasyon senkronu — `README.md` "14 core + 105 extended (toplam 119)" formatı; `docs/COOKBOOK.md` Reçete 10 (core profil + load_extended_tools akışı); `docs/MCP_CONTRACTS.md` profil bilgisi; `scripts/gen_readme_counts.py` core/full ayrımı; `tests/test_readme_drift.py` uyarlaması.
+
 ### Düzeltildi / İyileştirildi (bu oturum)
 - **Cache izolasyonu:** `Cache()` artık `EMSAL_CACHE_PATH` env değişkenine saygı duyuyor (`cache.py` sabit yolu yok sayıyordu). Test suite'ine session-genelinde autouse izolasyon fixture'ı eklendi → testler bir daha kullanıcının gerçek korpusuna (`~/.emsal-mcp/cache.sqlite3`) yazmıyor. Gerçek korpustaki eski `fake_source`/`test` satırları (6 adet) temizlendi.
 - **Yerel Yargıtay derlemi:** `corpus crawl` ile ~20.000 tam metin Yargıtay kararı yerel cache'e indirildi (24 daire, citation-safe). Rate-limiter durumu süreçler arası kalıcı + 429 retry sayesinde sıfır kayıp.

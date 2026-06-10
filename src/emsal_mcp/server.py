@@ -18,6 +18,7 @@ def main() -> None:
     it interactively (stdin is a TTY) or passes --help/--version, it prints a
     short usage note and exits instead of emitting confusing JSON parse errors.
     """
+    import os
     import sys
 
     from . import __version__
@@ -95,7 +96,7 @@ def main() -> None:
         update_indexes as update_indexes_impl,
         get_index_sync_status as get_index_sync_status_impl,
     )
-    from .models import Document
+    from .models import Document, build_error
     from .birim_enum import validate_birim_adi as _validate_birim_adi, list_birim_codes as _list_birim_codes
     from .petition import (
         build_multi_issue_pack as build_multi_issue_pack_impl,
@@ -128,8 +129,8 @@ def main() -> None:
         prepare_docx_export as prepare_docx_export_impl,
         prepare_export_package_bundle as prepare_export_package_bundle_impl,
     )
-    from .research import refresh_research_bundle, research_quality_dashboard, research_topic
-    from .safety import build_input_pack as build_input_pack_impl, citation_check
+    from .research import refresh_research_bundle, research_quality_dashboard, research_topic as research_topic_impl
+    from .safety import build_input_pack as build_input_pack_impl, citation_check as citation_check_impl
     from .sources.registry import capabilities, get_source, smoke_all_sync
     from .udf import (
         convert_docx_to_udf_experimental,
@@ -155,6 +156,320 @@ def main() -> None:
         raise SystemExit("MCP extra kurulu değil. Kurulum: pip install -e .[mcp]") from exc
 
     mcp = FastMCP("emsal-mcp")
+
+    # ── M-97: Tool surface profile infrastructure ──────────────────────────
+    _effective_profile = os.environ.get("EMSAL_TOOL_PROFILE", "core")
+    if _effective_profile not in ("core", "full"):
+        _effective_profile = "core"
+
+    # _TOOL_PROFILES[name] = "core" | "extended"
+    _TOOL_PROFILES: dict[str, str] = {
+        # ── Core (14 tools) ─────────────────────────────────────────────
+        "search_decisions":           "core",
+        "get_document":               "core",
+        "research_topic":             "core",  # M-98: renamed from research_topic_tool
+        # ── Core facades (M-98) ─────────────────────────────────────────
+        "search_local_corpus":        "core",
+        "search_legislation":         "core",
+        "get_legislation":            "core",
+        "citation_check":             "core",
+        "prepare_petition":           "core",
+        "export_document":            "core",
+        "read_legal_file":            "core",
+        "list_sources":               "core",
+        "legal_research_guide":       "core",
+        "load_extended_tools":        "core",
+        "health_check":               "core",
+        # ── Extended: cache_admin ───────────────────────────────────────
+        "search_local_cache":         "extended",
+        "get_cache_stats":            "extended",
+        "list_cached_documents":      "extended",
+        "cache_vacuum":              "extended",
+        "cache_cleanup_orphans":      "extended",
+        "cache_integrity_check":      "extended",
+        "sync_cache":                 "extended",
+        # ── Extended: release ───────────────────────────────────────────
+        "release_smoke":              "extended",
+        "release_dashboard":          "extended",
+        "release_notes_tool":         "extended",
+        "release_archive":            "extended",
+        "release_command_center":     "extended",
+        "version_bump":               "extended",
+        "final_v1_readiness":         "extended",
+        "generate_release_summary":   "extended",
+        # ── Extended: analytics ─────────────────────────────────────────
+        "search_analytics":           "extended",
+        "get_empty_queries":          "extended",
+        "get_top_queries":            "extended",
+        "get_source_coverage":        "extended",
+        # ── Extended: routing ───────────────────────────────────────────
+        "get_capable_sources":        "extended",
+        "route_search":               "extended",
+        "route_get_document":         "extended",
+        # ── Extended: health_admin ──────────────────────────────────────
+        "circuit_breaker_status":     "extended",
+        "source_health":              "extended",
+        "reset_circuit":              "extended",
+        "error_catalog":              "extended",
+        "active_requests_count":      "extended",
+        "source_smoke":               "extended",
+        # ── Extended: citation_graph ────────────────────────────────────
+        "build_citation_graph":       "extended",
+        "get_citation_graph":         "extended",
+        "find_citing_documents":      "extended",
+        "find_cited_documents":       "extended",
+        "citation_graph_stats":       "extended",
+        "export_citation_graph":      "extended",
+        # ── Extended: dedup ─────────────────────────────────────────────
+        "find_duplicates":            "extended",
+        "get_dedup_cluster":          "extended",
+        "dedup_stats":                "extended",
+        "merge_dedup_cluster":        "extended",
+        "find_fuzzy_duplicates":      "extended",
+        "fuzzy_dedup_stats":          "extended",
+        # ── Extended: watch ─────────────────────────────────────────────
+        "watch_add":                  "extended",
+        "watch_list":                 "extended",
+        "watch_run":                  "extended",
+        "watch_remove":               "extended",
+        # ── Extended: privacy ───────────────────────────────────────────
+        "privacy_scan":               "extended",
+        "privacy_redact":             "extended",
+        "privacy_audit":              "extended",
+        # ── Extended: chambers ──────────────────────────────────────────
+        "chamber_overview":           "extended",
+        "profile_chamber":            "extended",
+        "chamber_timeline":           "extended",
+        "find_similar_chambers":      "extended",
+        # ── Extended: indexing ──────────────────────────────────────────
+        "build_semantic_index":       "extended",
+        "semantic_search":            "extended",
+        "hybrid_search":              "extended",
+        "hybrid_search_rrf":          "extended",
+        "index_status":               "extended",
+        "rebuild_search_index":       "extended",
+        "build_embedding_index":      "extended",
+        "embedding_search":           "extended",
+        "embedding_index_status":     "extended",
+        "list_embedding_providers":   "extended",
+        "update_indexes":             "extended",
+        "index_sync_status":          "extended",
+        # ── Extended: drafting_advanced ─────────────────────────────────
+        "build_input_pack":           "extended",
+        "draft_document":             "extended",
+        "export_bundle":              "extended",
+        "prepare_drafting_input_pack":"extended",
+        "inspect_petition_pack":      "extended",
+        "prepare_petition_outline":   "extended",
+        "prepare_controlled_petition_draft": "extended",
+        "build_multi_issue_pack":     "extended",
+        "inspect_multi_issue_pack":   "extended",
+        "list_petition_templates":    "extended",
+        "get_petition_template":      "extended",
+        "render_template_skeleton":   "extended",
+        "diff_drafts":                "extended",
+        "track_placeholders":         "extended",
+        "get_fill_report":            "extended",
+        "save_draft_version":         "extended",
+        "build_argument_chain":       "extended",
+        "score_argument":             "extended",
+        "get_argument_strength_report":"extended",
+        # ── Extended: legislation ──────────────────────────────────────
+        "get_legislation_document":   "extended",
+        "search_legislation_articles":"extended",
+        "get_legislation_article_tree":"extended",
+        "get_legislation_gerekce":    "extended",
+        "legislation_source_status":  "extended",
+        "format_legislation_citation":"extended",
+        "get_legislation_types":      "extended",
+        # ── Extended: citation ──────────────────────────────────────────
+        "citation_safety":            "extended",
+        "format_legal_citation":      "extended",
+        "verify_legal_citation":      "extended",
+        # ── Extended: udf_admin ─────────────────────────────────────────
+        "read_udf":                   "extended",
+        "write_udf":                  "extended",
+        "udf_toolkit_status":         "extended",
+        "install_udf_toolkit_tool":   "extended",
+        "udf_authoring_instructions":  "extended",
+        "convert_udf_to_docx_tool":   "extended",
+        "convert_udf_to_pdf_tool":    "extended",
+        "convert_docx_to_udf_experimental_tool": "extended",
+        "extract_pdf_text":           "extended",
+        "pdf_toolkit_status":         "extended",
+        "promote_pdf_to_full_text":   "extended",
+        # ── Extended: export ────────────────────────────────────────────
+        "prepare_docx_export":        "extended",
+        "prepare_export_package_bundle":"extended",
+        "export_plain_text":          "extended",
+        "export_to_format":           "extended",
+        "get_export_capabilities":    "extended",
+        # ── Extended: discovery ─────────────────────────────────────────
+        "source_capabilities":        "extended",
+        "list_birim_codes":           "extended",
+        # ── Extended: research_admin ────────────────────────────────────
+        "research_topic_tool":         "extended",
+        "refresh_research_bundle_tool":"extended",
+        "research_quality_dashboard_tool":"extended",
+        "run_evaluation":             "extended",
+        # ── Extended: query_tools ───────────────────────────────────────
+        "normalize_law_ref":          "extended",
+        "expand_query_terms":         "extended",
+        "extract_query_filters":      "extended",
+    }
+
+    _TOOL_CATEGORIES: dict[str, str] = {
+        "search_decisions":             "search",
+        "get_document":                 "search",
+        "search_local_corpus":          "search",
+        "search_legislation":           "legislation",
+        "get_legislation":              "legislation",
+        "research_topic":               "research",
+        "research_topic_tool":          "research",
+        "citation_check":               "citation",
+        "prepare_petition":             "petition",
+        "export_document":              "export",
+        "read_legal_file":              "file_io",
+        "list_sources":                 "discovery",
+        "legal_research_guide":         "guide",
+        "load_extended_tools":          "admin",
+        "health_check":                 "admin",
+        # Extended categories
+        "search_local_cache":           "cache_admin",
+        "get_cache_stats":              "cache_admin",
+        "list_cached_documents":        "cache_admin",
+        "cache_vacuum":                "cache_admin",
+        "cache_cleanup_orphans":        "cache_admin",
+        "cache_integrity_check":        "cache_admin",
+        "sync_cache":                   "cache_admin",
+        "release_smoke":                "release",
+        "release_dashboard":            "release",
+        "release_notes_tool":           "release",
+        "release_archive":              "release",
+        "release_command_center":       "release",
+        "version_bump":                 "release",
+        "final_v1_readiness":           "release",
+        "generate_release_summary":     "release",
+        "search_analytics":             "analytics",
+        "get_empty_queries":            "analytics",
+        "get_top_queries":              "analytics",
+        "get_source_coverage":          "analytics",
+        "get_capable_sources":          "routing",
+        "route_search":                 "routing",
+        "route_get_document":           "routing",
+        "circuit_breaker_status":       "health_admin",
+        "source_health":                "health_admin",
+        "reset_circuit":                "health_admin",
+        "error_catalog":                "health_admin",
+        "active_requests_count":        "health_admin",
+        "source_smoke":                 "health_admin",
+        "build_citation_graph":         "citation_graph",
+        "get_citation_graph":           "citation_graph",
+        "find_citing_documents":        "citation_graph",
+        "find_cited_documents":         "citation_graph",
+        "citation_graph_stats":         "citation_graph",
+        "export_citation_graph":        "citation_graph",
+        "find_duplicates":              "dedup",
+        "get_dedup_cluster":            "dedup",
+        "dedup_stats":                  "dedup",
+        "merge_dedup_cluster":          "dedup",
+        "find_fuzzy_duplicates":        "dedup",
+        "fuzzy_dedup_stats":            "dedup",
+        "watch_add":                    "watch",
+        "watch_list":                   "watch",
+        "watch_run":                    "watch",
+        "watch_remove":                 "watch",
+        "privacy_scan":                 "privacy",
+        "privacy_redact":               "privacy",
+        "privacy_audit":                "privacy",
+        "chamber_overview":             "chambers",
+        "profile_chamber":              "chambers",
+        "chamber_timeline":             "chambers",
+        "find_similar_chambers":        "chambers",
+        "build_semantic_index":         "indexing",
+        "semantic_search":              "indexing",
+        "hybrid_search":                "indexing",
+        "hybrid_search_rrf":            "indexing",
+        "index_status":                 "indexing",
+        "rebuild_search_index":         "indexing",
+        "build_embedding_index":        "indexing",
+        "embedding_search":             "indexing",
+        "embedding_index_status":       "indexing",
+        "list_embedding_providers":     "indexing",
+        "update_indexes":               "indexing",
+        "index_sync_status":            "indexing",
+        "build_input_pack":             "drafting_advanced",
+        "draft_document":               "drafting_advanced",
+        "export_bundle":               "drafting_advanced",
+        "prepare_drafting_input_pack":  "drafting_advanced",
+        "inspect_petition_pack":        "drafting_advanced",
+        "prepare_petition_outline":     "drafting_advanced",
+        "prepare_controlled_petition_draft": "drafting_advanced",
+        "build_multi_issue_pack":       "drafting_advanced",
+        "inspect_multi_issue_pack":     "drafting_advanced",
+        "list_petition_templates":      "drafting_advanced",
+        "get_petition_template":        "drafting_advanced",
+        "render_template_skeleton":     "drafting_advanced",
+        "diff_drafts":                  "drafting_advanced",
+        "track_placeholders":           "drafting_advanced",
+        "get_fill_report":              "drafting_advanced",
+        "save_draft_version":           "drafting_advanced",
+        "build_argument_chain":         "drafting_advanced",
+        "score_argument":               "drafting_advanced",
+        "get_argument_strength_report": "drafting_advanced",
+        "get_legislation_document":     "legislation",
+        "search_legislation_articles":  "legislation",
+        "get_legislation_article_tree": "legislation",
+        "get_legislation_gerekce":      "legislation",
+        "legislation_source_status":    "legislation",
+        "format_legislation_citation":  "legislation",
+        "get_legislation_types":        "legislation",
+        "citation_safety":              "citation",
+        "format_legal_citation":        "citation",
+        "verify_legal_citation":        "citation",
+        "read_udf":                     "udf_admin",
+        "write_udf":                    "udf_admin",
+        "udf_toolkit_status":           "udf_admin",
+        "install_udf_toolkit_tool":     "udf_admin",
+        "udf_authoring_instructions":   "udf_admin",
+        "convert_udf_to_docx_tool":     "udf_admin",
+        "convert_udf_to_pdf_tool":      "udf_admin",
+        "convert_docx_to_udf_experimental_tool": "udf_admin",
+        "extract_pdf_text":             "udf_admin",
+        "pdf_toolkit_status":           "udf_admin",
+        "promote_pdf_to_full_text":     "udf_admin",
+        "prepare_docx_export":          "export",
+        "prepare_export_package_bundle":"export",
+        "export_plain_text":            "export",
+        "export_to_format":             "export",
+        "get_export_capabilities":      "export",
+        "source_capabilities":          "discovery",
+        "list_birim_codes":             "discovery",
+        "refresh_research_bundle_tool": "research_admin",
+        "research_quality_dashboard_tool":"research_admin",
+        "run_evaluation":               "research_admin",
+        "normalize_law_ref":            "query_tools",
+        "expand_query_terms":           "query_tools",
+        "extract_query_filters":        "query_tools",
+    }
+
+    # Extended tool functions collected for dynamic loading (M-99)
+    _EXTENDED_TOOLS: dict[str, Any] = {}
+
+    def _tool(fn):
+        """Decorator: conditionally register an MCP tool based on EMSAL_TOOL_PROFILE.
+
+        In 'core' profile (default), only tools with profile='core' are registered.
+        In 'full' profile, all tools are registered.
+        Extended tools are collected in _EXTENDED_TOOLS for dynamic loading (M-99).
+        """
+        name = fn.__name__
+        profile = _TOOL_PROFILES.get(name, "extended")
+        if _effective_profile == "full" or profile == "core":
+            return mcp.tool()(fn)
+        else:
+            _EXTENDED_TOOLS[name] = fn
+            return fn
 
     def _attach_corpus_hint(result: dict) -> dict:
         """Runtime safety net: steer the model back to live search_decisions.
@@ -195,7 +510,7 @@ def main() -> None:
                 result["cache_document_count"] = corpus
         return result
 
-    @mcp.tool()
+    @_tool
     @validate_tool_input(query=validate_non_empty, limit=validate_positive_int)
     async def search_decisions(
         source: str,
@@ -316,7 +631,7 @@ def main() -> None:
         cache.close()
         return results
 
-    @mcp.tool()
+    @_tool
     @validate_tool_input(document_id=validate_non_empty)
     async def get_document(source: str, document_id: str) -> dict:
         """Fetch a single document by ID from the given source.
@@ -341,12 +656,12 @@ def main() -> None:
         cache.close()
         return doc.model_dump(mode="json")
 
-    @mcp.tool()
+    @_tool
     def source_capabilities() -> list[dict]:
         """Return capability matrix for all registered sources."""
         return capabilities()
 
-    @mcp.tool()
+    @_tool
     def list_birim_codes(court: str | None = None) -> list[dict]:
         """Return the 79 validated birimAdi (chamber/unit) codes.
 
@@ -365,7 +680,7 @@ def main() -> None:
         """
         return _list_birim_codes(court=court)
 
-    @mcp.tool()
+    @_tool
     def source_smoke(online: bool = False) -> dict:
         """Run per-source smoke tests. Offline by default, online opt-in."""
         results = smoke_all_sync(online=online)
@@ -376,7 +691,7 @@ def main() -> None:
             "sources": results,
         }
 
-    @mcp.tool()
+    @_tool
     @validate_tool_input(document=validate_is_dict_with_keys("document_id", "source"))
     def citation_safety(document: dict) -> dict:
         """Check citation safety of a document.
@@ -390,9 +705,9 @@ def main() -> None:
         Returns:
             Dict with ok, quoteUsable, draftUsable, reasons, safety_state.
         """
-        return citation_check(Document.model_validate(document)).model_dump(mode="json")
+        return citation_check_impl(Document.model_validate(document)).model_dump(mode="json")
 
-    @mcp.tool()
+    @_tool
     @validate_tool_input(matter=validate_non_empty, issue=validate_non_empty)
     def build_input_pack(matter: str, issue: str, documents: list[dict]) -> dict:
         """Build a citation-safe input pack for petition drafting.
@@ -410,29 +725,29 @@ def main() -> None:
         docs = [Document.model_validate(d) for d in documents]
         return build_input_pack_impl(matter, issue, docs).model_dump(mode="json")
 
-    @mcp.tool()
+    @_tool
     def draft_document(title: str, body: str, documents: list[dict]) -> dict:
         docs = [Document.model_validate(d) for d in documents]
         return {"markdown": controlled_draft(title, body, docs)}
 
-    @mcp.tool()
+    @_tool
     def export_bundle(out_dir: str, matter: str, issue: str, documents: list[dict]) -> dict:
         return export_bundle_impl(out_dir, matter=matter, issue=issue, docs=[Document.model_validate(d) for d in documents])
 
-    @mcp.tool()
+    @_tool
     def read_udf(path: str) -> dict:
         return {"text": read_udf_impl(path), "probe": probe_udf(path)}
 
-    @mcp.tool()
+    @_tool
     def write_udf(text: str, out_path: str, title_centered: bool = False) -> dict:
         return {"out_path": str(write_udf_impl(text, out_path, title_centered=title_centered)), "warning": "UYAP Doküman Editörü ile manuel doğrulama gerekir."}
 
-    @mcp.tool()
+    @_tool
     def udf_toolkit_status() -> dict:
         """Check UDF toolkit (LibreOffice/unoconv) availability."""
         return get_udf_toolkit_status()
 
-    @mcp.tool()
+    @_tool
     def install_udf_toolkit_tool(
         target_dir: str | None = None,
         repo_url: str = "https://github.com/saidsurucu/UDF-Toolkit.git",
@@ -441,7 +756,7 @@ def main() -> None:
         """Install or update the managed UDF-Toolkit clone used by converters."""
         return install_udf_toolkit(target_dir, repo_url=repo_url, update=update)
 
-    @mcp.tool()
+    @_tool
     def udf_authoring_instructions(format: str = "json") -> dict:
         """Return UDF authoring instructions and warnings.
 
@@ -450,7 +765,7 @@ def main() -> None:
         """
         return get_udf_authoring_instructions(format=format)
 
-    @mcp.tool()
+    @_tool
     def convert_udf_to_docx_tool(file_path: str, out_path: str | None = None) -> dict:
         """Convert UDF to DOCX using LibreOffice (requires toolkit).
 
@@ -458,7 +773,7 @@ def main() -> None:
         """
         return convert_udf_to_docx(file_path, out_path)
 
-    @mcp.tool()
+    @_tool
     def convert_udf_to_pdf_tool(file_path: str, out_path: str | None = None) -> dict:
         """Convert UDF to PDF using LibreOffice (requires toolkit).
 
@@ -466,7 +781,7 @@ def main() -> None:
         """
         return convert_udf_to_pdf(file_path, out_path)
 
-    @mcp.tool()
+    @_tool
     def convert_docx_to_udf_experimental_tool(
         file_path: str, out_path: str | None = None, experimental: bool = False,
     ) -> dict:
@@ -476,25 +791,25 @@ def main() -> None:
         """
         return convert_docx_to_udf_experimental(file_path, out_path, experimental=experimental)
 
-    @mcp.tool()
+    @_tool
     def release_smoke() -> dict:
         return release_smoke_result()
 
-    @mcp.tool()
+    @_tool
     def release_dashboard() -> dict:
         return readiness_dashboard()
 
-    @mcp.tool()
+    @_tool
     def release_notes_tool() -> dict:
         return {"markdown": release_notes()}
 
-    @mcp.tool()
+    @_tool
     def release_archive(out_dir: str) -> dict:
         return archive_release(out_dir)
 
     # ── Cache v2 MCP tools ────────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def search_local_cache(
         query: str = "",
         source: str | None = None,
@@ -540,7 +855,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def get_cache_stats() -> dict:
         """Return cache statistics: document counts, sources, DB size."""
         cache = Cache()
@@ -549,7 +864,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def list_cached_documents(
         source: str | None = None,
         limit: int = 50,
@@ -562,7 +877,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def cache_vacuum() -> dict:
         """Run VACUUM to reclaim space and defragment the cache database.
 
@@ -574,7 +889,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def cache_cleanup_orphans() -> dict:
         """Remove orphan rows from search_vectors and documents_v2_fts.
 
@@ -589,7 +904,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def cache_integrity_check() -> dict:
         """Run comprehensive integrity checks on the cache database.
 
@@ -604,7 +919,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def sync_cache(other_db_path: str) -> dict:
         """Sync documents from another cache database (multi-machine merge).
 
@@ -627,7 +942,7 @@ def main() -> None:
 
     # ── Research v0.5 MCP tools ────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def research_topic_tool(
         query: str,
         sources: list[str] | None = None,
@@ -641,7 +956,7 @@ def main() -> None:
         content_status_summary, citation_safe_count, generated_files, warnings,
         and recommended_next_steps.
         """
-        return research_topic(
+        return research_topic_impl(
             query=query,
             sources=sources,
             fetch_count=fetch_count,
@@ -649,7 +964,7 @@ def main() -> None:
             output_dir=output_dir,
         )
 
-    @mcp.tool()
+    @_tool
     def refresh_research_bundle_tool(
         bundle_path: str,
         dry_run: bool = False,
@@ -661,7 +976,7 @@ def main() -> None:
         """
         return refresh_research_bundle(bundle_path, dry_run=dry_run)
 
-    @mcp.tool()
+    @_tool
     def research_quality_dashboard_tool(
         bundle_path: str,
     ) -> dict:
@@ -675,7 +990,7 @@ def main() -> None:
 
     # ── Citation v0.6 MCP tools ──────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def format_legal_citation(
         source: dict | None = None,
         document_id: str | None = None,
@@ -697,7 +1012,7 @@ def main() -> None:
             style=style,  # type: ignore[arg-type]
         )
 
-    @mcp.tool()
+    @_tool
     def verify_legal_citation(
         text: str | None = None,
         file_path: str | None = None,
@@ -740,7 +1055,7 @@ def main() -> None:
 
     # ── Petition Pack v0.7 MCP tools ────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def prepare_drafting_input_pack(
         matter: str,
         issue: str,
@@ -782,7 +1097,7 @@ def main() -> None:
             template_name=template_name,
         )
 
-    @mcp.tool()
+    @_tool
     def inspect_petition_pack(pack_dir: str) -> dict:
         """Inspect and validate a petition pack directory.
 
@@ -800,7 +1115,7 @@ def main() -> None:
 
     # ── Petition v0.8 MCP tools ──────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def prepare_petition_outline(
         pack_dir: str,
         out_dir: str | None = None,
@@ -822,7 +1137,7 @@ def main() -> None:
         """
         return prepare_petition_outline_impl(pack_dir=pack_dir, out_dir=out_dir)
 
-    @mcp.tool()
+    @_tool
     def prepare_controlled_petition_draft(
         pack_dir: str,
         outline_path: str | None = None,
@@ -849,7 +1164,7 @@ def main() -> None:
 
     # ── Multi-Issue Petition Pack MCP tools (M-13) ──────────────────────
 
-    @mcp.tool()
+    @_tool
     def build_multi_issue_pack(
         matter: str,
         issues_json: str,
@@ -884,7 +1199,7 @@ def main() -> None:
             out_dir=out_dir,
         )
 
-    @mcp.tool()
+    @_tool
     def inspect_multi_issue_pack(pack_dir: str) -> dict:
         """Inspect and validate a multi-issue petition pack directory.
 
@@ -900,7 +1215,7 @@ def main() -> None:
         """
         return inspect_multi_issue_pack_impl(pack_dir)
 
-    @mcp.tool()
+    @_tool
     def prepare_docx_export(
         draft_path: str | None = None,
         draft_json: dict | None = None,
@@ -928,7 +1243,7 @@ def main() -> None:
             pack_dir=pack_dir,
         )
 
-    @mcp.tool()
+    @_tool
     def prepare_export_package_bundle(
         pack_dir: str,
         draft_dir: str | None = None,
@@ -958,7 +1273,7 @@ def main() -> None:
 
     # ── Export Format Expansion MCP tools (M-15) ─────────────────────────
 
-    @mcp.tool()
+    @_tool
     def export_plain_text(draft_path: str, out_path: str | None = None) -> dict:
         """Export a draft.md to plain-text format.
 
@@ -976,7 +1291,7 @@ def main() -> None:
         """
         return export_plain_text_impl(draft_path=draft_path, out_path=out_path)
 
-    @mcp.tool()
+    @_tool
     def export_to_format(
         draft_path: str,
         format: str = "docx",
@@ -1013,7 +1328,7 @@ def main() -> None:
             experimental=experimental,
         )
 
-    @mcp.tool()
+    @_tool
     def get_export_capabilities() -> dict:
         """Report which export formats are currently available.
 
@@ -1027,7 +1342,7 @@ def main() -> None:
 
     # ── Petition Template Library MCP tools (M-11) ─────────────────────────
 
-    @mcp.tool()
+    @_tool
     def list_petition_templates() -> list[dict]:
         """List all available petition templates.
 
@@ -1036,7 +1351,7 @@ def main() -> None:
         """
         return list_templates_impl()
 
-    @mcp.tool()
+    @_tool
     def get_petition_template(name: str) -> dict:
         """Get a specific petition template by name.
 
@@ -1048,7 +1363,7 @@ def main() -> None:
         """
         return get_template_impl(name)
 
-    @mcp.tool()
+    @_tool
     def render_template_skeleton(name: str) -> dict:
         """Render a petition template as a draft-skeleton.md compatible markdown.
 
@@ -1066,7 +1381,7 @@ def main() -> None:
 
     # ── Draft Diff & Versioning MCP tools (M-14) ──────────────────────────
 
-    @mcp.tool()
+    @_tool
     def diff_drafts(draft_a: str, draft_b: str) -> dict:
         """Compare two draft files and report changes.
 
@@ -1083,7 +1398,7 @@ def main() -> None:
         """
         return diff_drafts_impl(draft_a, draft_b)
 
-    @mcp.tool()
+    @_tool
     def track_placeholders(draft_path: str) -> dict:
         """Analyze a draft for placeholder fill status.
 
@@ -1099,7 +1414,7 @@ def main() -> None:
         """
         return track_placeholders_impl(draft_path)
 
-    @mcp.tool()
+    @_tool
     def get_fill_report(draft_path: str, pack_dir: str | None = None) -> dict:
         """Generate a fill report for a draft.
 
@@ -1116,7 +1431,7 @@ def main() -> None:
         """
         return get_fill_report_impl(draft_path, pack_dir=pack_dir)
 
-    @mcp.tool()
+    @_tool
     def save_draft_version(draft_dir: str, version_label: str | None = None) -> dict:
         """Save a snapshot of current draft state for later diff.
 
@@ -1134,7 +1449,7 @@ def main() -> None:
 
     # ── Argument Builder v0.12 MCP tools ──────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def build_argument_chain(pack_dir: str) -> dict:
         """Build structured argument chains from a petition pack.
 
@@ -1155,7 +1470,7 @@ def main() -> None:
         """
         return build_argument_chain_impl(pack_dir=pack_dir)
 
-    @mcp.tool()
+    @_tool
     def score_argument(
         claim_text: str,
         document_json: dict | None = None,
@@ -1181,7 +1496,7 @@ def main() -> None:
             authorities=authorities,
         )
 
-    @mcp.tool()
+    @_tool
     def get_argument_strength_report(pack_dir: str) -> dict:
         """Generate overall argument strength report for a petition pack.
 
@@ -1200,24 +1515,37 @@ def main() -> None:
 
     # ── Legislation v0.10 MCP tools ──────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def search_legislation(
         query: str,
         sources: list[str] | None = None,
         legislation_type: str | None = None,
         limit: int = 10,
+        scope: str = "law",
+        document_id: str | None = None,
     ) -> dict:
         """Search legislation via the Mevzuat source.
 
         Args:
             query: Search phrase.
             sources: Source IDs (default: ["mevzuat"]).
-            legislation_type: Filter by type (e.g. "Kanun", "Yönetmelik").
+            legislation_type: Filter by type (e.g. "Kanun", "YÃ¶netmelik").
             limit: Max results.
+            scope: 'law' (default) searches legislation documents;
+                   'article' searches individual articles within documents
+                   (delegates to search_legislation_articles).
+            document_id: Required when scope='article'. The mevzuat
+                document ID to search articles within.
 
         Returns:
             Dict with ok, query, results, total_results, warnings, etc.
         """
+        if scope == "article":
+            return search_legislation_articles_impl(
+                document_id=document_id or "",
+                article_query=query,
+                source=sources[0] if sources else None,
+            )
         return search_legislation_impl(
             query=query,
             sources=sources,
@@ -1225,7 +1553,7 @@ def main() -> None:
             limit=limit,
         )
 
-    @mcp.tool()
+    @_tool
     def get_legislation_document(
         document_id: str,
         source: str | None = None,
@@ -1244,7 +1572,7 @@ def main() -> None:
             source=source,
         )
 
-    @mcp.tool()
+    @_tool
     def search_legislation_articles(
         document_id: str,
         article_number: str | None = None,
@@ -1269,7 +1597,7 @@ def main() -> None:
             source=source,
         )
 
-    @mcp.tool()
+    @_tool
     def get_legislation_article_tree(
         document_id: str,
         source: str | None = None,
@@ -1288,7 +1616,7 @@ def main() -> None:
             source=source,
         )
 
-    @mcp.tool()
+    @_tool
     def get_legislation_gerekce(
         document_id: str,
         source: str | None = None,
@@ -1307,7 +1635,7 @@ def main() -> None:
             source=source,
         )
 
-    @mcp.tool()
+    @_tool
     def legislation_source_status() -> dict:
         """Check Mevzuat source health via smoke tests.
 
@@ -1316,7 +1644,7 @@ def main() -> None:
         """
         return get_legislation_source_status_impl()
 
-    @mcp.tool()
+    @_tool
     def format_legislation_citation(
         document: dict | None = None,
         style: str = "full",
@@ -1335,7 +1663,7 @@ def main() -> None:
             style=style,  # type: ignore[arg-type]
         )
 
-    @mcp.tool()
+    @_tool
     def get_legislation_types() -> list[dict]:
         """Return known Turkish legislation types.
 
@@ -1346,7 +1674,7 @@ def main() -> None:
 
     # ── Semantic v0.11 MCP tools ──────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def build_semantic_index(
         force_rebuild: bool = False,
     ) -> dict:
@@ -1363,7 +1691,7 @@ def main() -> None:
         """
         return build_semantic_index_impl(force_rebuild=force_rebuild)
 
-    @mcp.tool()
+    @_tool
     def semantic_search(
         query: str,
         limit: int = 10,
@@ -1401,7 +1729,7 @@ def main() -> None:
             query=query, limit=limit, filters=filters,
         ))
 
-    @mcp.tool()
+    @_tool
     @validate_tool_input(limit=validate_positive_int, hybrid_weight=validate_range(0.0, 1.0))
     def hybrid_search(
         query: str,
@@ -1458,7 +1786,7 @@ def main() -> None:
             rerank=rerank,
         ))
 
-    @mcp.tool()
+    @_tool
     def index_status() -> dict:
         """Check FTS5 + TF-IDF index health and statistics.
 
@@ -1468,7 +1796,7 @@ def main() -> None:
         """
         return get_index_status_impl()
 
-    @mcp.tool()
+    @_tool
     def rebuild_search_index() -> dict:
         """Force rebuild of FTS5 and TF-IDF search indices.
 
@@ -1481,7 +1809,7 @@ def main() -> None:
 
     # ── Dense Embedding v2.1 MCP tools (M-24) ──────────────────────────
 
-    @mcp.tool()
+    @_tool
     def build_embedding_index(
         provider: str | None = None,
         force_rebuild: bool = False,
@@ -1503,7 +1831,7 @@ def main() -> None:
 
         return _build_emb(provider=provider, force_rebuild=force_rebuild)
 
-    @mcp.tool()
+    @_tool
     def embedding_search(
         query: str,
         limit: int = 10,
@@ -1536,7 +1864,7 @@ def main() -> None:
 
         return _attach_corpus_hint(_emb_search(query=query, limit=limit, provider=provider))
 
-    @mcp.tool()
+    @_tool
     def embedding_index_status() -> dict:
         """Check dense embedding index status.
 
@@ -1549,7 +1877,7 @@ def main() -> None:
 
         return _emb_status()
 
-    @mcp.tool()
+    @_tool
     def list_embedding_providers() -> list[dict]:
         """List available embedding providers and their status.
 
@@ -1561,7 +1889,7 @@ def main() -> None:
 
         return _list_emb()
 
-    @mcp.tool()
+    @_tool
     def update_indexes(provider: str | None = None) -> dict:
         """Incrementally update both TF-IDF and dense indexes.
 
@@ -1577,7 +1905,7 @@ def main() -> None:
         """
         return update_indexes_impl(provider=provider)
 
-    @mcp.tool()
+    @_tool
     def index_sync_status() -> dict:
         """Report how many documents are out of sync with indexes.
 
@@ -1592,7 +1920,7 @@ def main() -> None:
 
     # ── Chamber Profiling v0.12 MCP tools ──────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def chamber_overview(
         court: str | None = None,
     ) -> dict:
@@ -1609,7 +1937,7 @@ def main() -> None:
         """
         return get_chamber_overview_impl(court=court)
 
-    @mcp.tool()
+    @_tool
     def profile_chamber(
         chamber: str,
         court: str | None = None,
@@ -1628,7 +1956,7 @@ def main() -> None:
         """
         return profile_chamber_impl(chamber=chamber, court=court)
 
-    @mcp.tool()
+    @_tool
     def chamber_timeline(
         chamber: str | None = None,
         court: str | None = None,
@@ -1651,7 +1979,7 @@ def main() -> None:
             start_year=start_year, end_year=end_year,
         )
 
-    @mcp.tool()
+    @_tool
     def find_similar_chambers(
         chamber: str,
         court: str | None = None,
@@ -1676,7 +2004,7 @@ def main() -> None:
 
     # ── Citation Graph v0.14 MCP tools ────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def build_citation_graph(limit_docs: int = 100) -> dict:
         """Build citation graph from cached documents.
 
@@ -1693,7 +2021,7 @@ def main() -> None:
         """
         return build_citation_graph_impl(limit_docs=limit_docs)
 
-    @mcp.tool()
+    @_tool
     def get_citation_graph(
         document_id: str,
         source: str,
@@ -1719,7 +2047,7 @@ def main() -> None:
             max_depth=max_depth,
         )
 
-    @mcp.tool()
+    @_tool
     def find_citing_documents(
         document_id: str,
         source: str,
@@ -1741,7 +2069,7 @@ def main() -> None:
             limit=limit,
         )
 
-    @mcp.tool()
+    @_tool
     def find_cited_documents(
         document_id: str,
         source: str,
@@ -1763,7 +2091,7 @@ def main() -> None:
             limit=limit,
         )
 
-    @mcp.tool()
+    @_tool
     def citation_graph_stats() -> dict:
         """Get citation graph statistics.
 
@@ -1773,7 +2101,7 @@ def main() -> None:
         """
         return get_citation_graph_stats_impl()
 
-    @mcp.tool()
+    @_tool
     def export_citation_graph(
         format: str = "json",
         document_id: str | None = None,
@@ -1801,7 +2129,7 @@ def main() -> None:
 
     # ── Dedup v0.15 MCP tools ─────────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def find_duplicates(dry_run: bool = False) -> dict:
         """Find duplicate documents across sources (same court+esas_no+karar_no).
 
@@ -1822,7 +2150,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def get_dedup_cluster(document_id: str, source: str) -> dict:
         """Find which dedup cluster a document belongs to.
 
@@ -1840,7 +2168,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def dedup_stats() -> dict:
         """Get deduplication statistics.
 
@@ -1855,7 +2183,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def merge_dedup_cluster(cluster_id: str) -> dict:
         """Merge a dedup cluster: enrich canonical record with alt source URLs.
 
@@ -1875,7 +2203,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def find_fuzzy_duplicates(
         provider: str | None = None,
         threshold: float = 0.85,
@@ -1905,7 +2233,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def fuzzy_dedup_stats() -> dict:
         """Report fuzzy dedup readiness.
 
@@ -1923,7 +2251,7 @@ def main() -> None:
 
     # ── Release v0.13 MCP tools ──────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def release_command_center() -> dict:
         """Comprehensive release verification running ALL checks.
 
@@ -1937,7 +2265,7 @@ def main() -> None:
         """
         return release_command_center_impl()
 
-    @mcp.tool()
+    @_tool
     def version_bump(
         major: bool = False,
         minor: bool = False,
@@ -1955,7 +2283,7 @@ def main() -> None:
         """
         return version_bump_impl(major=major, minor=minor, patch=patch)
 
-    @mcp.tool()
+    @_tool
     def final_v1_readiness() -> dict:
         """Final v1.0.0 readiness gate.
 
@@ -1967,7 +2295,7 @@ def main() -> None:
         """
         return final_v1_readiness_impl()
 
-    @mcp.tool()
+    @_tool
     def generate_release_summary() -> dict:
         """Generate a human-readable release summary.
 
@@ -1981,7 +2309,7 @@ def main() -> None:
 
     # ── Search Analytics v0.16 MCP tools ────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def search_analytics(days: int = 30) -> dict:
         """Comprehensive search analytics: success rate, empty queries, source distribution, cache hit ratio.
 
@@ -2003,7 +2331,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def get_empty_queries(limit: int = 20) -> dict:
         """List queries that returned 0 results.
 
@@ -2021,7 +2349,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def get_top_queries(limit: int = 20) -> dict:
         """Most frequent queries.
 
@@ -2039,7 +2367,7 @@ def main() -> None:
         finally:
             cache.close()
 
-    @mcp.tool()
+    @_tool
     def get_source_coverage() -> dict:
         """Source coverage: doc counts and full_text percentage.
 
@@ -2056,7 +2384,7 @@ def main() -> None:
 
     # ── Capability Router MCP tools (M-19) ──────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def get_capable_sources(capability: str) -> list[str]:
         """Get list of source_ids that support a given capability.
 
@@ -2071,7 +2399,7 @@ def main() -> None:
 
         return get_capable_sources_impl(capability)
 
-    @mcp.tool()
+    @_tool
     def route_search(
         query: str,
         required_capabilities: list[str] | None = None,
@@ -2102,7 +2430,7 @@ def main() -> None:
             exclude_sources=exclude_sources,
         )
 
-    @mcp.tool()
+    @_tool
     def route_get_document(
         document_id: str,
         required_capabilities: list[str] | None = None,
@@ -2130,7 +2458,7 @@ def main() -> None:
 
     # ── Circuit Breaker MCP tools (M-17) ──────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def circuit_breaker_status(source: str | None = None) -> dict:
         """Check circuit breaker status for one or all sources.
 
@@ -2147,7 +2475,7 @@ def main() -> None:
             return get_source_health_impl(source)
         return get_all_sources_health_impl()
 
-    @mcp.tool()
+    @_tool
     def source_health(source: str | None = None) -> dict:
         """Get source health metrics (uptime, failure counts, circuit state).
 
@@ -2164,7 +2492,7 @@ def main() -> None:
             return get_source_health_impl(source)
         return get_all_sources_health_impl()
 
-    @mcp.tool()
+    @_tool
     def reset_circuit(source: str) -> dict:
         """Manually reset a circuit breaker to CLOSED state.
 
@@ -2180,7 +2508,7 @@ def main() -> None:
 
     # ── Server Hardening MCP tools (M-22) ───────────────────────────
 
-    @mcp.tool()
+    @_tool
     def error_catalog() -> dict:
         """Return all known error codes used in build_error() calls.
 
@@ -2192,7 +2520,7 @@ def main() -> None:
         catalog = get_error_codes()
         return {"ok": True, **catalog}
 
-    @mcp.tool()
+    @_tool
     def active_requests_count() -> dict:
         """Return the number of currently active MCP tool requests.
 
@@ -2209,7 +2537,7 @@ def main() -> None:
 
     # ── PDF Extraction MCP tools (M-27) ──────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def extract_pdf_text(file_path: str, ocr_enabled: bool = False) -> dict:
         """Extract text layer from a PDF file.
 
@@ -2225,7 +2553,7 @@ def main() -> None:
         """
         return extract_pdf_text_impl(file_path, ocr_enabled=ocr_enabled)
 
-    @mcp.tool()
+    @_tool
     def pdf_toolkit_status() -> dict:
         """Check PDF extraction toolkit availability.
 
@@ -2237,7 +2565,7 @@ def main() -> None:
         """
         return get_pdf_toolkit_status_impl()
 
-    @mcp.tool()
+    @_tool
     def promote_pdf_to_full_text(
         document: dict,
         ocr_enabled: bool = False,
@@ -2258,7 +2586,7 @@ def main() -> None:
 
     # ── Research Watchlist v2.4 MCP tools (M-36) ─────────────────────
 
-    @mcp.tool()
+    @_tool
     def watch_add(
         name: str,
         query: str,
@@ -2284,7 +2612,7 @@ def main() -> None:
             fetch_count=fetch_count, interval_hours=interval_hours,
         )
 
-    @mcp.tool()
+    @_tool
     def watch_list() -> dict:
         """List all registered watches.
 
@@ -2294,7 +2622,7 @@ def main() -> None:
         from .research_watch import list_watches as list_watches_impl
         return list_watches_impl()
 
-    @mcp.tool()
+    @_tool
     def watch_run(name: str) -> dict:
         """Execute a watch: re-search, detect new/changed docs, produce diff report.
 
@@ -2307,7 +2635,7 @@ def main() -> None:
         from .research_watch import run_watch as run_watch_impl
         return run_watch_impl(name)
 
-    @mcp.tool()
+    @_tool
     def watch_remove(name: str) -> dict:
         """Remove a watch.
 
@@ -2322,7 +2650,7 @@ def main() -> None:
 
     # ── Privacy / PII MCP tools (M-37) ────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def privacy_scan(text: str) -> dict:
         """Scan text for potential PII (TCKN, phone, email).
 
@@ -2337,7 +2665,7 @@ def main() -> None:
         """
         return scan_pii_impl(text)
 
-    @mcp.tool()
+    @_tool
     def privacy_redact(text: str) -> dict:
         """Redact PII from text. Returns a copy — original is unchanged.
 
@@ -2352,7 +2680,7 @@ def main() -> None:
         """
         return redact_pii_impl(text)
 
-    @mcp.tool()
+    @_tool
     def privacy_audit(path: str) -> dict:
         """Audit a file or directory for PII presence.
 
@@ -2369,7 +2697,7 @@ def main() -> None:
 
     # ── Eval v4.0 M-71 tool ──────────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def run_evaluation(golden_path: str | None = None, k: int = 5) -> dict:
         """Run retrieval evaluation harness against golden query set.
 
@@ -2390,7 +2718,7 @@ def main() -> None:
 
     # ── RRF M-69 tool ────────────────────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def hybrid_search_rrf(
         query: str,
         limit: int = 10,
@@ -2428,7 +2756,7 @@ def main() -> None:
 
     # ── Query understanding M-70 tools ────────────────────────────────────
 
-    @mcp.tool()
+    @_tool
     def normalize_law_ref(query: str) -> dict:
         """Normalize law abbreviations to full references.
 
@@ -2444,7 +2772,7 @@ def main() -> None:
         from .query_understanding import normalize_law_ref as _norm_law
         return _norm_law(query)
 
-    @mcp.tool()
+    @_tool
     def expand_query_terms(query: str) -> dict:
         """Expand query with legal synonyms from curated dictionary.
 
@@ -2457,7 +2785,7 @@ def main() -> None:
         from .query_understanding import expand_query_terms as _expand
         return _expand(query)
 
-    @mcp.tool()
+    @_tool
     def extract_query_filters(query: str) -> dict:
         """Extract court/chamber filters from query text.
 
@@ -2469,6 +2797,550 @@ def main() -> None:
         """
         from .query_understanding import extract_query_filters as _extract
         return _extract(query)
+
+    # ── M-98: Core profile facade tools ──────────────────────────────────
+
+    @_tool
+    def research_topic(
+        query: str,
+        sources: list[str] | None = None,
+        fetch_count: int = 5,
+        filters: dict | None = None,
+        output_dir: str | None = None,
+    ) -> dict:
+        """Search sources, fetch documents, and build a research bundle.
+
+        Returns bundle metadata with query, sources, result_count, fetched_count,
+        content_status_summary, citation_safe_count, generated_files, warnings,
+        and recommended_next_steps.
+        """
+        return research_topic_impl(
+            query=query,
+            sources=sources,
+            fetch_count=fetch_count,
+            filters=filters or {},
+            output_dir=output_dir,
+        )
+
+    @_tool
+    @validate_tool_input(query=validate_non_empty)
+    def search_local_corpus(
+        query: str,
+        mode: str = "rrf",
+        limit: int = 20,
+        filters: dict | None = None,
+        provider: str | None = None,
+    ) -> dict:
+        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
+
+        Searches documents ALREADY fetched via `search_decisions`. It cannot
+        find any decision that was not fetched first; the local cache is small
+        by design (not a crawler, not a full corpus).
+
+        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
+        (live, online) first. Use this tool only to filter/re-rank already-fetched
+        results. Never web-search, never cite numbers from uncached documents.
+
+        Args:
+            query: Search query string.
+            mode: Search method — 'rrf' (default, hybrid+RRF fusion),
+                  'lexical' (FTS5 full-text), 'semantic' (embedding vector),
+                  'hybrid' (weighted lexical+semantic).
+            limit: Max results.
+            filters: Optional dict with source, court, chamber, content_status.
+            provider: Embedding provider name for semantic modes (ignored for lexical).
+        """
+        if mode == "lexical":
+            cache = Cache()
+            try:
+                results = cache.search_local(query=query, limit=limit, **(filters or {}))
+            finally:
+                cache.close()
+            return _attach_corpus_hint({"results": results, "total_matches": len(results)})
+        elif mode == "semantic":
+            if provider:
+                from .semantic import embedding_search as _emb
+                result = _emb(query=query, limit=limit, provider=provider, filters=filters)
+            else:
+                result = semantic_search_impl(query=query, limit=limit, filters=filters)
+            return _attach_corpus_hint(result)
+        elif mode == "hybrid":
+            result = hybrid_search_impl(query=query, limit=limit, filters=filters)
+            return _attach_corpus_hint(result)
+        else:  # rrf (default)
+            from .semantic import hybrid_search_rrf as _rrf
+            result = _rrf(query=query, limit=limit, filters=filters)
+            return _attach_corpus_hint(result)
+
+    @_tool
+    def get_legislation(
+        document_id: str,
+        source: str | None = None,
+        part: str = "document",
+    ) -> dict:
+        """Get legislation content from the Mevzuat source.
+
+        Args:
+            document_id: Mevzuat document ID.
+            source: Source ID (default: "mevzuat").
+            part: 'document' (default) returns full document,
+                  'article_tree' returns the article tree structure,
+                  'gerekce' returns the legislative rationale/preambles.
+
+        Returns:
+            Dict appropriate for the requested part.
+        """
+        if part == "article_tree":
+            return get_legislation_article_tree_impl(
+                document_id=document_id, source=source,
+            )
+        elif part == "gerekce":
+            return get_legislation_gerekce_impl(
+                document_id=document_id, source=source,
+            )
+        else:
+            return get_legislation_document_impl(
+                document_id=document_id, source=source,
+            )
+
+    @_tool
+    @validate_tool_input(document=validate_is_dict_with_keys("document_id", "source"))
+    def citation_check(
+        action: str = "verify",
+        source: dict | None = None,
+        document: dict | None = None,
+        document_id: str | None = None,
+        text: str | None = None,
+        file_path: str | None = None,
+        style: str = "petition",
+        limit: int = 5,
+        fetch: int = 3,
+        no_live: bool = True,
+        live_only: bool = False,
+        min_score: float = 1.0,
+    ) -> dict:
+        """Unified citation tool: verify, format, or safety-check legal citations.
+
+        Args:
+            action: 'verify' (default) — verify citations in text/file.
+                    'format' — format a legal citation from metadata.
+                    'safety' — check if a document is safe for quoting/drafting.
+            document: Document dict (required for 'safety' action).
+            source: Document dict with metadata (for 'format').
+            document_id: Document ID to look up from cache (for 'format').
+            text: Citation text to verify (for 'verify', optional).
+            file_path: Path to file to verify citations in (for 'verify', optional).
+            style: Citation style ('petition', 'parenthetical', 'short').
+            limit: Max results for verify.
+            fetch: Documents to fetch for verify.
+            no_live: Skip live source checks for verify.
+            live_only: Only live source checks for verify.
+            min_score: Minimum confidence score for verify.
+        """
+        if action == "safety":
+            if not document:
+                return build_error("INVALID_INPUT", "document required for safety check")
+            return citation_check_impl(Document.model_validate(document)).model_dump(mode="json")
+        elif action == "format":
+            return format_legal_citation_impl(
+                source=source,
+                document_id=document_id,
+                style=style,  # type: ignore[arg-type]
+            )
+        else:  # verify
+            return verify_legal_citation_impl(
+                text=text,
+                file_path=file_path,
+                source=source.get("source_id") if source else None,
+                limit=limit,
+                fetch=fetch,
+                no_live=no_live,
+                live_only=live_only,
+                min_score=min_score,
+            )
+
+    @_tool
+    def prepare_petition(
+        matter: str,
+        issue: str,
+        step: str = "input_pack",
+        documents: list[dict] | None = None,
+        pack_dir: str | None = None,
+        research_bundle_dir: str | None = None,
+        out_dir: str | None = None,
+        strict: bool = True,
+        template_name: str | None = None,
+    ) -> dict:
+        """Prepare petition drafting materials step by step.
+
+        The three steps must be used in order: input_pack → outline → controlled_draft.
+        Each step consumes output from the previous step.
+
+        Args:
+            matter: Legal matter description.
+            issue: Legal issue description.
+            step: 'input_pack' (default) — classify authorities, build pack.
+                  'outline' — generate structured petition outline from pack.
+                  'controlled_draft' — produce a controlled draft with placeholders.
+            documents: List of Document dicts (for 'input_pack' step).
+            pack_dir: Path to petition pack directory (for 'outline'/'controlled_draft').
+            research_bundle_dir: Optional research bundle directory.
+            out_dir: Output directory.
+            strict: If True, exclude hash-mismatch docs.
+            template_name: Optional template name for draft skeleton.
+        """
+        if step == "outline":
+            return prepare_petition_outline_impl(
+                pack_dir=pack_dir or "",
+                out_dir=out_dir,
+            )
+        elif step == "controlled_draft":
+            return prepare_controlled_petition_draft_impl(
+                pack_dir=pack_dir or "",
+                out_dir=out_dir,
+            )
+        else:  # input_pack
+            docs = [Document.model_validate(d) for d in (documents or [])]
+            return prepare_drafting_input_pack_impl(
+                matter=matter,
+                issue=issue,
+                documents=docs,
+                research_bundle_dir=research_bundle_dir,
+                out_dir=out_dir,
+                strict=strict,
+                template_name=template_name,
+            )
+
+    @_tool
+    def export_document(
+        format: str = "docx",
+        draft_path: str | None = None,
+        draft_json: dict | None = None,
+        text: str | None = None,
+        out_path: str | None = None,
+        out_dir: str | None = None,
+        pack_dir: str | None = None,
+        draft_dir: str | None = None,
+        docx_path: str | None = None,
+        title_centered: bool = False,
+        title: str | None = None,
+        body: str | None = None,
+        documents: list[dict] | None = None,
+    ) -> dict:
+        """Unified document export: DOCX, UDF, PDF, plain text, or bundle.
+
+        Args:
+            format: 'docx' (default), 'udf', 'pdf', 'plain', 'bundle',
+                    or 'capabilities' (returns supported formats).
+            draft_path: Path to draft.md (for docx/plain).
+            draft_json: Draft metadata dict (for docx).
+            text: Text to write (for udf).
+            out_path: Output file path (for docx/udf/plain).
+            out_dir: Output directory (for bundle).
+            pack_dir: Pack directory (for bundle).
+            draft_dir: Draft output directory (for bundle).
+            docx_path: Path to draft.docx (for pdf/bundle).
+            title_centered: Center the title in UDF output.
+            title: Document title (for legacy export_bundle).
+            body: Document body (for legacy export_bundle).
+            documents: List of document dicts (for legacy export_bundle).
+        """
+        if format == "capabilities":
+            return get_export_capabilities_impl()
+        elif format == "udf":
+            udf_path = write_udf_impl(
+                text=text or "",
+                out_path=out_path or "",
+                title_centered=title_centered,
+            )
+            return {"ok": True, "path": str(udf_path), "format": "udf"}
+        elif format == "pdf":
+            return convert_udf_to_pdf(docx_path or "", out_path=out_path)
+        elif format == "plain":
+            return export_plain_text_impl(
+                draft_path=draft_path or "",
+                out_path=out_path,
+            )
+        elif format == "bundle":
+            kwargs: dict[str, Any] = {}
+            if pack_dir:
+                kwargs["pack_dir"] = pack_dir
+            if draft_dir:
+                kwargs["draft_dir"] = draft_dir
+            if docx_path:
+                kwargs["docx_path"] = docx_path
+            if out_dir:
+                kwargs["out_dir"] = out_dir
+            if kwargs:
+                return prepare_export_package_bundle_impl(**kwargs)
+            # Legacy export_bundle path
+            if title and body and out_dir:
+                docs_models = [Document.model_validate(d) for d in (documents or [])]
+                return export_bundle_impl(
+                    out_dir=out_dir, matter=title, issue=body, docs=docs_models,
+                )
+            return build_error("INVALID_INPUT", "bundle requires pack_dir or (out_dir+title+body)")
+        else:  # docx
+            return prepare_docx_export_impl(
+                draft_path=draft_path,
+                draft_json=draft_json,
+                out_path=out_path,
+                pack_dir=pack_dir,
+            )
+
+    @_tool
+    def read_legal_file(
+        file_path: str,
+        ocr_enabled: bool = False,
+    ) -> dict:
+        """Read and extract text from a legal file by extension.
+
+        Supported extensions:
+        - .udf → reads the UDF markup file
+        - .pdf → extracts text layer from PDF
+
+        Args:
+            file_path: Path to the legal file.
+            ocr_enabled: Enable OCR for PDF extraction (opt-in).
+        """
+        if file_path.lower().endswith(".udf"):
+            return {"text": read_udf_impl(file_path), "probe": probe_udf(file_path)}
+        elif file_path.lower().endswith(".pdf"):
+            return extract_pdf_text_impl(file_path, ocr_enabled=ocr_enabled)
+        else:
+            return build_error(
+                "INVALID_INPUT",
+                f"Unsupported file type: {file_path}. Supported: .udf, .pdf",
+                supported_formats=[".udf", ".pdf"],
+            )
+
+    @_tool
+    def list_sources(
+        detail: str | None = None,
+    ) -> dict | list[dict]:
+        """List registered sources with capabilities and optional detail views.
+
+        Args:
+            detail: None (default) returns full source capabilites list.
+                    'birim_codes' returns validated chamber/unit codes.
+                    'legislation_types' returns legislation type taxonomy.
+
+        Returns:
+            Source capabilities list, or detail-specific output.
+        """
+        if detail == "birim_codes":
+            return _list_birim_codes()
+        elif detail == "legislation_types":
+            return get_legislation_types_impl()
+        else:
+            return capabilities()
+
+    @_tool
+    def legal_research_guide(
+        topic: str | None = None,
+    ) -> dict:
+        """📖 COMPREHENSIVE GUIDE: how to use emsal-mcp tools for legal research.
+
+        Read this tool FIRST when beginning ANY legal research task. It explains:
+        - Which tool to use when (live search vs local corpus vs legislation vs
+          research).
+        - Bedesten Solr query operators and query hygiene rules.
+        - Chamber code reference (birimAdi).
+        - Citation safety rules: what quoteUsable/draftUsable mean.
+        - Available extended tool categories (load with load_extended_tools).
+
+        Args:
+            topic: Optional topic filter. Leave empty for the full guide.
+                   Valid topics: 'search', 'solr', 'chambers', 'citation_safety',
+                   'extended_tools'.
+        """
+        sections: dict[str, str] = {
+            "search": (
+                "=== HANGİ ARAMA ARACI NE ZAMAN ===\n\n"
+                "1. search_decisions (CANLI, ONLINE) — İLK ÇAĞRILMASI GEREKEN ARAÇ.\n"
+                "   Her türlü içtihat/mevzuat araştırması için zorunlu giriş noktası.\n"
+                "   Resmî kaynağa canlı sorgu yapar, sonuçları yerel cache'e yazar.\n"
+                "   Bu araç çağrılmadan hiçbir içtihada atıf yapılamaz.\n\n"
+                "2. search_local_corpus (YEREL, ÇEVRİMDIŞI) — YALNIZCA ÖNB ELLEK.\n"
+                "   Daha önce search_decisions ile çekilmiş belgelerde arama/filtreleme\n"
+                "   yapar. Yeni belge BULAMAZ. Modları: lexical, semantic, hybrid, rrf.\n\n"
+                "3. search_legislation (CANLI, Mevzuat) — Mevzuat taraması.\n"
+                "   scope='law' ile kanun/Yönetmelik düzeyinde, scope='article' ile\n"
+                "   madde düzeyinde arama yapar.\n\n"
+                "4. get_legislation (CANLI, Mevzuat) — Tek bir mevzuat belgesini getirir.\n"
+                "   part='document' (tam metin), 'article_tree' (madde ağacı),\n"
+                "   'gerekce' (gerekçe).\n\n"
+                "5. research_topic — Kaynaklarda arama yapıp araştırma paketi oluşturur.\n"
+                "   Belgeleri çeker, citation-safety kontrolü yapar, bundle üretir.\n\n"
+                "KARAR AĞACI:\n"
+                "- Yeni bir konuda içtihat mı arıyorsun? → search_decisions\n"
+                "- Çekilmiş belgeleri yeniden sıralamak mı? → search_local_corpus\n"
+                "- Mevzuat mı arıyorsun? → search_legislation veya get_legislation\n"
+                "- Kapsamlı araştırma paketi mi? → research_topic\n"
+            ),
+            "solr": (
+                "=== BEDESTEN SOLR OPERATÖR KILAVUZU ===\n\n"
+                "search_decisions aracı Bedesten Solr motorunu kullanır.\n\n"
+                "Operatörler:\n"
+                "  +terim     — Terimin kesin bulunmasını zorunlu kılar.\n"
+                "  -terim     — Terimi içeren belgeleri hariç tutar.\n"
+                '  "tam ifade" — Tam eşleşme (phrase search).\n'
+                "  AND / OR   — Boolean operatörler (BÜYÜK HARFLE).\n"
+                "  NOT        — Hariç tutma (BÜYÜK HARFLE).\n"
+                "  (grup)     — Alt ifade gruplama.\n"
+                "  *          — Sonek joker (örn: tazmin*)\n\n"
+                "Sorgu hijyeni:\n"
+                "  - Kullanıcının sorusunu AYNEN yapıştırma.\n"
+                "  - 2-5 anahtar hukuk terimine indirge.\n"
+                "  - Türkçe aksanları KORU (kararı ✓, karari ✗).\n"
+                "  - Çok geniş tek terimler gürültü getirir.\n\n"
+                "Çalışan örnekler:\n"
+                '  +işçi +tazminat → her iki terimi de içeren belgeler\n'
+                '  "iş kazası" tazminat → tam ifade VE tazminat\n'
+                "  (+işçi OR +memur) +tazminat -manevi → işçi VEYA memur, VE tazminat, manevi hariç\n"
+            ),
+            "chambers": (
+                "=== DAİRE KODLARI (birimAdi) ===\n\n"
+                "search_decisions aracında birimAdi parametresiyle daire filtresi "
+                "yapabilirsiniz. Tam liste için: list_sources(detail='birim_codes')\n\n"
+                "Yaygın kodlar:\n"
+                "  Yargıtay: 1. Hukuk Dairesi, 2. Hukuk Dairesi, ... 23. Hukuk Dairesi\n"
+                "            HGK (Hukuk Genel Kurulu), İBK (İçtihadı Birleştirme)\n"
+                "  Danıştay: 1. Daire, 2. Daire, ... 17. Daire\n"
+                "            İDDK (İdari Dava Daireleri Kurulu)\n"
+            ),
+            "citation_safety": (
+                "=== ATIF GÜVENLİĞİ KURALLARI ===\n\n"
+                "Her belge için iki güvenlik bayrağı kontrol edilir:\n\n"
+                "  quoteUsable (alıntılanabilir):\n"
+                "    - True: Tam metin mevcut, en az 50 karakter.\n"
+                "    - False: Yalnızca metadata veya kısa özet — ATIF YAPILAMAZ.\n\n"
+                "  draftUsable (dilekçede kullanılabilir):\n"
+                "    - True: Tam metin + tüm gerekli metadata (esas no, karar no, tarih).\n"
+                "    - False: Eksik bilgi — dilekçede dayanak olarak KULLANILAMAZ.\n\n"
+                "KURAL: Sadece quoteUsable=True VE draftUsable=True belgelere atıf yap.\n"
+                "Metadata-only belgeler araştırma ipucudur, atıf kaynağı DEĞİLDİR.\n"
+            ),
+            "extended_tools": (
+                "=== GENİŞLETİLMİŞ ARAÇ KATEGORİLERİ ===\n\n"
+                "Core profilde 14 araç bulunur. Aşağıdaki kategoriler load_extended_tools\n"
+                "ile dinamik olarak yüklenebilir:\n\n"
+                "  cache_admin    — Cache yönetimi, bakım, senkronizasyon\n"
+                "  release        — Sürüm yönetimi, smoke test, dashboard\n"
+                "  analytics      — Arama analitiği, sorgu istatistikleri\n"
+                "  routing        — Akıllı kaynak yönlendirme\n"
+                "  health_admin   — Circuit breaker, kaynak sağlığı, hata kataloğu\n"
+                "  citation_graph — Atıf grafı oluşturma ve sorgulama\n"
+                "  dedup          — Mükerrer belge tespiti ve birleştirme\n"
+                "  watch          — Araştırma izleme (watch) listeleri\n"
+                "  privacy        — PII tarama, maskeleme, denetim\n"
+                "  chambers       — Daire profili, timeline, benzer daire bulma\n"
+                "  indexing       — Semantik indeks oluşturma, embedding yönetimi\n"
+                "  drafting_advanced — Gelişmiş dilekçe hazırlama araçları\n"
+                "  udf_admin      — UDF dönüştürme, PDF araçları\n"
+                "  research_admin — Araştırma kalite dashboard, evaluasyon\n"
+                "  query_tools    — Sorgu normalizasyonu, genişletme, filtre çıkarma\n\n"
+                "Kullanım: load_extended_tools(categories=['cache_admin', 'dedup'])\n"
+            ),
+        }
+        if topic and topic in sections:
+            return {"ok": True, "topic": topic, "guide": sections[topic]}
+        guide = "\n\n".join(sections.values())
+        return {
+            "ok": True,
+            "guide": (
+                "# emsal-mcp Hukuk Araştırma Rehberi\n\n"
+                + guide
+                + "\n\n---\n"
+                "Belirli bir konuda yardım için: legal_research_guide(topic='arama')\n"
+                "Geçerli topic değerleri: " + ", ".join(sections.keys())
+            ),
+            "available_topics": list(sections.keys()),
+        }
+
+    @_tool
+    def load_extended_tools(categories: list[str]) -> dict:
+        """Dynamically load extended tool categories into the running MCP server.
+
+        In core profile (default), only 14 core tools are registered. This tool
+        loads additional tools by category, making them available to the LLM agent
+        without restarting the server.
+
+        Valid categories:
+          cache_admin, release, analytics, routing, health_admin, citation_graph,
+          dedup, watch, privacy, chambers, indexing, drafting_advanced,
+          udf_admin, research_admin, query_tools
+
+        Args:
+            categories: List of category names to load.
+
+        Returns:
+            Dict with ok, loaded tools, already_loaded, invalid_categories,
+            and a note if the MCP client may need to refresh its tool list.
+        """
+        valid_categories = {
+            "cache_admin", "release", "analytics", "routing", "health_admin",
+            "citation_graph", "dedup", "watch", "privacy", "chambers", "indexing",
+            "drafting_advanced", "udf_admin", "research_admin", "query_tools",
+        }
+        invalid = [c for c in categories if c not in valid_categories]
+        if invalid:
+            return build_error(
+                "INVALID_INPUT",
+                f"Invalid categories: {invalid}. Valid: {sorted(valid_categories)}",
+                valid_categories=sorted(valid_categories),
+            )
+
+        loaded: list[str] = []
+        already: list[str] = []
+        for cat in categories:
+            for name, fn in _EXTENDED_TOOLS.items():
+                if _TOOL_CATEGORIES.get(name) == cat:
+                    # Check if already registered (idempotent)
+                    if hasattr(mcp, "_tool_manager"):
+                        existing = getattr(mcp._tool_manager, "_tools", {})
+                        if name in existing:
+                            already.append(name)
+                            continue
+                    try:
+                        mcp.tool()(fn)
+                        loaded.append(name)
+                    except Exception:
+                        loaded.append(name)  # Best-effort
+
+        return {
+            "ok": True,
+            "loaded_tools": loaded,
+            "already_loaded": already,
+            "categories_requested": categories,
+            "note": (
+                "Araçlar yüklendi. MCP istemcisi araç listesini otomatik "
+                "yenilemezse, yeni araçlar görünmeyebilir. Bu durumda "
+                "istemciyi yeniden başlatın veya EMSAL_TOOL_PROFILE=full "
+                "ile başlatın."
+            ),
+        }
+
+    @_tool
+    def health_check() -> dict:
+        """Run a consolidated health check across sources, circuit breakers, and indexes.
+
+        Returns a single dict with overall health status, source smoke summary,
+        circuit breaker states, and search index status.
+        """
+        smoke = smoke_all_sync(online=False)
+        from .circuit import get_all_sources_health as _get_all_health
+        cb_status = _get_all_health()
+        idx = get_index_status_impl()
+        return {
+            "ok": True,
+            "source_smoke": {
+                "all_ok": all(r.get("offline_ok", False) for r in smoke),
+                "source_count": len(smoke),
+            },
+            "circuit_breakers": cb_status,
+            "search_index": idx,
+        }
 
     mcp.run()
 

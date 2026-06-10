@@ -474,6 +474,100 @@ E5) recall@k farkını sayısal olarak gösterir.
 
 ---
 
+## Reçete 10: Core Profil ile Ajan Bağlama + load_extended_tools Akışı
+
+**Amaç:** Core profilde (14 araç) başlayıp, legal_research_guide ile hangi
+genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
+`load_extended_tools` ile seçili kategorileri dinamik olarak sunucuya ekleyin.
+
+**Önkoşul:** `emsal-mcp` kurulu ve çalışır durumda. Varsayılan profil `core`'dur.
+
+**Adımlar:**
+
+1. **Core profilde sunucuyu başlatın ve mevcut araçları listeleyin:**
+   ```bash
+   emsal-mcp health_check --json
+   ```
+   Çıktıda `"tool_count": 14` ve core araç listesi görünmeli. Core profil
+   şu 14 aracı sunar:
+   `search_decisions`, `get_document`, `search_local_corpus`,
+   `search_legislation`, `get_legislation`, `research_topic`,
+   `citation_check`, `prepare_petition`, `export_document`,
+   `read_legal_file`, `list_sources`, `legal_research_guide`,
+   `load_extended_tools`, `health_check`.
+
+2. **Genişletilmiş kategorileri keşfedin:**
+   ```bash
+   emsal-mcp legal_research_guide --json
+   ```
+   Tam rehberde `extended_tools` başlığı altında 15 kategori listelenir:
+   `cache_admin`, `release`, `analytics`, `routing`, `health_admin`,
+   `citation_graph`, `dedup`, `watch`, `privacy`, `chambers`, `indexing`,
+   `drafting_advanced`, `udf_admin`, `research_admin`, `query_tools`.
+
+3. **Belirli bir kategori hakkında bilgi alın:**
+   ```bash
+   emsal-mcp legal_research_guide topic=extended_tools --json
+   ```
+   Her kategorinin tool_count ve örnek araç isimleri görüntülenir.
+   Örneğin `citation_graph` kategorisi 6 araç içerir:
+   `build_citation_graph`, `get_citation_graph`, `find_citing_documents`,
+   `find_cited_documents`, `citation_graph_stats`, `export_citation_graph`.
+
+4. **Seçili kategorileri yükleyin:**
+   ```bash
+   emsal-mcp load_extended_tools categories="citation_graph,health_admin" --json
+   ```
+   Beklenen çıktı:
+   ```json
+   {
+     "ok": true,
+     "loaded_tools": ["build_citation_graph", "get_citation_graph", ...],
+     "already_loaded": [],
+     "invalid_categories": [],
+     "note": "MCP client tool listesini yenilemelidir."
+   }
+   ```
+   Yüklenen araçlar sunucu yeniden başlatılmadan LLM ajanına görünür hale gelir.
+
+5. **Yüklenen araçların doğrulanması:**
+   ```bash
+   emsal-mcp health_check --json
+   ```
+   `"extended_loaded"` alanında yüklenen kategorilerin araç sayısı görünür.
+   Örneğin: `"citation_graph": 6, "health_admin": 6`.
+
+6. **Ek kategoriler ekleyin (kademeli genişletme):**
+   ```bash
+   emsal-mcp load_extended_tools categories="cache_admin,indexing" --json
+   ```
+   Daha önce yüklenen kategoriler `already_loaded` listesine düşer,
+   yalnızca yeni kategoriler aktif edilir. Toplam araç sayısı artar.
+
+7. **Geçersiz kategori hatalarını kontrol edin:**
+   ```bash
+   emsal-mcp load_extended_tools categories="yanlis_kategori,dedup" --json
+   ```
+   `"invalid_categories": ["yanlis_kategori"]` döner, `dedup` başarıyla yüklenir.
+
+**Beklenen Çıktı:**
+- Core profil: 14 araç, restart gerektirmez
+- `legal_research_guide`: 15 kategori, her biri tool_count + örnek listesi
+- `load_extended_tools`: success/partial durum, loaded/invalid listesi
+- Yükleme sonrası `health_check` ile toplam araç sayısının arttığı doğrulanır
+- Kategoriler arası duplicate kontrolü: aynı kategori tekrar yüklendiğinde
+  `already_loaded` listesine düşer
+
+**Notlar:**
+- Core profil varsayılandır; `EMSAL_TOOL_PROFILE=full` ile 119 araca geçiş
+  yapılabilir ama bu durumda `load_extended_tools` anlamsızdır.
+- Her yükleme turunda yalnızca belirtilen kategoriler eklenir; önceki
+  yüklemeler korunur (stateful).
+- MCP client (LLM ajanı) tool listesini yenilemelidir — yükleme
+  sunucu tarafında yapılır, client'a bildirim gitmez.
+
+---
+
 ## Notlar
 
 - Tüm `--json` çıktıları `JSON_CONTRACTS.md` ile uyumludur.

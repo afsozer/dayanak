@@ -32,6 +32,24 @@ def _isolate_real_cache():
                 os.environ["EMSAL_CACHE_PATH"] = prev
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _set_full_profile():
+    """Ensure existing tests run with the full MCP tool surface (M-97).
+
+    New tests (test_tool_surface.py) override this per-test with
+    os.environ["EMSAL_TOOL_PROFILE"] = "core" when testing core profile.
+    """
+    prev = os.environ.get("EMSAL_TOOL_PROFILE")
+    os.environ["EMSAL_TOOL_PROFILE"] = "full"
+    try:
+        yield
+    finally:
+        if prev is None:
+            os.environ.pop("EMSAL_TOOL_PROFILE", None)
+        else:
+            os.environ["EMSAL_TOOL_PROFILE"] = prev
+
+
 @pytest.fixture(scope="session")
 def session_tmp_dir():
     """Session-scoped temporary directory for all tests."""

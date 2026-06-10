@@ -3,6 +3,63 @@
 > **emsal-mcp v1.0.0** — 113 MCP tools across 10 modules.
 > Input parameters use Python type hints; output shapes are documented per tool.
 
+## Tool Profiles (FAZ M)
+
+The server exposes two tool profiles to control which MCP tools are registered:
+
+| Profile | Tools | Description |
+|---------|-------|-------------|
+| `core` | 14 | Default profile. Core tools (source_capabilities, search_decisions, get_document, citation_safety, build_input_pack, draft_document, export_bundle, read_udf, write_udf, release_smoke, release_dashboard, release_notes_tool, release_archive, load_extended_tools). |
+| `full` | 131 | All tools including extended modules (research, citation, petition, UDF toolkit, legislation, semantic search, chamber profiling, release). |
+
+Select via the `EMSAL_TOOL_PROFILE` environment variable:
+
+```
+EMSAL_TOOL_PROFILE=core   # default — 14 tools
+EMSAL_TOOL_PROFILE=full   # all 131 tools
+```
+
+### `load_extended_tools`
+
+Dynamically loads extended tool modules at runtime without restarting the server. Only available when the server starts with `EMSAL_TOOL_PROFILE=core`.
+
+**Input**:
+- `categories: list[str] | None = None` — Categories to load. If `None`, loads all extended categories.
+- `force: bool = False` — Reload even if already loaded.
+
+**Valid categories**:
+- `research` — Research v0.5 tools (4 tools)
+- `citation` — Citation v0.6 tools (2 tools)
+- `petition` — Petition v0.7–0.8 tools (8 tools)
+- `udf_toolkit` — UDF Toolkit v0.9 tools (5 tools)
+- `legislation` — Legislation v0.10 tools (9 tools)
+- `semantic_search` — Semantic Search v0.11 tools (5 tools)
+- `chamber_profiling` — Chamber Profiling v0.12 tools (4 tools)
+- `release` — Release v0.13 tools (4 tools)
+- `cache_v2` — Cache v2 tools (3 tools)
+
+**Output**: `dict` — `ok`, `loaded_categories[]`, `total_tools_now`, `newly_loaded[]`, `warnings`.
+
+**Behavior**: After calling with a category, those tools become available in the same session for subsequent MCP calls. Categories already loaded are skipped unless `force=True`.
+
+### Category summary
+
+| Category | Tools | Version |
+|----------|-------|---------|
+| core | 14 | v0.1–0.4 |
+| cache_v2 | 3 | v0.3 |
+| research | 4 | v0.5 |
+| citation | 2 | v0.6 |
+| petition | 8 | v0.7–0.8 |
+| udf_toolkit | 5 | v0.9 |
+| legislation | 9 | v0.10 |
+| semantic_search | 5 | v0.11 |
+| chamber_profiling | 4 | v0.12 |
+| release | 4 | v0.13 |
+| **Total** | **58** (core+extended) | |
+
+> **Note**: The 14 core tools are always registered. Extended categories add up to 44 additional tools (58 total registered in `core` profile with `load_extended_tools`, 131 in `full` profile which includes additional internal/helper tools).
+
 ## Core Tools (v0.1–0.4)
 
 ### `source_capabilities`

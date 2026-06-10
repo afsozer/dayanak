@@ -3,6 +3,8 @@
 Usage: python scripts/gen_readme_counts.py [--check]
   Without --check: prints the latest counts as a Markdown headline line.
   With --check: exits 0 if README.md is in sync, 1 if drift detected (for CI).
+
+M-100: Now counts core vs extended tools via _TOOL_PROFILES in server.py.
 """
 from __future__ import annotations
 
@@ -13,10 +15,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _count_mcp_tools() -> int:
+def _tool_counts() -> tuple[int, int]:
+    """Return (total_tools, core_tools) from server.py."""
     server = ROOT / "src" / "emsal_mcp" / "server.py"
     text = server.read_text(encoding="utf-8")
-    return len(re.findall(r"@mcp\.tool\(\)", text))
+    total = len(re.findall(r"@_tool", text))
+    # Count core entries in _TOOL_PROFILES
+    core = 0
+    in_profiles = False
+    for line in text.split("\n"):
+        if "_TOOL_PROFILES: dict[str, str] = {" in line:
+            in_profiles = True
+            continue
+        if in_profiles:
+            if line.strip() == "}":
+                break
+            if '"core"' in line and '#' not in line.split('"core"')[0]:
+                core += 1
+    return total, core
 
 
 def _count_cli_commands() -> int:
@@ -45,11 +61,16 @@ def _version_from_init() -> str:
 
 def _headline() -> str:
     v = _version_from_init()
-    mcp = _count_mcp_tools()
+    total, core = _tool_counts()
+    extended = total - core
     cli = _count_cli_commands()
     mod = _count_modules()
     tests = _count_test_files()
-    return f"> **v{v}** — {mcp} MCP tools · {cli} CLI commands · {tests} test files · {mod} source modules"
+    return (
+        f"> **v{v}** — {core} core + {extended} extended MCP tools "
+        f"({total} total) · {cli} CLI commands · {tests} test files "
+        f"· {mod} source modules"
+    )
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
