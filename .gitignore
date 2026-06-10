@@ -10,6 +10,7 @@ build/
 *.egg-info/
 .opencode/ralph-loop.local.md
 exports/
+vendor/UDF-Toolkit/
 *.sqlite3
 *.sqlite
 .emsal_research/

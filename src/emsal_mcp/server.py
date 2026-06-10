@@ -137,6 +137,7 @@ def main() -> None:
         convert_udf_to_pdf,
         get_udf_authoring_instructions,
         get_udf_toolkit_status,
+        install_udf_toolkit,
         probe_udf,
         read_udf as read_udf_impl,
         write_udf as write_udf_impl,
@@ -430,6 +431,15 @@ def main() -> None:
     def udf_toolkit_status() -> dict:
         """Check UDF toolkit (LibreOffice/unoconv) availability."""
         return get_udf_toolkit_status()
+
+    @mcp.tool()
+    def install_udf_toolkit_tool(
+        target_dir: str | None = None,
+        repo_url: str = "https://github.com/saidsurucu/UDF-Toolkit.git",
+        update: bool = False,
+    ) -> dict:
+        """Install or update the managed UDF-Toolkit clone used by converters."""
+        return install_udf_toolkit(target_dir, repo_url=repo_url, update=update)
 
     @mcp.tool()
     def udf_authoring_instructions(format: str = "json") -> dict:

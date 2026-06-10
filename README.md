@@ -1,6 +1,6 @@
 ﻿# Emsal-mcp
 
-> **v4.0.0** — 119 MCP tools · 160 CLI commands · 53 test files · 42 source modules
+> **v4.0.0** — 120 MCP tools · 161 CLI commands · 53 test files · 42 source modules
 >
 > [![CI](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml)
 
@@ -66,4 +66,4 @@ emsal-mcp-server
 | **Chamber Profiling** | v0.12 | 4 | Daire analizi, profil, zaman çizelgesi, benzerlik |
 | **Release Management** | v0.13 | 4 | Komuta merkezi, sürüm, v1 hazırlık, özet |
 
-**Toplam:** 113 MCP tool · 150 CLI komutu · 47 test dosyası
+**Toplam:** 120 MCP tool · 161 CLI komutu · 53 test dosyası

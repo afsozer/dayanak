@@ -53,7 +53,7 @@ def test_server_main_registers_tools():
     expected_tools = [
         "search_decisions", "get_document", "source_capabilities", "source_smoke",
         "citation_safety", "build_input_pack", "draft_document", "export_bundle",
-        "read_udf", "write_udf", "udf_toolkit_status",
+        "read_udf", "write_udf", "udf_toolkit_status", "install_udf_toolkit_tool",
         "release_smoke", "release_dashboard", "release_notes_tool", "release_archive",
         "search_local_cache", "get_cache_stats", "list_cached_documents",
         "format_legal_citation", "verify_legal_citation",

@@ -9,7 +9,6 @@ pytestmark = [pytest.mark.integration]
 
 import emsal_mcp.udf as udf_mod
 from emsal_mcp.udf import (
-    DOCX_TO_UDF_EXPERIMENTAL_WARNING,
     UDF_AUTHORING_WARNING,
     UDF_TOOLKIT_VERSION,
     UdfError,
@@ -18,11 +17,18 @@ from emsal_mcp.udf import (
     convert_udf_to_pdf,
     get_udf_authoring_instructions,
     get_udf_toolkit_status,
+    install_udf_toolkit,
     probe_udf,
     read_udf,
     udf_to_markdown,
     write_udf,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_managed_udf_toolkit(monkeypatch, tmp_path):
+    monkeypatch.setenv("EMSAL_UDF_AUTO_INSTALL", "0")
+    monkeypatch.setattr(udf_mod, "BUNDLED_UDF_TOOLKIT_DIR", tmp_path / "missing-managed-toolkit")
 
 
 # ── Native UDF round-trip (preserved) ────────────────────────────────────────
@@ -39,13 +45,13 @@ class TestUDF:
         assert "Second line" in text
 
     def test_read_nonexistent(self, tmp_path):
-        with pytest.raises(UdfError, match="bulunamadı"):
+        with pytest.raises(UdfError, match="bulunamad"):
             read_udf(tmp_path / "missing.udf")
 
     def test_read_invalid_zip(self, tmp_path):
         path = tmp_path / "bad.udf"
         path.write_text("not a zip file", encoding="utf-8")
-        with pytest.raises(UdfError, match="ZIP imzası yok"):
+        with pytest.raises(UdfError, match="ZIP imza"):
             read_udf(path)
 
     def test_udf_to_markdown(self, tmp_path):
@@ -119,6 +125,8 @@ class TestToolKitStatus:
     def test_status_with_env(self, monkeypatch, tmp_path):
         toolkit_dir = tmp_path / "toolkit"
         toolkit_dir.mkdir()
+        (toolkit_dir / "udf_to_docx.py").write_text("# stub", encoding="utf-8")
+        monkeypatch.setenv("LOCAL_YARGI_UDF_TOOLS", "1")
         monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
         status = get_udf_toolkit_status()
         assert status["enabled"] is True
@@ -130,10 +138,35 @@ class TestToolKitStatus:
         dir2 = tmp_path / "dir2"
         dir1.mkdir()
         dir2.mkdir()
+        (dir1 / "udf_to_docx.py").write_text("# stub", encoding="utf-8")
+        (dir2 / "udf_to_docx.py").write_text("# stub", encoding="utf-8")
+        monkeypatch.setenv("LOCAL_YARGI_UDF_TOOLS", "1")
         monkeypatch.setenv("UDF_TOOLKIT_DIR", str(dir1))
         monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(dir2))
         status = get_udf_toolkit_status()
         assert status["toolkit_dir"] == str(dir2)
+
+    def test_managed_toolkit_is_enabled_without_env(self, monkeypatch, tmp_path):
+        toolkit_dir = tmp_path / "vendor" / "UDF-Toolkit"
+        toolkit_dir.mkdir(parents=True)
+        for script in ("udf_to_docx.py", "udf_to_pdf.py", "docx_to_udf.py"):
+            (toolkit_dir / script).write_text("# stub", encoding="utf-8")
+        monkeypatch.delenv("LOCAL_YARGI_UDF_TOOLS", raising=False)
+        monkeypatch.delenv("EMSAL_UDF_TOOLS", raising=False)
+        monkeypatch.setattr(udf_mod, "BUNDLED_UDF_TOOLKIT_DIR", toolkit_dir)
+        status = get_udf_toolkit_status()
+        assert status["enabled"] is True
+        assert status["managed"] is True
+        assert status["toolkit_dir"] == str(toolkit_dir.resolve())
+
+    def test_install_toolkit_reuses_existing_target(self, tmp_path):
+        toolkit_dir = tmp_path / "UDF-Toolkit"
+        toolkit_dir.mkdir()
+        (toolkit_dir / "udf_to_docx.py").write_text("# stub", encoding="utf-8")
+        result = install_udf_toolkit(toolkit_dir)
+        assert result["ok"] is True
+        assert result["installed"] is False
+        assert result["toolkit_dir"] == str(toolkit_dir.resolve())
 
     def test_status_nonexistent_env(self, monkeypatch):
         monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", "/nonexistent/path")
@@ -249,44 +282,43 @@ class TestConvertUdfToPdf:
 
 
 class TestConvertDocxToUdfExperimental:
-    def test_requires_experimental_flag(self, tmp_path):
+    def test_no_longer_requires_experimental_flag_but_requires_toolkit(self, tmp_path):
         path = tmp_path / "test.docx"
         path.write_bytes(b"fake docx")
         result = convert_docx_to_udf_experimental(path, experimental=False)
         assert result["ok"] is False
-        assert result["errorCode"] == "EXPERIMENTAL_REQUIRED"
-        assert DOCX_TO_UDF_EXPERIMENTAL_WARNING in result["warning"]
+        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
 
-    def test_invalid_docx_returns_empty_document(self, tmp_path):
-        """A non-DOCX (un-extractable) file degrades to EMPTY_DOCUMENT, not a crash."""
+    def test_invalid_docx_is_delegated_to_toolkit(self, tmp_path):
+        """A non-DOCX is no longer parsed locally; UDF-Toolkit owns validation."""
         path = tmp_path / "test.docx"
-        path.write_bytes(b"fake docx")  # not a real zip
+        path.write_bytes(b"fake docx")
         result = convert_docx_to_udf_experimental(path, experimental=True)
         assert result["ok"] is False
-        assert result["errorCode"] == "EMPTY_DOCUMENT"
+        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
 
-    def test_converts_without_toolkit(self, tmp_path, monkeypatch):
-        """DOCX -> UDF is pure-python and must work with NO LibreOffice/toolkit."""
-        import zipfile
-
-        # Ensure the toolkit is definitively unavailable.
-        monkeypatch.delenv("EMSAL_UDF_TOOLKIT_DIR", raising=False)
-        monkeypatch.delenv("UDF_TOOLKIT_DIR", raising=False)
-        monkeypatch.setattr(udf_mod.shutil, "which", lambda *_a, **_k: None)
-
+    def test_converts_with_toolkit_script(self, tmp_path, monkeypatch):
+        """DOCX -> UDF is delegated to UDF-Toolkit docx_to_udf.py."""
+        toolkit_dir = tmp_path / "toolkit"
+        toolkit_dir.mkdir()
+        for script in ("udf_to_docx.py", "udf_to_pdf.py"):
+            (toolkit_dir / script).write_text("# stub", encoding="utf-8")
+        (toolkit_dir / "docx_to_udf.py").write_text(
+            "from pathlib import Path\n"
+            "import sys\n"
+            "Path(sys.argv[2]).write_bytes(b'PK\\x03\\x04fake')\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("LOCAL_YARGI_UDF_TOOLS", "1")
+        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
+        monkeypatch.setattr(udf_mod, "_discover_python", lambda: "python")
         docx = tmp_path / "in.docx"
-        with zipfile.ZipFile(docx, "w") as zf:
-            zf.writestr(
-                "word/document.xml",
-                '<w:document><w:body><w:p><w:r><w:t>Merhaba Dünya</w:t></w:r>'
-                "</w:p></w:body></w:document>",
-            )
+        docx.write_bytes(b"fake docx")
         out = tmp_path / "out.udf"
-        result = convert_docx_to_udf_experimental(docx, out, experimental=True)
+        result = convert_docx_to_udf_experimental(docx, out)
         assert result["ok"] is True
         assert out.exists()
-        # round-trips through our own reader
-        assert "Merhaba Dünya" in read_udf(out)
+        assert result["experimental"] is False
 
     def test_file_not_found_when_toolkit_available(self, tmp_path, monkeypatch):
         """When toolkit is available but file doesn't exist, returns file_not_found."""

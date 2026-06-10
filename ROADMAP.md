@@ -1,6 +1,6 @@
 # ROADMAP.md — Emsal-mcp
 
-**Mevcut sürüm:** v3.1.0 · **Oluşturulma:** 2026-06-02
+**Mevcut sürüm:** v4.0.0 · **Oluşturulma:** 2026-06-02
 **Durum:** M-01…M-68 tamamlandı (1526 test geçiyor, mypy temiz, ruff 0 hata, CI yeşil).
 **Sıradaki ufuk:** v4.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
 **Aktif sıradaki:** FAZ L — Karar Arama & Semantik Parite (M-92…M-96), YargiMCP-Pro kıyas bulguları.
@@ -122,7 +122,7 @@ Faz değil, sürekli çark — her release'de gözden geçirilir:
 
 ---
 
-## FAZ L — Karar Arama & Semantik Parite (v4.1) 🆕
+### Karar Arama & Semantik Parite (v4.1) 🆕
 
 > **Gerekçe:** YargiMCP-Pro (hosted connector) ile karşılaştırma sonucu çıkan
 > bulgular. İki konuda gerideyiz: (1) Bedesten karar aramasının yetenekleri MCP

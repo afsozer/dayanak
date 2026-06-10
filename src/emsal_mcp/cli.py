@@ -645,6 +645,18 @@ def udf_status(json_out: bool = typer.Option(False, "--json")) -> None:
     _print(get_udf_toolkit_status(), json_out)
 
 
+@udf_app.command("install-toolkit")
+def udf_install_toolkit(
+    target_dir: Optional[Path] = typer.Option(None, help="Install target directory"),
+    repo_url: str = typer.Option("https://github.com/saidsurucu/UDF-Toolkit.git", help="UDF-Toolkit git repository URL"),
+    update: bool = typer.Option(False, "--update", help="Update an existing managed git clone"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Install the managed UDF-Toolkit clone used by converters."""
+    from .udf import install_udf_toolkit
+    _print(install_udf_toolkit(target_dir, repo_url=repo_url, update=update), json_out)
+
+
 @udf_app.command("authoring-instructions")
 def udf_authoring_instructions(
     format: str = typer.Option("json", help="Output format: json or markdown"),
