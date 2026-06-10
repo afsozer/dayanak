@@ -1246,48 +1246,17 @@ Same output as `build_semantic_index` with `force_rebuild=True`. All existing FT
 }
 ```
 
-## Release Command Center (v0.13)
+## Release Readiness (CLI)
 
-### `release_command_center`
+> **M-103 (v5.0.0):** Release yönetimi MCP araçları kaldırıldı; yalnızca
+> CLI `release v1-readiness` kaldı.
 
-```json
-{
-  "ok": true,
-  "version": "0.13.0",
-  "generated_at": "2026-05-29T12:00:00+00:00",
-  "overall_readiness": 85,
-  "checks_passed": 2,
-  "checks_total": 3,
-  "checks": {
-    "release_smoke": {"ok": true, "version": "0.13.0", "...": "..."},
-    "source_capabilities": {"ok": true, "source_count": 11, "stable_sources": ["bedesten", "aym"], "unavailable_sources": []},
-    "module_imports": {"ok": true, "passed": ["emsal_mcp.citation", "..."], "failed": [], "total": 13},
-    "search_index": {"ok": true, "fts5_exists": true, "vectors_count": 42, "unindexed_documents": 0},
-    "chambers": {"ok": true, "total_chambers": 8, "total_documents": 150},
-    "udf_toolkit": {"ok": false, "enabled": false, "...": "..."}
-  },
-  "warnings": ["UDF toolkit not available: [...]"],
-  "recommended_actions": ["BİLGİ: Küçük uyarılar var; release sonrası takip edin."]
-}
-```
-
-### `version_bump`
+### `final_v1_readiness` (CLI: `emsal-mcp release v1-readiness --json`)
 
 ```json
 {
   "ok": true,
-  "current_version": "0.13.0",
-  "next_version": "0.13.1",
-  "bump_type": "patch"
-}
-```
-
-### `final_v1_readiness`
-
-```json
-{
-  "ok": true,
-  "ready": false,
+  "ready": true,
   "criteria": {
     "all_modules_importable": true,
     "has_stable_sources": true,
@@ -1295,30 +1264,9 @@ Same output as `build_semantic_index` with `force_rebuild=True`. All existing FT
     "no_unavailable_sources": true
   },
   "blocking_issues": [],
-  "recommendation": "SHIP: v1.0.0 çıkışa hazır.",
-  "command_center": {"...": "release_command_center output"},
-  "version": "0.13.0",
-  "generated_at": "2026-05-29T12:00:00+00:00"
-}
-```
-
-### `generate_release_summary`
-
-```json
-{
-  "ok": true,
-  "markdown_summary": "# Emsal-mcp 0.13.0 Release Summary\n\n...",
-  "json_summary": {
-    "version": "0.13.0",
-    "generated_at": "2026-05-29T12:00:00+00:00",
-    "readiness": 85,
-    "modules": {"total": 13, "importable": 13, "failed": 0},
-    "sources": {"total": 11, "stable": 7, "unavailable": []},
-    "chambers": 8,
-    "cached_documents": 150,
-    "udf_toolkit_available": false,
-    "search_index": {"ok": true}
-  },
-  "version": "0.13.0"
+  "recommendation": "SHIP: v1.0.0 cikisa hazir.",
+  "checks": {"...": "module/source/smoke detayları"},
+  "version": "5.0.0",
+  "generated_at": "2026-06-10T12:00:00+00:00"
 }
 ```

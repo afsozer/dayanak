@@ -269,102 +269,41 @@
 
 ---
 
-## Reçete 6: Release & Export
+## Reçete 6: Hazırlık Kontrolü & Export
 
-**Amaç:** Release hazırlık merkezini çalıştırın, notlar üretin ve dışa aktarın.
+> **M-103/M-104 (v5.0.0):** `release command-center`, `version-bump`,
+> `summary`, `notes`, `archive`, `history`, `benchmark` ve `calibrate`
+> komutları kaldırıldı. Sürüm yönetimi git ile yapılır.
 
-**Önkoşul:** Tüm modüller import edilebilir durumda.
+**Amaç:** Hazırlık kapısını kontrol edin ve taslağı dışa aktarın.
 
 **Adımlar:**
 
-1. Release hazırlık merkezini çalıştırın:
-   ```bash
-   emsal-mcp release command-center --json
-   ```
-
-2. v1.0.0 hazırlık kapısını kontrol edin:
+1. v1.0.0 hazırlık kapısını kontrol edin:
    ```bash
    emsal-mcp release v1-readiness --json
    ```
 
-3. Versiyon artışını hesaplayın:
-   ```bash
-   emsal-mcp release version-bump --minor --json
-   ```
-
-4. İnsan-okunur release özetini oluşturun:
-   ```bash
-   emsal-mcp release summary --json
-   ```
-
-5. Release notlarını üretin:
-   ```bash
-   emsal-mcp release notes --out exports/release-notes.md
-   ```
-
-6. Release arşivi oluşturun:
-   ```bash
-   emsal-mcp release archive --out-dir exports/release-archive --json
-   ```
-
-7. Release geçmişini kaydedin:
-   ```bash
-   emsal-mcp release history --out-dir exports/release-history --json
-   ```
-
-8. Release duman testlerini çalıştırın:
+2. Duman testlerini çalıştırın:
    ```bash
    emsal-mcp smoke --json
    ```
 
-9. Draft'ı düz metin olarak dışa aktarın:
+3. Draft'ı düz metin olarak dışa aktarın:
    ```bash
    emsal-mcp export txt draft_output/draft.md \
      --out-path exports/draft.txt \
      --json
    ```
 
-10. Export format yeteneklerini görüntüleyin:
-    ```bash
-    emsal-mcp export capabilities --json
-    ```
+4. Export format yeteneklerini görüntüleyin:
+   ```bash
+   emsal-mcp export capabilities --json
+   ```
 
 **Beklenen Çıktı:**
-- Command center: `overall_readiness` skoru (0-100), kontrol durumları
 - v1-readiness: `ready: true/false`, kriterler, engelleyici sorunlar
-- Release notları: markdown formatında değişiklik özeti
-- Arşiv: dashboard + notes + history bir arada
 - Export: DOCX, TXT, PDF, UDF formatları (toolkit durumuna göre)
-
----
-
-## Ek Reçete: Mikro Benchmark
-
-**Amaç:** Performans karşılaştırması için sentetik corpus ile benchmark çalıştırın.
-
-**Adımlar:**
-
-```bash
-emsal-mcp benchmark --corpus-size 50 --json
-```
-
-**Beklenen Çıktı:**
-- Arama süresi, indeksleme süresi, toplam benchmark skoru
-
----
-
-## Ek Reçete: Kaynak Kalibrasyonu
-
-**Amaç:** Kaynakların güvenli istek oranlarını ölçün.
-
-**Adımlar:**
-
-```bash
-emsal-mcp calibrate all --online --json
-```
-
-**Beklenen Çıktı:**
-- Kaynak başına: ortalama yanıt süresi, güvenli rate-limit aralığı
 
 ---
 

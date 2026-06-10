@@ -84,51 +84,49 @@ Render argument chains as a readable markdown document.
 
 ---
 
-## `benchmark`
+## `birim_enum`
 
-### `def run_benchmarks() -> dict[str, Any]`
+### `def is_valid_birim_adi(code: str) -> bool`
 
-Run the full benchmark suite.
-
-    Args:
-            corpus_size: Number of synthetic documents to create.
-            repetitions: Number of times to repeat each benchmark (only first run timed).
-    
-        Returns:
-            Dict with ok, benchmarks (per-test timings), summary.
+Return True if *code* is a known birimAdi chamber code.
 
 ---
 
-## `calibrate`
+### `def validate_birim_adi(code: str | None) -> dict | None`
 
-### `def calibrate_source(source_id: str) -> dict[str, Any]`
+Validate a birimAdi chamber code.
 
-Measure safe request rate for a source by issuing test calls.
-
-    Sends sample_requests test calls with delay_between seconds between
-        them.  Measures observed latency and suggests a safe rate.
+    Returns None if valid (or None), or a graceful ``build_error`` dict
+        if the code is not recognised.
     
-        Args:
-            source_id: Source identifier (e.g. 'bedesten', 'yargitay').
-            sample_requests: Number of test requests to send.
-            delay_between: Seconds between requests (be polite).
-            online: If True, make actual HTTP calls.  Default False (smoke-only).
-    
-        Returns:
-            Dict with ok, source_id, latencies_ms, avg_ms, recommended_rps,
-            suggested_config, warnings.
+        This never raises — invariant #3 (graceful degradation).
 
 ---
 
-### `def calibrate_all() -> dict[str, Any]`
+### `def describe_birim_adi(code: str, lang: str) -> dict`
 
-Run calibration on all registered sources.
+Return a description dict for a birimAdi code.
 
     Args:
-            online: Whether to make actual HTTP calls.
+            code: Chamber code (e.g. "H1", "HGK").
+            lang: "tr" or "en".
     
         Returns:
-            Dict with ok, results per source, summary.
+            Dict with ``code``, ``description``, and ``court`` keys.
+            Unknown codes still return a dict (with description="<bilinmiyor>").
+
+---
+
+### `def list_birim_codes(court: str | None) -> list[dict]`
+
+Return all 79 birimAdi codes, optionally filtered by court.
+
+    Args:
+            court: Optional filter — "Yargitay", "Danistay", or "Askeri".
+                   Returns all codes if omitted.
+    
+        Returns:
+            List of ``{code, description_tr, description_en, court}`` dicts.
 
 ---
 
@@ -431,175 +429,175 @@ Export citation graph in various formats.
 
 ## `cli`
 
-### `def version()`
+### `def version() -> None`
 
 Print the current emsal-mcp version.
 
 ---
 
-### `def doctor(json_out: bool)`
+### `def doctor(json_out: bool) -> None`
 
 Run environment diagnostics: Python, cache, sources, UDF toolkit.
 
 ---
 
-### `def sources(json_out: bool)`
+### `def sources(json_out: bool) -> None`
 
 List registered data sources and their capabilities.
 
 ---
 
-### `def sources_smoke(offline: bool, online: bool, json_out: bool)`
+### `def sources_smoke(offline: bool, online: bool, json_out: bool) -> None`
 
 Run per-source smoke tests (offline by default, online opt-in).
 
 ---
 
-### `def search(source: str, query: str, limit: int, page: int, json_out: bool)`
+### `def search(source: str, query: str, limit: int, page: int, json_out: bool) -> None`
 
 Search court decisions from a given source.
 
 ---
 
-### `def get(source: str, document_id: str, json_out: bool)`
+### `def get(source: str, document_id: str, json_out: bool) -> None`
 
 Fetch a single document by ID from the given source.
 
 ---
 
-### `def citation_check_cmd(source: str, document_id: str, json_out: bool)`
+### `def citation_check_cmd(source: str, document_id: str, json_out: bool) -> None`
 
 Check citation safety of a document from the given source.
 
 ---
 
-### `def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool)`
+### `def build_pack(matter: str, issue: str, docs_json: Path, json_out: bool) -> None`
 
 Build a citation-safe input pack from a JSON document list.
 
 ---
 
-### `def draft_document(title: str, body_file: Path, docs_json: Optional[Path], out: Optional[Path])`
+### `def draft_document(title: str, body_file: Path, docs_json: Optional[Path], out: Optional[Path]) -> None`
 
 Generate a citation-safe markdown draft document.
 
 ---
 
-### `def export_docx(markdown_file: Path, out: Path)`
+### `def export_docx(markdown_file: Path, out: Path) -> None`
 
 Export a markdown file to DOCX format.
 
 ---
 
-### `def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bool)`
+### `def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bool) -> None`
 
 Export a citation-safe bundle with input pack and source documents.
 
 ---
 
-### `def smoke(offline: bool, json_out: bool)`
+### `def smoke(offline: bool, json_out: bool) -> None`
 
 Run release smoke tests (offline by default).
 
 ---
 
-### `def cache_stats(cache_path: Optional[Path])`
+### `def cache_stats(cache_path: Optional[Path]) -> None`
 
 Show cache statistics (document counts, sizes, sources).
 
 ---
 
-### `def cache_list(source: Optional[str], limit: int, offset: int, cache_path: Optional[Path])`
+### `def cache_list(source: Optional[str], limit: int, offset: int, cache_path: Optional[Path]) -> None`
 
 List cached documents.
 
 ---
 
-### `def cache_search_local(query: str, source: Optional[str], court: Optional[str], chamber: Optional[str], date: Optional[str], esas_no: Optional[str], karar_no: Optional[str], document_id: Optional[str], content_status: Optional[str], draft_usable: Optional[bool], quote_usable: Optional[bool], sort: str, limit: int, cache_path: Optional[Path])`
+### `def cache_search_local(query: str, source: Optional[str], court: Optional[str], chamber: Optional[str], date: Optional[str], esas_no: Optional[str], karar_no: Optional[str], document_id: Optional[str], content_status: Optional[str], draft_usable: Optional[bool], quote_usable: Optional[bool], sort: str, limit: int, cache_path: Optional[Path]) -> None`
 
 Search cached documents locally (no network).
 
 ---
 
-### `def cache_delete(document_id: str, source: str, cache_path: Optional[Path])`
+### `def cache_delete(document_id: str, source: str, cache_path: Optional[Path]) -> None`
 
 Delete a cached document (explicit, destructive).
 
 ---
 
-### `def cache_prune(max_age_days: int, cache_path: Optional[Path])`
+### `def cache_prune(max_age_days: int, cache_path: Optional[Path]) -> None`
 
 Prune old search cache entries.
 
 ---
 
-### `def cache_backup(backup_path: Path, cache_path: Optional[Path])`
+### `def cache_backup(backup_path: Path, cache_path: Optional[Path]) -> None`
 
 Backup the cache database.
 
 ---
 
-### `def cache_export(export_path: Path, cache_path: Optional[Path])`
+### `def cache_export(export_path: Path, cache_path: Optional[Path]) -> None`
 
 Export cached documents to JSON.
 
 ---
 
-### `def cache_import(import_path: Path, cache_path: Optional[Path])`
+### `def cache_import(import_path: Path, cache_path: Optional[Path]) -> None`
 
 Import cached documents from JSON.
 
 ---
 
-### `def cache_compact(cache_path: Optional[Path], json_out: bool)`
+### `def cache_compact(cache_path: Optional[Path], json_out: bool) -> None`
 
 Run VACUUM to reclaim space and defragment the cache database.
 
 ---
 
-### `def cache_cleanup_orphans(cache_path: Optional[Path], json_out: bool)`
+### `def cache_cleanup_orphans(cache_path: Optional[Path], json_out: bool) -> None`
 
 Remove orphan rows from search_vectors and documents_v2_fts.
 
 ---
 
-### `def cache_integrity_check(cache_path: Optional[Path], json_out: bool)`
+### `def cache_integrity_check(cache_path: Optional[Path], json_out: bool) -> None`
 
 Run comprehensive integrity checks on the cache database.
 
 ---
 
-### `def cache_sync(other_db: Path, cache_path: Optional[Path], json_out: bool)`
+### `def cache_sync(other_db: Path, cache_path: Optional[Path], json_out: bool) -> None`
 
 Sync documents from another cache database (multi-machine merge).
 
 ---
 
-### `def cache_find_duplicates(dry_run: bool, cache_path: Optional[Path], json_out: bool)`
+### `def cache_find_duplicates(dry_run: bool, cache_path: Optional[Path], json_out: bool) -> None`
 
 Find duplicate documents across sources (same court+esas_no+karar_no).
 
 ---
 
-### `def cache_dedup_cluster(document_id: str, source: str, cache_path: Optional[Path], json_out: bool)`
+### `def cache_dedup_cluster(document_id: str, source: str, cache_path: Optional[Path], json_out: bool) -> None`
 
 Find which dedup cluster a document belongs to.
 
 ---
 
-### `def cache_dedup_stats(cache_path: Optional[Path], json_out: bool)`
+### `def cache_dedup_stats(cache_path: Optional[Path], json_out: bool) -> None`
 
 Show deduplication statistics.
 
 ---
 
-### `def cache_merge_cluster(cluster_id: str, cache_path: Optional[Path], json_out: bool)`
+### `def cache_merge_cluster(cluster_id: str, cache_path: Optional[Path], json_out: bool) -> None`
 
 Merge a dedup cluster: enrich canonical record with alternative source URLs.
 
 ---
 
-### `def cache_fuzzy_duplicates(provider: Optional[str], threshold: float, max_date_diff_days: int, cache_path: Optional[Path], json_out: bool)`
+### `def cache_fuzzy_duplicates(provider: Optional[str], threshold: float, max_date_diff_days: int, cache_path: Optional[Path], json_out: bool) -> None`
 
 Find fuzzy duplicate candidates using dense embeddings.
 
@@ -608,585 +606,535 @@ Find fuzzy duplicate candidates using dense embeddings.
 
 ---
 
-### `def cache_fuzzy_dedup_stats(cache_path: Optional[Path], json_out: bool)`
+### `def cache_fuzzy_dedup_stats(cache_path: Optional[Path], json_out: bool) -> None`
 
 Report fuzzy dedup readiness and embedding availability.
 
 ---
 
-### `def release_dashboard(json_out: bool)`
-
-Show release readiness dashboard.
-
----
-
-### `def release_history(out_dir: Path, json_out: bool)`
-
-Write release history record to output directory.
-
----
-
-### `def release_compare(left: Path, right: Path, json_out: bool)`
-
-Compare two release history records and report score delta.
-
----
-
-### `def release_notes_cmd(out: Optional[Path])`
-
-Generate markdown release notes.
-
----
-
-### `def release_archive(out_dir: Path, json_out: bool)`
-
-Create a release archive with dashboard, notes, and history.
-
----
-
-### `def release_cmd_center(json_out: bool)`
-
-Comprehensive release verification - all checks.
-
----
-
-### `def release_version_bump(major: bool, minor: bool, patch: bool, json_out: bool)`
-
-Compute next version (does NOT modify files).
-
----
-
-### `def release_v1_readiness(json_out: bool)`
+### `def release_v1_readiness(json_out: bool) -> None`
 
 Final v1.0.0 readiness gate.
 
 ---
 
-### `def release_summary(json_out: bool)`
+### `def release_version(json_out: bool) -> None`
 
-Human-readable release summary.
+Show emsal-mcp version info.
 
 ---
 
-### `def udf_probe(path: Path, json_out: bool)`
+### `def udf_probe(path: Path, json_out: bool) -> None`
 
 Probe a UDF file for structure and content metadata.
 
 ---
 
-### `def udf_read(path: Path)`
+### `def udf_read(path: Path) -> None`
 
 Read and print text content from a UDF file.
 
 ---
 
-### `def udf_md(path: Path, out: Optional[Path])`
+### `def udf_md(path: Path, out: Optional[Path]) -> None`
 
 Convert a UDF file to markdown format.
 
 ---
 
-### `def udf_write(text_file: Path, out: Path, title_centered: bool)`
+### `def udf_write(text_file: Path, out: Path, title_centered: bool) -> None`
 
 Write a UYAP UDF file from a text file.
 
 ---
 
-### `def udf_status(json_out: bool)`
+### `def udf_status(json_out: bool) -> None`
 
 Show UDF toolkit availability status.
 
 ---
 
-### `def udf_authoring_instructions(format: str, json_out: bool)`
+### `def udf_install_toolkit(target_dir: Optional[Path], repo_url: str, update: bool, json_out: bool) -> None`
+
+Install the managed UDF-Toolkit clone used by converters.
+
+---
+
+### `def udf_authoring_instructions(format: str, json_out: bool) -> None`
 
 Show UDF authoring instructions and warnings.
 
 ---
 
-### `def udf_to_docx_cmd(path: Path, out_path: Optional[Path], json_out: bool)`
+### `def udf_to_docx_cmd(path: Path, out_path: Optional[Path], json_out: bool) -> None`
 
 Convert UDF to DOCX (requires toolkit).
 
 ---
 
-### `def udf_to_pdf_cmd(path: Path, out_path: Optional[Path], json_out: bool)`
+### `def udf_to_pdf_cmd(path: Path, out_path: Optional[Path], json_out: bool) -> None`
 
 Convert UDF to PDF (requires toolkit).
 
 ---
 
-### `def udf_docx_to_udf_cmd(path: Path, out_path: Optional[Path], experimental: bool, json_out: bool)`
+### `def udf_docx_to_udf_cmd(path: Path, out_path: Optional[Path], experimental: bool, json_out: bool) -> None`
 
 Convert DOCX to UDF (experimental, requires toolkit).
 
 ---
 
-### `def research_topic_cmd(query: str, sources: Optional[str], fetch_count: int, output_dir: Optional[Path], json_out: bool)`
+### `def research_topic_cmd(query: str, sources: Optional[str], fetch_count: int, output_dir: Optional[Path], json_out: bool) -> None`
 
 Search sources, fetch documents, build research bundle.
 
 ---
 
-### `def research_refresh_cmd(bundle_path: Path, dry_run: bool, json_out: bool)`
+### `def research_refresh_cmd(bundle_path: Path, dry_run: bool, json_out: bool) -> None`
 
 Re-run research from an existing bundle, detect new/changed documents.
 
 ---
 
-### `def research_dashboard_cmd(bundle_path: Path, json_out: bool)`
+### `def research_dashboard_cmd(bundle_path: Path, json_out: bool) -> None`
 
 Compute quality metrics for a research bundle.
 
 ---
 
-### `def cite_format(document_id: str, source: str, style: str, json_out: bool)`
+### `def cite_format(document_id: str, source: str, style: str, json_out: bool) -> None`
 
 Format a legal citation from cached document metadata.
 
 ---
 
-### `def cite_verify(text: str, file_path: Path, source: str, limit: int, fetch: int, no_live: bool, min_score: float, strategy_debug: bool, json_out: bool)`
+### `def cite_verify(text: str, file_path: Path, source: str, limit: int, fetch: int, no_live: bool, min_score: float, strategy_debug: bool, json_out: bool) -> None`
 
 Verify legal citations in text or file.
 
 ---
 
-### `def petition_pack(matter: str, issue: str, docs_json: Optional[Path], research_bundle: Optional[Path], out_dir: Optional[Path], strict: bool, template: Optional[str], json_out: bool)`
+### `def petition_pack(matter: str, issue: str, docs_json: Optional[Path], research_bundle: Optional[Path], out_dir: Optional[Path], strict: bool, template: Optional[str], json_out: bool) -> None`
 
 Prepare a petition drafting input pack.
 
 ---
 
-### `def petition_inspect(pack_dir: Path, json_out: bool)`
+### `def petition_inspect(pack_dir: Path, json_out: bool) -> None`
 
 Inspect and validate a petition pack directory.
 
 ---
 
-### `def petition_outline(pack_dir: Path, out_dir: Optional[Path], json_out: bool)`
+### `def petition_outline(pack_dir: Path, out_dir: Optional[Path], json_out: bool) -> None`
 
 Generate a structured petition outline from a pack.
 
 ---
 
-### `def petition_draft(pack_dir: Path, outline_path: Optional[Path], out_dir: Optional[Path], json_out: bool)`
+### `def petition_draft(pack_dir: Path, outline_path: Optional[Path], out_dir: Optional[Path], json_out: bool) -> None`
 
 Generate a controlled petition draft from a pack.
 
 ---
 
-### `def petition_export_docx(draft_path: Optional[Path], draft_json_path: Optional[Path], out_path: Optional[Path], pack_dir: Optional[Path], json_out: bool)`
+### `def petition_export_docx(draft_path: Optional[Path], draft_json_path: Optional[Path], out_path: Optional[Path], pack_dir: Optional[Path], json_out: bool) -> None`
 
 Create a validated DOCX export from a controlled draft.
 
 ---
 
-### `def petition_export_bundle(pack_dir: Path, draft_dir: Optional[Path], docx_path: Optional[Path], out_dir: Optional[Path], json_out: bool)`
+### `def petition_export_bundle(pack_dir: Path, draft_dir: Optional[Path], docx_path: Optional[Path], out_dir: Optional[Path], json_out: bool) -> None`
 
 Create a complete export package bundle with verification.
 
 ---
 
-### `def petition_multi_pack(matter: str, issues_json: Path, docs_json: Optional[Path], out_dir: Optional[Path], json_out: bool)`
+### `def petition_multi_pack(matter: str, issues_json: Path, docs_json: Optional[Path], out_dir: Optional[Path], json_out: bool) -> None`
 
 Build a multi-issue petition pack with isolated citation banks.
 
 ---
 
-### `def petition_multi_inspect(pack_dir: Path, json_out: bool)`
+### `def petition_multi_inspect(pack_dir: Path, json_out: bool) -> None`
 
 Inspect and validate a multi-issue petition pack directory.
 
 ---
 
-### `def argument_build(pack_dir: Path, json_out: bool)`
+### `def argument_build(pack_dir: Path, json_out: bool) -> None`
 
 Build structured argument chains from a petition pack.
 
 ---
 
-### `def argument_score(pack_dir: Path, json_out: bool)`
+### `def argument_score(pack_dir: Path, json_out: bool) -> None`
 
 Score argument strength for a petition pack.
 
 ---
 
-### `def argument_render(pack_dir: Path, out_path: Optional[Path], json_out: bool)`
+### `def argument_render(pack_dir: Path, out_path: Optional[Path], json_out: bool) -> None`
 
 Render argument chains as markdown.
 
 ---
 
-### `def legislation_search(query: str, legislation_type: Optional[str], limit: int, json_out: bool)`
+### `def legislation_search(query: str, legislation_type: Optional[str], limit: int, json_out: bool) -> None`
 
 Mevzuat ara.
 
 ---
 
-### `def legislation_get(document_id: str, source: Optional[str], json_out: bool)`
+### `def legislation_get(document_id: str, source: Optional[str], json_out: bool) -> None`
 
 Mevzuat belgesi getir.
 
 ---
 
-### `def legislation_articles(document_id: str, article_number: Optional[str], article_query: Optional[str], source: Optional[str], json_out: bool)`
+### `def legislation_articles(document_id: str, article_number: Optional[str], article_query: Optional[str], source: Optional[str], json_out: bool) -> None`
 
 Belge içinde madde ara.
 
 ---
 
-### `def legislation_tree(document_id: str, source: Optional[str], json_out: bool)`
+### `def legislation_tree(document_id: str, source: Optional[str], json_out: bool) -> None`
 
 Belgenin kısım/bölüm/madde ağacını çıkar.
 
 ---
 
-### `def legislation_gerekce(document_id: str, source: Optional[str], json_out: bool)`
+### `def legislation_gerekce(document_id: str, source: Optional[str], json_out: bool) -> None`
 
 Genel gerekçe ve madde gerekçelerini çıkar.
 
 ---
 
-### `def legislation_status(json_out: bool)`
+### `def legislation_status(json_out: bool) -> None`
 
 Mevzuat kaynak sağlık durumu.
 
 ---
 
-### `def legislation_types(json_out: bool)`
+### `def legislation_types(json_out: bool) -> None`
 
 Bilinen mevzuat türlerini listele.
 
 ---
 
-### `def legislation_format(title: str, legislation_no: str, gazette_date: str, style: str, json_out: bool)`
+### `def legislation_format(title: str, legislation_no: str, gazette_date: str, style: str, json_out: bool) -> None`
 
 Mevzuat atıf formatla.
 
 ---
 
-### `def semantic_index(force_rebuild: bool, json_out: bool)`
+### `def semantic_index(force_rebuild: bool, json_out: bool) -> None`
 
 Build FTS5 + TF-IDF search indices.
 
 ---
 
-### `def semantic_search_cmd(query: str, limit: int, source: Optional[str], court: Optional[str], chamber: Optional[str], json_out: bool)`
+### `def semantic_search_cmd(query: str, limit: int, source: Optional[str], court: Optional[str], chamber: Optional[str], json_out: bool) -> None`
 
 TF-IDF cosine similarity search. Supports --source, --court, --chamber filters.
 
 ---
 
-### `def semantic_hybrid(query: str, limit: int, weight: float, w_dense: float, rerank: bool, source: Optional[str], court: Optional[str], chamber: Optional[str], json_out: bool)`
+### `def semantic_hybrid(query: str, limit: int, weight: float, w_dense: float, rerank: bool, rrf: bool, dense: bool, json_out: bool) -> None`
 
-FTS5 BM25 + TF-IDF cosine hybrid search with optional dense embeddings.
+FTS5 BM25 + TF-IDF cosine hybrid search (RRF opsiyonuyla).
 
 ---
 
-### `def semantic_status(json_out: bool)`
+### `def semantic_status(json_out: bool) -> None`
 
 Check index health and statistics.
 
 ---
 
-### `def semantic_rebuild(json_out: bool)`
+### `def semantic_rebuild(json_out: bool) -> None`
 
 Force rebuild all search indices.
 
 ---
 
-### `def semantic_embed_index(provider: Optional[str], force_rebuild: bool, json_out: bool)`
+### `def semantic_embed_index(provider: Optional[str], force_rebuild: bool, json_out: bool) -> None`
 
 Build dense embedding index.
 
 ---
 
-### `def semantic_embed_search(query: str, provider: Optional[str], limit: int, json_out: bool)`
+### `def semantic_embed_search(query: str, provider: Optional[str], limit: int, json_out: bool) -> None`
 
 Dense embedding similarity search.
 
 ---
 
-### `def semantic_providers(json_out: bool)`
+### `def semantic_providers(json_out: bool) -> None`
 
 List available embedding providers.
 
 ---
 
-### `def semantic_embedding_status(json_out: bool)`
+### `def semantic_embedding_status(json_out: bool) -> None`
 
 Check dense embedding index status.
 
 ---
 
-### `def semantic_update_indexes(provider: Optional[str], json_out: bool)`
+### `def semantic_update_indexes(provider: Optional[str], json_out: bool) -> None`
 
 Incrementally update indexes (new/changed docs only).
 
 ---
 
-### `def semantic_sync_status(json_out: bool)`
+### `def semantic_sync_status(json_out: bool) -> None`
 
 Check index sync status.
 
 ---
 
-### `def chamber_overview(court: Optional[str], json_out: bool)`
+### `def chamber_overview(court: Optional[str], json_out: bool) -> None`
 
 Chamber overview with document counts and date ranges.
 
 ---
 
-### `def chamber_profile(chamber: str, court: Optional[str], json_out: bool)`
+### `def chamber_profile(chamber: str, court: Optional[str], json_out: bool) -> None`
 
 Detailed profile of a specific chamber.
 
 ---
 
-### `def chamber_timeline_cmd(chamber: Optional[str], court: Optional[str], start_year: Optional[int], end_year: Optional[int], json_out: bool)`
+### `def chamber_timeline_cmd(chamber: Optional[str], court: Optional[str], start_year: Optional[int], end_year: Optional[int], json_out: bool) -> None`
 
 Decision timeline grouped by year.
 
 ---
 
-### `def chamber_similar(chamber: str, court: Optional[str], limit: int, json_out: bool)`
+### `def chamber_similar(chamber: str, court: Optional[str], limit: int, json_out: bool) -> None`
 
 Find chambers with similar topic profiles.
 
 ---
 
-### `def graph_build(limit_docs: int, json_out: bool)`
+### `def graph_build(limit_docs: int, json_out: bool) -> None`
 
 Build citation graph from cached documents.
 
 ---
 
-### `def graph_show(document_id: str, source: str, direction: str, json_out: bool)`
+### `def graph_show(document_id: str, source: str, direction: str, json_out: bool) -> None`
 
 Show citation relationships for a document.
 
 ---
 
-### `def graph_citing(document_id: str, source: str, limit: int, json_out: bool)`
+### `def graph_citing(document_id: str, source: str, limit: int, json_out: bool) -> None`
 
 Find documents that cite the given document.
 
 ---
 
-### `def graph_cited(document_id: str, source: str, limit: int, json_out: bool)`
+### `def graph_cited(document_id: str, source: str, limit: int, json_out: bool) -> None`
 
 Find documents that the given document cites.
 
 ---
 
-### `def graph_stats(json_out: bool)`
+### `def graph_stats(json_out: bool) -> None`
 
 Citation graph istatistikleri.
 
 ---
 
-### `def graph_export(format: str, document_id: Optional[str], source: Optional[str], max_depth: int, json_out: bool)`
+### `def graph_export(format: str, document_id: Optional[str], source: Optional[str], max_depth: int, json_out: bool) -> None`
 
 Export citation graph in various formats (json, dot, mermaid).
 
 ---
 
-### `def analytics_report(days: int, cache_path: Optional[Path], json_out: bool)`
-
-Comprehensive search analytics report.
-
----
-
-### `def analytics_empty_queries(limit: int, cache_path: Optional[Path], json_out: bool)`
-
-List queries that returned 0 results.
-
----
-
-### `def analytics_top_queries(limit: int, cache_path: Optional[Path], json_out: bool)`
-
-Most frequent queries.
-
----
-
-### `def analytics_source_coverage(cache_path: Optional[Path], json_out: bool)`
-
-Source coverage: doc counts and full_text percentage.
-
----
-
-### `def template_list(json_out: bool)`
+### `def template_list(json_out: bool) -> None`
 
 List all available petition templates.
 
 ---
 
-### `def template_show(name: str, json_out: bool)`
+### `def template_show(name: str, json_out: bool) -> None`
 
 Show details of a specific petition template.
 
 ---
 
-### `def template_render(name: str, out_path: Optional[Path])`
+### `def template_render(name: str, out_path: Optional[Path]) -> None`
 
 Render a template as a draft-skeleton.md compatible markdown.
 
 ---
 
-### `def draft_diff(draft_a: Path, draft_b: Path, json_out: bool)`
+### `def draft_diff(draft_a: Path, draft_b: Path, json_out: bool) -> None`
 
 Compare two draft files and show changes.
 
 ---
 
-### `def draft_placeholders(draft_path: Path, json_out: bool)`
+### `def draft_placeholders(draft_path: Path, json_out: bool) -> None`
 
 Analyze placeholder fill status in a draft.
 
 ---
 
-### `def draft_fill_report(draft_path: Path, pack_dir: Optional[Path], json_out: bool)`
+### `def draft_fill_report(draft_path: Path, pack_dir: Optional[Path], json_out: bool) -> None`
 
 Generate a fill report: what still needs attention.
 
 ---
 
-### `def draft_save_version(draft_dir: Path, label: Optional[str], json_out: bool)`
+### `def draft_save_version(draft_dir: Path, label: Optional[str], json_out: bool) -> None`
 
 Save a snapshot of current draft state for later diff.
 
 ---
 
-### `def export_txt(draft_path: Path, out_path: Optional[Path], json_out: bool)`
+### `def export_txt(draft_path: Path, out_path: Optional[Path], json_out: bool) -> None`
 
 Export a draft to plain-text format (always available, no toolkit).
 
 ---
 
-### `def export_format_cmd(draft_path: Path, format: str, out_path: Optional[Path], pack_dir: Optional[Path], experimental: bool, json_out: bool)`
+### `def export_format_cmd(draft_path: Path, format: str, out_path: Optional[Path], pack_dir: Optional[Path], experimental: bool, json_out: bool) -> None`
 
 Unified export dispatcher: docx, txt, pdf, udf.
 
 ---
 
-### `def export_capabilities_cmd(json_out: bool)`
+### `def export_capabilities_cmd(json_out: bool) -> None`
 
 Show which export formats are currently available.
 
 ---
 
-### `def circuit_status_cmd(source: Optional[str], json_out: bool)`
+### `def circuit_status_cmd(source: Optional[str], json_out: bool) -> None`
 
 Show circuit breaker status for one or all sources.
 
 ---
 
-### `def circuit_health_cmd(source: Optional[str], json_out: bool)`
+### `def circuit_health_cmd(source: Optional[str], json_out: bool) -> None`
 
 Show source health metrics (uptime, failure counts, circuit state).
 
 ---
 
-### `def circuit_reset_cmd(source: str, json_out: bool)`
+### `def circuit_reset_cmd(source: str, json_out: bool) -> None`
 
 Manually reset a circuit breaker to CLOSED state.
 
 ---
 
-### `def router_capable_sources(capability: str, json_out: bool)`
+### `def router_capable_sources(capability: str, json_out: bool) -> None`
 
 List source_ids that support a given capability.
 
 ---
 
-### `def router_search_cmd(query: str, require: Optional[str], prefer: Optional[str], exclude: Optional[str], json_out: bool)`
+### `def router_search_cmd(query: str, require: Optional[str], prefer: Optional[str], exclude: Optional[str], json_out: bool) -> None`
 
 Route a search request to capable sources.
 
 ---
 
-### `def router_get_document_cmd(document_id: str, require: Optional[str], preferred_source: Optional[str], json_out: bool)`
+### `def router_get_document_cmd(document_id: str, require: Optional[str], preferred_source: Optional[str], json_out: bool) -> None`
 
 Route a get_document request to capable sources.
 
 ---
 
-### `def pdf_extract(path: Path, ocr: bool, json_out: bool)`
+### `def pdf_extract(path: Path, ocr: bool, json_out: bool) -> None`
 
 Extract text layer from a PDF file.
 
 ---
 
-### `def pdf_toolkit(json_out: bool)`
+### `def pdf_toolkit(json_out: bool) -> None`
 
 Check PDF extraction toolkit availability.
 
 ---
 
-### `def pdf_promote(document_json: str, ocr: bool, json_out: bool)`
+### `def pdf_promote(document_json: str, ocr: bool, json_out: bool) -> None`
 
 Try to promote a pdf_only Document to full_text.
 
 ---
 
-### `def calibrate_source_cmd(source_id: str, online: bool, json_out: bool)`
-
-Measure safe request rate for a source.
-
----
-
-### `def calibrate_all_cmd(online: bool, json_out: bool)`
-
-Calibrate all registered sources.
-
----
-
-### `def benchmark_cmd(corpus_size: int, json_out: bool)`
-
-Run micro-benchmark suite (deterministic corpus).
-
----
-
-### `def watch_add(name: str, query: str, sources: Optional[str], fetch_count: int, interval_hours: int, json_out: bool)`
+### `def watch_add(name: str, query: str, sources: Optional[str], fetch_count: int, interval_hours: int, json_out: bool) -> None`
 
 Register a watch for periodic research.
 
 ---
 
-### `def watch_list(json_out: bool)`
+### `def watch_list(json_out: bool) -> None`
 
 List all registered watches.
 
 ---
 
-### `def watch_run(name: str, json_out: bool)`
+### `def watch_run(name: str, json_out: bool) -> None`
 
 Execute a watch: re-search, detect new/changed docs.
 
 ---
 
-### `def watch_remove(name: str, json_out: bool)`
+### `def watch_remove(name: str, json_out: bool) -> None`
 
 Remove a watch.
 
 ---
 
-### `def privacy_scan(text: str, json_out: bool)`
+### `def privacy_scan(text: str, json_out: bool) -> None`
 
 Scan text for potential PII (TCKN, phone, email).
 
 ---
 
-### `def privacy_redact(text: str, json_out: bool)`
+### `def privacy_redact(text: str, json_out: bool) -> None`
 
 Redact PII from text. Returns copy — original unchanged.
 
 ---
 
-### `def privacy_audit(path: Path, json_out: bool)`
+### `def privacy_audit(path: Path, json_out: bool) -> None`
 
 Audit a file or directory for PII presence.
+
+---
+
+### `def eval_run(golden_path: str | None, k: int, json_out: bool) -> None`
+
+Run evaluation harness against golden query set.
+
+---
+
+### `def corpus_build(max_total: int, fetch_count: int, json_out: bool) -> None`
+
+Build a local corpus from stable sources.
+
+---
+
+### `def corpus_crawl(source: str, phrase: str, item_type: str, sort: str, max_docs: int, max_pages: int, page_size: int, start_page: int, json_out: bool) -> None`
+
+Yalnızca tam metni olan kararları yerel cache'e tarar (tüm daireler, sayfalı).
+
+    Tam metni yayımlanmamış (404) ve yalnız-metadata kararları atlar; uydurmaz.
+        Pacing otomatik (yerleşik rate limiter). Uzun taramayı `next_page` ile parça
+        parça sürdürebilirsin.
+
+---
+
+### `def corpus_status_cmd(json_out: bool) -> None`
+
+Report corpus size and composition.
 
 ---
 
@@ -1261,6 +1209,69 @@ Configure stdlib logging for emsal-mcp.
         Output goes to stderr only — never pollutes stdout JSON contracts.
     
         Returns the configured logger.
+
+---
+
+## `corpus_builder`
+
+### `def crawl_full_text(source: str) -> dict[str, Any]`
+
+Systematically crawl FULL-TEXT decisions into the local cache.
+
+    Paginates a broad search (``phrase`` appears in essentially every decision,
+        e.g. "karar"), fetches each hit, and stores ONLY documents whose full text
+        is actually available (content_status full_text / html_markdown). Documents
+        whose text is not published yet (HTTP 404 → UNAVAILABLE) or metadata-only
+        are skipped — never fabricated. Pacing is automatic (the client's built-in
+        rate limiter); no manual sleeps needed.
+    
+        Resumable: pass ``start_page`` and read ``next_page`` from the result to
+        continue a long crawl in batches.
+    
+        Args:
+            source: Source id. ``bedesten`` (= Yargıtay) is the full-text source.
+            phrase: Broad anchor term present in nearly all decisions.
+            item_type: Bedesten itemType. ``YARGITAYKARARI`` covers ALL Yargıtay
+                chambers in one stream.
+            sort_direction: ``desc`` = newest first, ``asc`` = oldest first.
+            max_docs: Stop after storing this many full-text documents.
+            max_pages: Safety cap on pages scanned.
+            page_size: Results per search page (server max 100).
+            start_page: Page to start from (for resuming).
+            cache: Optional Cache instance.
+    
+        Returns:
+            Dict with ok, stored, scanned, skipped_unavailable, skipped_metadata,
+            pages_scanned, next_page, time_seconds, warnings.
+
+---
+
+### `def build_corpus(queries: list[str] | None) -> dict[str, Any]`
+
+Build a local corpus by searching multiple topics across all sources.
+
+    Args:
+            queries: List of search queries. Defaults to a set of common legal terms.
+            sources: Source IDs to search. Defaults to all stable sources.
+            fetch_count: Docs to fetch per query per source.
+            max_total: Stop after this many total documents.
+            cache: Optional Cache instance.
+            sources_override: For test injection.
+    
+        Returns:
+            Dict with ok, total_documents, queries_processed, time_taken, warnings.
+
+---
+
+### `def corpus_status(cache: Cache | None) -> dict[str, Any]`
+
+Report corpus size and composition.
+
+    Args:
+            cache: Optional Cache instance.
+    
+        Returns:
+            Dict with total_docs, per_source, per_court, content_status_distribution.
 
 ---
 
@@ -1494,10 +1505,22 @@ Validate draft body doesn't contain fabricated citations.
 
 ### `def get_embedding_provider(provider: str | None) -> EmbeddingProvider | None`
 
-Factory: provider arg > EMSAL_EMBEDDING_PROVIDER env > default local-hash-v1.
+Factory: provider arg > EMSAL_EMBEDDING_PROVIDER env > default.
 
-    Returns EmbeddingProvider instance.
-        Returns None if provider is invalid or unavailable (caller handles graceful).
+    Priority:
+        1. Explicit ``provider`` argument
+        2. ``EMSAL_EMBEDDING_PROVIDER`` environment variable
+        3. ``EMSAL_EMBEDDING_PROVIDER`` config
+        4. Default: ``local-hash-v1`` (always available, zero deps)
+    
+        If ``strict=True``, returns None when the requested provider is
+        unavailable.  If ``strict=False`` (default), falls back to
+        ``local-hash-v1`` when the requested provider is unavailable — the
+        caller always gets *some* provider back (graceful degradation).
+    
+        Returns:
+            EmbeddingProvider instance, or None only if strict=True and
+            the requested provider is truly unavailable.
 
 ---
 
@@ -1534,6 +1557,85 @@ Re-rank candidates using cross-encoder if available.
     
         Returns:
             dict with ok, results (reranked), was_reranked: bool, method, warnings.
+
+---
+
+### `def heuristic_rerank(candidates: list[dict], top_k: int) -> dict`
+
+Re-rank candidates with deterministic citation-safety and recency signals (M-72).
+
+    Each candidate receives bonus points for:
+        - ``quote_usable`` / ``draft_usable`` (citation safety signal)
+        - More recent ``decision_date`` (recency signal, ISO YYYY-MM-DD format)
+    
+        Boost values are configurable — default adds up to 0.07 to the score.
+        The boost is additive and deterministic — never replaces the base score.
+        No model download required. Always available, never raises.
+    
+        Args:
+            candidates: List of {document_id, source, title, score, quote_usable,
+                        draft_usable, decision_date, ...}.
+            top_k: Number of top results to return.
+            citation_safe_boost: Score added when quote_usable or draft_usable is True.
+            recency_weight: Continuous recency multiplier with 5-year half-life.
+    
+        Returns:
+            Dict with ok, results (with heuristic_score), method, boosted.
+
+---
+
+## `eval_metrics`
+
+### `def recall_at_k(predicted_ids: list[str], expected_ids: list[str], k: int) -> float`
+
+Recall@k: fraction of expected docs found in top-k predictions.
+
+    Args:
+            predicted_ids: Ordered list of document_ids returned by search.
+            expected_ids: Set of relevant document_ids.
+            k: Cutoff rank (default 5).
+    
+        Returns:
+            Float in [0.0, 1.0].  1.0 = all expected docs in top-k.
+
+---
+
+### `def ndcg_at_k(predicted_ids: list[str], expected_ids: list[str], k: int) -> float`
+
+Normalized Discounted Cumulative Gain at rank k.
+
+    Uses binary relevance (1 if in expected, 0 otherwise).
+    
+        Args:
+            predicted_ids: Ordered list of document_ids.
+            expected_ids: Set of relevant document_ids.
+            k: Cutoff rank.
+    
+        Returns:
+            Float in [0.0, 1.0].  1.0 = ideal ranking.
+
+---
+
+### `def evaluate_search(search_fn: SearchFn, golden_path: str | Path | None, k_default: int, cache: Any | None) -> dict[str, Any]`
+
+Evaluate a search function against the golden query set.
+
+    Args:
+            search_fn: Callable with signature ``fn(query, limit=N, cache=c) -> dict``.
+                       The dict must have a ``"results"`` key containing a list of
+                       dicts with a ``"document_id"`` field.
+            golden_path: Path to golden_queries.json (defaults to eval/golden_queries.json).
+            k_default: Default cutoff rank for queries that don't specify one.
+            cache: Optional Cache instance passed to search_fn.
+    
+        Returns:
+            Dict with ok, query_count, metrics (aggregate), per_query (per-query detail).
+
+---
+
+### `def evaluate_search_simple(search_fn: SearchFn, k: int, cache: Any | None) -> dict[str, Any]`
+
+Convenience wrapper — same as evaluate_search with defaults.
 
 ---
 
@@ -1635,6 +1737,236 @@ Report which export formats are currently available.
 
     Returns:
             Dict with formats list, each indicating availability and requirements.
+
+---
+
+## `facades`
+
+### `def search_local_corpus(query: str, mode: str, limit: int, filters: dict[str, Any] | None, provider: str | None, hybrid_weight: float, rerank: bool, include_dense: bool, source: str | None, court: str | None, chamber: str | None, date: str | None, esas_no: str | None, karar_no: str | None, document_id: str | None, content_status: str | None, draft_usable: bool | None, quote_usable: bool | None, sort: str) -> dict[str, Any]`
+
+Unified local corpus search.
+
+    ⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY.
+    
+        Re-ranks documents ALREADY fetched via ``search_decisions``. Cannot find
+        new decisions.  The local cache is small (not a crawler).
+    
+        HARD RULE: call ``search_decisions`` (live, online) FIRST.
+    
+        Args:
+            query: Search query string.
+            mode: "lexical", "semantic", "hybrid", or "rrf" (default "rrf").
+            limit: Max results.
+            filters: Optional dict with source, court, chamber, content_status.
+            provider: Optional embedding provider for semantic modes.
+            hybrid_weight: Balance for hybrid mode (0.0-1.0, default 0.6).
+            rerank: Cross-encoder reranking for hybrid mode.
+            include_dense: Include dense embeddings in RRF.
+            source/court/chamber/date/esas_no/karar_no/document_id: Filters.
+            content_status/draft_usable/quote_usable: Content filters.
+            sort: Sort order (lexical mode).
+    
+        Returns:
+            Dict with ok, results, total_matches, method, optional hint.
+
+---
+
+### `def search_legislation(query: str, scope: str, sources: list[str] | None, legislation_type: str | None, limit: int, document_id: str | None, article_number: str | None, article_query: str | None, source: str | None, sources_override: dict[str, Any] | None) -> dict[str, Any]`
+
+Search legislation at law or article scope.
+
+---
+
+### `def get_legislation(document_id: str, part: str, source: str | None) -> dict[str, Any]`
+
+Get legislation document, article tree, or gerekce.
+
+    Args:
+            document_id: Mevzuat document ID.
+            part: "document", "article_tree", or "gerekce" (default "document").
+            source: Source ID (default "mevzuat").
+    
+        Returns:
+            Dict with ok, title, and part-specific fields.
+
+---
+
+### `def citation_check(action: str, text: str | None, file_path: str | None, source: str | None, limit: int, fetch: int, no_live: bool, live_only: bool, min_score: float, style: str, document: dict[str, Any] | None, document_id: str | None, document_dict: dict[str, Any] | None) -> dict[str, Any]`
+
+Citation verification, formatting, and safety checking.
+
+    Args:
+            action: "verify", "format", "format_legislation", or "safety"
+                    (default "verify").
+            text/file_path: For verify action — text or file to check.
+            source: Filter by source.
+            limit/fetch/no_live/live_only/min_score: Verify params.
+            style: "petition", "parenthetical", "short", "full", "article".
+            document: Dict with metadata fields (for format actions).
+            document_id: Look up from cache (for format actions).
+            document_dict: For safety action — dict with document_id, source, etc.
+    
+        Returns:
+            Action-specific result dict.
+
+---
+
+### `def prepare_petition(step: str, matter: str, issue: str, documents: list[dict[str, Any]] | None, research_bundle_dir: str | None, out_dir: str | None, strict: bool, template_name: str | None, pack_dir: str, outline_path: str | None) -> dict[str, Any]`
+
+Guided petition preparation workflow.
+
+    Steps (use in order):
+          1. ``step="input_pack"`` — classify documents and build a petition pack.
+          2. ``step="outline"`` — generate structured outline from the pack.
+          3. ``step="controlled_draft"`` — generate citation-safe draft.
+    
+        ALL drafts contain [DOGRULANMADI] markers. A human lawyer MUST review.
+    
+        Args:
+            step: "input_pack", "outline", or "controlled_draft".
+            matter/issue: For input_pack — legal matter and issue description.
+            documents: Optional Document dicts to classify.
+            research_bundle_dir: Optional research bundle path.
+            out_dir: Output directory.
+            strict: Exclude hash-mismatch docs.
+            template_name: Optional template name.
+            pack_dir: Path to petition pack (for outline and controlled_draft).
+            outline_path: Optional pre-computed outline.json.
+    
+        Returns:
+            Dict with ok, out_dir, and step-specific fields.
+
+---
+
+### `def export_document(format: str, draft_path: str, out_path: str | None, pack_dir: str | None, draft_json: dict[str, Any] | None, experimental: bool, text: str, title_centered: bool, draft_dir: str | None, docx_path: str | None, out_dir: str | None) -> dict[str, Any]`
+
+Export documents in multiple formats.
+
+    Formats:
+            ``"capabilities"`` — report available formats.
+            ``"docx"`` — validated DOCX with disclaimer and footnotes.
+            ``"udf"`` — UYAP UDF (requires toolkit, experimental=True).
+            ``"pdf"`` — PDF via LibreOffice (requires toolkit).
+            ``"plain"`` — plain-text (strips markdown).
+            ``"bundle"`` — complete package with verification.
+    
+        Args:
+            format: Export format (see above).
+            draft_path: Path to draft.md.
+            out_path: Optional output path.
+            pack_dir: Pack directory for footnotes.
+            draft_json: Draft metadata dict.
+            experimental: Required for UDF format.
+            text: Text for UDF export.
+            title_centered: Center title in UDF.
+            draft_dir/docx_path/out_dir: For bundle export.
+    
+        Returns:
+            Format-specific result dict or error.
+
+---
+
+### `def read_legal_file(path: str, ocr_enabled: bool, title_centered: bool) -> dict[str, Any]`
+
+Read a legal file (.udf or .pdf) and return text content.
+
+    Args:
+            path: File path.
+            ocr_enabled: Enable OCR for PDF.
+            title_centered: Center title in UDF.
+    
+        Returns:
+            Dict with text and file metadata, or error.
+
+---
+
+### `def list_sources(detail: str | None, court: str | None) -> dict[str, Any]`
+
+List available sources and their capabilities.
+
+    Args:
+            detail: "birim_codes" for chamber/unit codes, "legislation_types"
+                    for legislation types.  Omit for capability matrix.
+            court: Filter for birim_codes ("Yargitay", "Danistay", "Askeri").
+    
+        Returns:
+            Dict with sources/capability info.
+
+---
+
+### `def legal_research_guide(topic: str | None) -> dict[str, Any]`
+
+Guide the agent on which tool to use when (pure-text reference).
+
+    Args:
+            topic: Optional section filter. Valid: "overview", "search_hygiene",
+                   "sources", "citation_safety", "extended_categories".
+    
+        Returns:
+            Dict with ok, topic, sections list, and content.
+
+---
+
+### `def health_check() -> dict[str, Any]`
+
+Comprehensive health check: sources, circuit breakers, index status.
+
+    Returns:
+            Dict with ok, overall_healthy, source_healthy, circuit_healthy,
+            source_results, circuit_status, index_status.
+
+---
+
+## `legal_reasoning`
+
+### `def mine_arguments(text: str, cache: Any | None) -> dict[str, Any]`
+
+Extract holding, ratio decidendi, and dispute subject from decision text.
+
+    Uses regex heuristics on Turkish legal decision structure markers.
+        All findings are marked with confidence levels — never fabricated.
+    
+        Args:
+            text: Full decision text (markdown/plain).
+            cache: Optional Cache (unused, kept for interface consistency).
+    
+        Returns:
+            Dict with ok, holdings, ratio, dispute, confidence, warnings.
+
+---
+
+### `def resolve_cross_references(document_id: str, source: str, cache: Any | None) -> dict[str, Any]`
+
+Link a decision to cited legislation and follow-on jurisprudence.
+
+    Uses the citation graph (M-72) and legislation search to build
+        a cross-reference map.  Never fabricates — missing links are warnings.
+    
+        Args:
+            document_id: Decision document ID.
+            source: Source identifier.
+            cache: Optional Cache instance.
+    
+        Returns:
+            Dict with ok, cited_legislation, citing_decisions, cross_refs.
+
+---
+
+### `def check_consistency(authorities: list[dict[str, Any]], cache: Any | None) -> dict[str, Any]`
+
+Detect potential contradictions among cited authorities.
+
+    Checks for:
+        - Overturned/overruled decisions (via citation graph edges)
+        - Same court + same issue → different outcomes (suspicious)
+        - Very old decisions (pre-2000) still being cited
+    
+        Args:
+            authorities: List of authority dicts with document_id, source, decision_date, court.
+            cache: Optional Cache.
+    
+        Returns:
+            Dict with ok, contradictions, warnings.
 
 ---
 
@@ -1769,6 +2101,25 @@ Finalize a Document after source-specific parsing.
         - Enriches content_status fields via build_content_status_fields.
         - Never fabricates metadata; warnings list is appended to, not replaced.
         - Returns the document (mutated in-place and returned for convenience).
+
+---
+
+### `def merge_search_metadata(doc: Document, source_result: SearchResult) -> Document`
+
+Fill empty provenance fields on a fetched Document from its SearchResult.
+
+    The ``getDocumentContent`` endpoints of some sources (e.g. Bedesten) return
+        only the content blob with no structured metadata, leaving ``esas_no`` /
+        ``karar_no`` / ``decision_date`` empty. That causes ``citation_check`` to
+        fail even when full text is present. This helper carries the metadata the
+        search API already returned into the document.
+    
+        - Fill-empty-only: never overwrites a value the document already has.
+        - Only the structured fields the search API provided are copied; nothing
+          is inferred, parsed from text, or fabricated.
+        - Identity fields (source, document_id) and content fields are untouched.
+    
+        Returns the document (mutated in-place and returned for convenience).
 
 ---
 
@@ -2141,108 +2492,58 @@ Audit a file or directory for PII.
 
 ---
 
+## `query_understanding`
+
+### `def normalize_law_ref(query: str) -> dict[str, Any]`
+
+Replace common law abbreviations with full numbered references.
+
+    Example: "İYUK 11 uyarınca" → "2577 (İdari Yargılama Usulü Kanunu) m.11 uyarınca"
+    
+        Args:
+            query: Raw query text.
+    
+        Returns:
+            Dict with normalized_query, replacements made, warnings.
+
+---
+
+### `def expand_query_terms(query: str) -> dict[str, Any]`
+
+Expand query with legal synonyms from the curated dictionary.
+
+    Example: "kira" → adds "kiralayan", "kiracı", "tahliye" as OR terms.
+    
+        Args:
+            query: Raw query text.
+    
+        Returns:
+            Dict with expanded_query, added_terms, warnings.
+
+---
+
+### `def extract_query_filters(query: str) -> dict[str, Any]`
+
+Extract court/chamber filters from query text.
+
+    Example: "Yargıtay 3. Hukuk Dairesi sözleşme ihlali" → court=Yargıtay, chamber=3. Hukuk Dairesi
+    
+        Args:
+            query: Raw query text.
+    
+        Returns:
+            Dict with filters (court, chamber, extracted_text), confidence.
+
+---
+
 ## `release`
 
-### `def release_smoke() -> dict[str, Any]`
+### `def version() -> dict[str, Any]`
 
-Run release smoke tests combining offline, cache, and source checks.
-
-    Performs offline smoke tests, cache integrity verification, and per-source
-        smoke tests. Returns aggregated pass/fail status.
-    
-        Returns:
-            Dict with ok, version, generated_at, checks (offline, cache, source status).
-
----
-
-### `def readiness_dashboard() -> dict[str, Any]`
-
-Compute release readiness score from smoke tests and source capabilities.
-
-    Aggregates risk factors (e.g. unavailable sources) and produces a
-        ship/review decision based on the readiness score.
-    
-        Returns:
-            Dict with ok, version, readiness_score, release_decision, smoke, risks.
-
----
-
-### `def write_history(out_dir: str | Path, dashboard: dict[str, Any] | None) -> dict[str, Any]`
-
-Write a release history record with SHA256 integrity hash.
-
-    Args:
-            out_dir: Output directory for the history JSON file.
-            dashboard: Optional pre-computed dashboard dict (runs readiness_dashboard if None).
-    
-        Returns:
-            Dict with path to the written record and the record content.
-
----
-
-### `def compare_history(left: str | Path, right: str | Path) -> dict[str, Any]`
-
-Compare two release history records and report score delta.
-
-    Args:
-            left: Path to the older (left) history JSON file.
-            right: Path to the newer (right) history JSON file.
-    
-        Returns:
-            Dict with ok, score_delta, regression flag, left_score, right_score.
-
----
-
-### `def release_notes() -> str`
-
-Generate markdown release notes from the current readiness dashboard.
+Return a simple version report dict.
 
     Returns:
-            Markdown string with version, readiness, scope, and risk summary.
-
----
-
-### `def archive_release(out_dir: str | Path) -> dict[str, Any]`
-
-Create a release archive with dashboard, notes, and history.
-
-    Args:
-            out_dir: Output directory for the release archive.
-    
-        Returns:
-            Dict with ok, out_dir, manifest (version, files list).
-
----
-
-### `def release_command_center(cache: Any | None) -> dict[str, Any]`
-
-Comprehensive release verification running all checks.
-
-    Runs source smoke, cache integrity, module imports, FTS5 index status,
-        chamber overview, and UDF toolkit status.  Aggregates into a single
-        readiness report for release decision-making.
-    
-        Args:
-            cache: Optional Cache instance for index/chamber checks.
-    
-        Returns:
-            Dict with ok, overall_readiness, checks, warnings, recommended_actions.
-
----
-
-### `def version_bump(major: bool, minor: bool, patch: bool) -> dict[str, Any]`
-
-Compute a bumped version string without modifying files.
-
-    Reads current version from __version__ and returns the next version.
-    
-        Args:
-            major: Bump major version.
-            minor: Bump minor version.
-            patch: Bump patch version (default).
-    
-        Returns:
-            Dict with current_version, next_version, bump_type, warnings.
+            Dict with version, module, generated_at.
 
 ---
 
@@ -2250,34 +2551,21 @@ Compute a bumped version string without modifying files.
 
 Final v1.0.0 readiness gate.
 
-    Combines release command center checks with additional v1 criteria:
-        - All core modules importable
-        - At least 1 stable source
-        - Cache integrity passes
-        - No blocking warnings
+    Runs the following checks directly (no longer delegates to a
+        ``release_command_center`` wrapper):
     
-        Returns a go/no-go recommendation.
-    
-        Args:
-            cache: Optional Cache instance.
-    
-        Returns:
-            Dict with ok, ready, criteria, blocking_issues, recommendation.
-
----
-
-### `def generate_release_summary(cache: Any | None) -> dict[str, Any]`
-
-Generate a human-readable release summary for the current version.
-
-    Includes version, module inventory, source status, document counts,
-        and readiness assessment.
+        1. **Module imports** — every core module must be importable.
+        2. **Stable sources** — at least one source must report ``stable``.
+        3. **Smoke tests** — offline smoke, cache integrity, and per-source
+           offline smoke must all pass.
+        4. **No unavailable sources** — zero sources flagged ``unavailable``.
     
         Args:
-            cache: Optional Cache instance.
+            cache: Optional ``Cache`` instance for index/chamber checks.
     
         Returns:
-            Dict with ok, markdown_summary, json_summary, version.
+            Dict with ok, ready, criteria, blocking_issues, recommendation,
+            checks, version, generated_at.
 
 ---
 
@@ -2476,44 +2764,6 @@ Record a search in the analytics table.
 
 ---
 
-### `def get_search_analytics(cache: Any, days: int) -> dict[str, Any]`
-
-Comprehensive search analytics over the given time window.
-
-    Returns:
-            Dict with ok, total_searches, empty_result_rate, avg_result_count,
-            cache_hit_rate, top_queries, empty_queries, source_distribution,
-            daily_activity.
-
----
-
-### `def get_empty_queries(cache: Any, limit: int) -> dict[str, Any]`
-
-List queries that returned 0 results.
-
-    Returns:
-            Dict with ok and empty_queries list.
-
----
-
-### `def get_top_queries(cache: Any, limit: int) -> dict[str, Any]`
-
-Most frequent queries.
-
-    Returns:
-            Dict with ok and top_queries list.
-
----
-
-### `def get_source_coverage(cache: Any) -> dict[str, Any]`
-
-How many cached documents per source, and what percentage have full_text.
-
-    Returns:
-            Dict with ok and coverage list.
-
----
-
 ## `semantic`
 
 ### `def build_semantic_index(cache: Cache | None, force_rebuild: bool) -> dict[str, Any]`
@@ -2542,6 +2792,26 @@ Search using TF-IDF cosine similarity only.
     
         Returns:
             Dict with ok, results, total_matches, method, warnings, version.
+
+---
+
+### `def hybrid_search_rrf(query: str, limit: int, cache: Cache | None, filters: dict[str, Any] | None, include_dense: bool) -> dict[str, Any]`
+
+Hybrid search using Reciprocal Rank Fusion (RRF) instead of weighted linear fusion.
+
+    RRF avoids the need for score calibration between heterogeneous rankers
+        (BM25, TF-IDF cosine, dense cosine).  Results from each ranker are merged
+        by rank position only.
+    
+        Args:
+            query: Search query.
+            limit: Max results.
+            cache: Optional Cache.
+            filters: Optional metadata filters.
+            include_dense: Whether to include dense embeddings in fusion.
+    
+        Returns:
+            Dict with ok, results (with rrf_score), method="rrf".
 
 ---
 
@@ -2682,6 +2952,11 @@ Launch the MCP server with all registered tools.
 
     Imports FastMCP from the mcp package and registers all tool functions.
         Exits with an error message if the MCP extra is not installed.
+    
+        This is a stdio JSON-RPC MCP server, not a CLI. When started by an MCP
+        client (stdin is a pipe), it enters the protocol loop. When a human runs
+        it interactively (stdin is a TTY) or passes --help/--version, it prints a
+        short usage note and exits instead of emitting confusing JSON parse errors.
 
 ---
 
@@ -2737,6 +3012,32 @@ Return the current number of active requests (informational).
 
 Return the full error code catalog used in the project.
 
+    Each entry includes the code, a representative message pattern,
+        the modules where it is used, and a recommended action.
+
+---
+
+## `structured_draft`
+
+### `def generate_structured_draft(matter: str, issue: str, sections: list[dict[str, Any]] | None, out_path: str | Path | None) -> dict[str, Any]`
+
+Generate a structured petition draft with citation-linked claims.
+
+    Each section is a dict with:
+          - heading: Section title
+          - claims: List of {statement, authority_doc_id, authority_source}
+            where authority is a cached petition_ready document.
+            If authority is None/empty, statement is marked [DOĞRULANMADI].
+    
+        Args:
+            matter: Legal matter.
+            issue: Legal issue.
+            sections: Optional list of section dicts.
+            out_path: Optional output path for the draft.
+    
+        Returns:
+            Dict with ok, markdown, verified_count, unverified_count, out_path.
+
 ---
 
 ## `templates`
@@ -2782,25 +3083,53 @@ Return all placeholder strings found in a template.
 
 ---
 
+## `tool_profile`
+
+### `def get_active_profile() -> str`
+
+Return the active tool profile name.
+
+    Reads ``EMSAL_TOOL_PROFILE`` environment variable.
+        ``"core"`` (default) → only the 14-tool surface (M-98).
+        ``"full"`` → all tools (today's 119-tool surface).
+
+---
+
+### `def is_tool_active(tool_name: str) -> bool`
+
+Return True if *tool_name* should be registered under the active profile.
+
+    In ``full`` profile every tool passes.  In ``core`` profile only the 14
+        core tools pass.
+
+---
+
+### `def get_category_summary() -> list[dict[str, Any]]`
+
+Return a list of category descriptions for ``load_extended_tools``.
+
+    Each entry has ``category``, ``tool_count``, and ``examples`` (first 3
+        tool names).
+
+---
+
 ## `udf`
+
+### `def install_udf_toolkit(target_dir: str | Path | None, repo_url: str) -> dict`
+
+Install or update the managed UDF-Toolkit clone.
+
+---
 
 ### `def get_udf_toolkit_status() -> dict`
 
-Check whether the external UDF toolkit (libreoffice/unoconv etc.) is available.
-
-    Returns a structured status dict regardless of toolkit presence.
+Check whether external UDF-Toolkit scripts are available.
 
 ---
 
 ### `def get_udf_authoring_instructions(format: str) -> dict`
 
-Return UDF authoring instructions in the requested format.
-
-    Args:
-            format: 'json' for structured dict, 'markdown' for human-readable text.
-    
-        Returns:
-            dict with format, instructions, and key warnings.
+*No docstring.*
 
 ---
 
@@ -2808,64 +3137,44 @@ Return UDF authoring instructions in the requested format.
 
 Read and extract text content from a UYAP UDF file.
 
-    Args:
-            path: Path to the UDF file (ZIP archive with content.xml).
-    
-        Returns:
-            Extracted text content from the UDF.
-    
-        Raises:
-            UdfError: If the file is missing, not a valid ZIP, or lacks content.xml.
-
 ---
 
 ### `def udf_to_markdown(path: str | Path) -> str`
 
-Convert a UDF file content to formatted markdown with paragraph breaks.
-
-    Args:
-            path: Path to the UDF file.
-    
-        Returns:
-            Markdown string with paragraphs separated by double newlines.
+Convert a UDF file content to basic markdown paragraphs.
 
 ---
 
 ### `def write_udf(text: str, out_path: str | Path) -> Path`
 
-Write a simple UYAP UDF (format_id=1.8). Caller must verify in UYAP editor.
+Write a simple UDF package. Caller must verify in UYAP Dokuman Editor.
 
 ---
 
 ### `def probe_udf(path: str | Path) -> dict`
 
-Probe a UDF file for structure, format, and content metadata.
+Probe a UDF file using the local-yargi-style status shape.
 
 ---
 
 ### `def convert_udf_to_docx(file_path: str | Path, out_path: str | Path | None) -> dict`
 
-Convert a UDF file to DOCX using external toolkit (LibreOffice).
-
-    If toolkit is disabled or missing, returns a structured error dict
-        instead of raising.
+Convert UDF to DOCX via UDF-Toolkit udf_to_docx.py.
 
 ---
 
 ### `def convert_udf_to_pdf(file_path: str | Path, out_path: str | Path | None) -> dict`
 
-Convert a UDF file to PDF using external toolkit (LibreOffice).
-
-    If toolkit is disabled or missing, returns a structured error dict.
+Convert UDF to PDF via UDF-Toolkit udf_to_pdf.py.
 
 ---
 
 ### `def convert_docx_to_udf_experimental(file_path: str | Path, out_path: str | Path | None, experimental: bool) -> dict`
 
-Convert a DOCX file to UDF format (experimental).
+Convert DOCX to UDF via UDF-Toolkit docx_to_udf.py.
 
-    Requires experimental=True. Always includes UYAP manual round-trip warning.
-        If toolkit is disabled or missing, returns a structured error dict.
+    The function name is retained for API compatibility. The old experimental
+        pure-Python converter is disabled and ignored.
 
 ---
 
@@ -2903,6 +3212,6 @@ Verify ZIP bundle archive integrity.
 
 ## Coverage Summary
 
-- **Total public functions:** 285
-- **With docstrings:** 285
-- **Coverage:** 100.0%
+- **Total public functions:** 294
+- **With docstrings:** 293
+- **Coverage:** 99.7%

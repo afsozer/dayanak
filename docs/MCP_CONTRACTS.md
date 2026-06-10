@@ -650,31 +650,7 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
 
 **Output**: `dict` — `ok`, `target_chamber`, `similar_chambers[]` (chamber, court, similarity_score, shared_keywords, document_count), `warnings`, `recommended_next_steps`, `version`.
 
-## Release v0.13 Tools
+## Release Tools
 
-### `release_command_center`
-
-**Input**: none
-
-**Output**: `dict` — `ok`, `version`, `generated_at`, `overall_readiness` (0–100), `checks_passed`, `checks_total`, `checks` (release_smoke, source_capabilities, module_imports, search_index, chambers, udf_toolkit), `warnings`, `recommended_actions`.
-
-### `version_bump`
-
-**Input**:
-- `major: bool = False` — Bump major version
-- `minor: bool = False` — Bump minor version
-- `patch: bool = True` — Bump patch version (default)
-
-**Output**: `dict` — `ok`, `current_version`, `next_version`, `bump_type`.
-
-### `final_v1_readiness`
-
-**Input**: none
-
-**Output**: `dict` — `ok`, `ready`, `criteria` (all_modules_importable, has_stable_sources, release_smoke_ok, no_unavailable_sources), `blocking_issues`, `recommendation`, `command_center`, `version`, `generated_at`.
-
-### `generate_release_summary`
-
-**Input**: none
-
-**Output**: `dict` — `ok`, `markdown_summary`, `json_summary` (version, generated_at, readiness, modules, sources, chambers, cached_documents, udf_toolkit_available, search_index), `version`.
+> **M-103 (v5.0.0):** Release yönetimi araçları MCP yüzeyinden kaldırıldı.
+> Hazırlık kontrolü CLI'dadır: `emsal-mcp release v1-readiness --json`.

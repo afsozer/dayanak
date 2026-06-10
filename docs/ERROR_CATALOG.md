@@ -8,10 +8,8 @@
 
 | Code | Modules | Recommended Action |
 |------|---------|-------------------|
-| `ANALYTICS_QUERY_FAILED` | search_analytics | Check analytics query parameters and cache state. |
 | `ANALYTICS_RECORD_FAILED` | search_analytics | Verify cache DB is writable. |
 | `ARGUMENT_MAP_MISSING` | argument | Run petition pack generation first. |
-| `BENCHMARK_FAILED` | benchmark | Check corpus configuration and dependencies. |
 | `CHAMBER_NOT_FOUND` | chamber | Verify chamber name matches a cached record. |
 | `CHECK_FAILED` | exporter, release | Inspect the specific check that failed; may be transient. |
 | `CIRCUIT_OPEN` | sources/base | Wait for the circuit to close or reset manually. |
@@ -87,11 +85,6 @@
 
 ## Detailed Catalog
 
-### ANALYTICS_QUERY_FAILED
-- **Message pattern**: `str(exc)`
-- **Modules**: `search_analytics.py`
-- **Action**: Check analytics query parameters and cache state.
-
 ### ANALYTICS_RECORD_FAILED
 - **Message pattern**: `str(exc)`
 - **Modules**: `search_analytics.py`
@@ -101,11 +94,6 @@
 - **Message pattern**: `Argument map not found`
 - **Modules**: `argument.py`
 - **Action**: Run petition pack generation first.
-
-### BENCHMARK_FAILED
-- **Message pattern**: `str(exc)`
-- **Modules**: `benchmark.py`
-- **Action**: Check corpus configuration and dependencies.
 
 ### CHAMBER_NOT_FOUND
 - **Message pattern**: `Chamber not found`

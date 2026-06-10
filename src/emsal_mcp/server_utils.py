@@ -152,10 +152,8 @@ def get_active_requests() -> int:
 # All known error codes used in build_error() calls across the codebase.
 # Keep in sync when adding new error codes.
 KNOWN_ERROR_CODES: list[str] = sorted([
-    "ANALYTICS_QUERY_FAILED",
     "ANALYTICS_RECORD_FAILED",
     "ARGUMENT_MAP_MISSING",
-    "BENCHMARK_FAILED",
     "CHAMBER_NOT_FOUND",
     "CHECK_FAILED",
     "CIRCUIT_OPEN",
@@ -238,11 +236,6 @@ def get_error_codes() -> dict[str, Any]:
     the modules where it is used, and a recommended action.
     """
     catalog: dict[str, dict[str, Any]] = {
-        "ANALYTICS_QUERY_FAILED": {
-            "message_pattern": "str(exc)",
-            "modules": ["search_analytics"],
-            "action": "Check analytics query parameters and cache state.",
-        },
         "ANALYTICS_RECORD_FAILED": {
             "message_pattern": "str(exc)",
             "modules": ["search_analytics"],
@@ -252,11 +245,6 @@ def get_error_codes() -> dict[str, Any]:
             "message_pattern": "Argument map not found",
             "modules": ["argument"],
             "action": "Run petition pack generation first.",
-        },
-        "BENCHMARK_FAILED": {
-            "message_pattern": "str(exc)",
-            "modules": ["benchmark"],
-            "action": "Check corpus configuration and dependencies.",
         },
         "CHAMBER_NOT_FOUND": {
             "message_pattern": "Chamber not found",
