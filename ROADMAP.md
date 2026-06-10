@@ -3,7 +3,7 @@
 **Mevcut sürüm:** v4.0.0 · **Oluşturulma:** 2026-06-02
 **Durum:** M-01…M-68 tamamlandı (1526 test geçiyor, mypy temiz, ruff 0 hata, CI yeşil).
 **Sıradaki ufuk:** v4.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
-**Aktif sıradaki:** — (tüm fazlar tamamlandı; M-101 denetimden geçti, 2026-06-10)
+**Aktif sıradaki:** FAZ O — Kesim (M-102…M-106): ölü ağırlık kalıcı silinir, v5.0.0 breaking release.
 
 > **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
@@ -403,6 +403,154 @@ yeniden adlandır (veya neden farklı olduğunu tek satır yorumla belgele).
 (`ruff` 0, `mypy` 0, `pytest -q` tümü geçer, server import OK,
 v1-readiness true); `test_facades.py` en az 25 test içerir; core profil
 snapshot testi hâlâ tam 14 araç gösterir.
+
+---
+
+## FAZ O — Kesim (v5.0.0) 🆕 — Aktif
+
+> **Gerekçe:** Proje organik büyüyerek 42 modül / 131 araç / 160 CLI komutuna
+> ulaştı. FAZ M yüzeyi gizledi ama kütleyi azaltmadı: her satır sonsuza dek
+> test, mypy ve bakım borcu. Bu faz, tek-kullanıcılı bir hukuk araştırma
+> aracında yeri olmayan kısımları **kalıcı olarak siler**. Hedef: aynı
+> çekirdek değer, belirgin daha az kütle.
+>
+> **⚠️ Değişmez #4 (additive) bu fazda BİLİNÇLİ olarak askıya alınır.**
+> Bu bir breaking change'dir; sürüm **5.0.0**'a atlar ve CHANGELOG'da
+> "Removed" bölümüyle belgelenir. Diğer 4 değişmez (uydurma yok, citation
+> safety, graceful degradation, testte canlı ağ yok) AYNEN geçerlidir.
+
+### Uygulayıcı (Codex) için zorunlu kurallar
+
+1. **Silme = tam silme.** Modül siliniyorsa: `src/` dosyası + MCP araç kaydı
+   (`server.py`) + CLI komutları (`cli.py`) + testleri + `tool_profile.py`
+   kayıtları + doküman referansları (README, API.md, COOKBOOK, MCP_CONTRACTS,
+   ERROR_CATALOG) birlikte gider. Yarım silme (ölü import, boş kategori,
+   README'de hayalet komut) kabul edilmez.
+2. **Her silmeden ÖNCE kullanım taraması yap:**
+   `grep -rn "<silinecek_ad>" src/ tests/ docs/ scripts/` — DOKUNULMAZ
+   listesindeki bir modül silineni import ediyorsa, o fonksiyonu silme;
+   yalnızca MCP/CLI yüzeyini kaldır ve bunu CHANGELOG'a not düş.
+3. **Her milestone sonunda doğrulama geçidi** (pytest `-q` ile):
+   ```bash
+   python -m ruff check . && python -m mypy src && python -m pytest -q
+   python -c "from emsal_mcp.server import main"
+   python -m emsal_mcp.cli release v1-readiness --json   # ready: true KALIR
+   ```
+4. **Sayaç senkronu her milestone'da:** `python scripts/gen_readme_counts.py`
+   çalıştır; `test_readme_drift.py` ve `test_tool_surface.py` snapshot'larını
+   (FULL_TOOL_COUNT_SNAPSHOT dahil) yeni gerçeğe göre GÜNCELLE — full sayısı
+   artık "<= eski" değil "== yeni" olarak sabitlenir.
+5. Her milestone ayrı commit: `refactor(faz-o)!: M-1xx — ...` (`!` = breaking).
+
+### DOKUNULMAZ liste (kesinlikle silinmez)
+
+Citation-safety zinciri (`models.py`, `safety.py`, `citation.py`,
+`verification.py`), kaynak adaptörleri (`sources/*`), arama
+(`semantic.py`, `embeddings.py`, `query_understanding.py`, `cache.py`),
+korpus (`corpus_builder.py`, `dedup.py`'nin exact-dedup kısmı),
+mevzuat (`legislation.py`), dilekçe çekirdeği (`petition.py`,
+`structured_draft.py`, `legal_reasoning.py`, `argument.py`),
+UDF/PDF (`udf.py`, `pdf_extractor.py`, `vendor/UDF-Toolkit`),
+izleme (`research_watch.py` — aktif kullanımda, bkz. `.emsal_research/`
+watch logu), PII (`privacy.py`), `circuit.py`, `config.py`, `router.py`,
+`facades.py`, `tool_profile.py`, eval (`eval_metrics.py`,
+`eval/golden_queries.json`), 14 araçlık core profil.
+
+### M-102 — REST API katmanını sil
+
+- Sil: `src/emsal_mcp/api_server.py`, `tests/test_api_server.py`,
+  `cli.py`'deki `api serve` komutu (satır ~1750), `pyproject.toml`'daki boş
+  `api` extra'sı, çok-kullanıcı modu (`EMSAL_MULTI_USER` — grep ile tüm
+  izlerini bul), docs'taki REST/M-82/M-83 referansları (tarihli CHANGELOG
+  kayıtlarına DOKUNMA — tarihsel kayıt korunur).
+- Gerekçe: MCP zaten transport; REST ayrı bir projenin işi. Tek-kullanıcı
+  tasarımında multi-user modu ölü ağırlık.
+- **Bitti sayılır:** `api_server` ve `EMSAL_MULTI_USER` izleri yalnızca
+  tarihli CHANGELOG kayıtlarında kalır; geçit yeşil.
+
+### M-103 — release.py'yi buduyoruz: 9 işlev → 2
+
+- KALIR: `final_v1_readiness` (doğrulama geçidi kullanıyor) ve basit
+  `version` raporu. CLI'da yalnızca `release v1-readiness` ve `version` kalır.
+- SİLİNİR: `release_command_center`, `readiness_dashboard`, `write_history`,
+  `compare_history`, `release_notes`, `archive_release`, `version_bump`,
+  `generate_release_summary`, `release_smoke` (smoke zaten `smoke` CLI
+  komutu ve `health_check` aracında var — tekrar). MCP'den `release`
+  kategorisi tamamen kalkar; `exports/test-release-*` fixture artıkları ve
+  ilgili testler silinir.
+- Gerekçe: sürüm yönetimi insan+git işi; MCP ajanının version bump'laması
+  bir anti-pattern.
+- **Bitti sayılır:** `release.py` yalnızca readiness+version içerir
+  (~<200 satır); `release v1-readiness --json` hâlâ `ready: true`.
+
+### M-104 — Analitik/benchmark/kalibrasyon katmanını sil
+
+- Sil: `benchmark.py`, `calibrate.py` + CLI komutları + testleri.
+- `search_analytics.py`: MCP araçları (`search_analytics`,
+  `get_empty_queries`, `get_top_queries`, `get_source_coverage`) ve CLI
+  komutları silinir. **DİKKAT:** `cache.py:601` `record_search`'ü import
+  ediyor — `record_search` + altındaki kayıt tablosu KALIR (ucuz, ileride
+  lazım olabilir) ya da Codex isterse kayıt çağrısıyla birlikte tamamen
+  söker; ikisi de kabul, seçimi CHANGELOG'a yaz.
+- Gerekçe: tek kullanıcının kendi arama istatistiklerini MCP'den sorgulaması
+  gerçek bir ihtiyaç değil; benchmark/kalibrasyon dev-time scripti olarak
+  bile kullanılmıyor.
+- **Bitti sayılır:** `analytics` kategorisi `tool_profile.py`'den kalkar;
+  geçit yeşil.
+
+### M-105 — MCP yüzeyinden yönetim araçlarını söküp CLI'ya bırak
+
+Aşağıdaki araçlar MCP kaydından (full profil dahil) ve `tool_profile.py`
+kategorilerinden SİLİNİR; işlevler CLI komutu olarak YAŞAMAYA DEVAM EDER
+(modül kodu silinmez):
+
+- `cache_admin` kategorisi: cache_vacuum, cache_cleanup_orphans,
+  cache_integrity_check, sync_cache, get_cache_stats, list_cached_documents
+  — cache bakımı insan işi.
+- `routing`: get_capable_sources, route_search, route_get_document —
+  `search_decisions` zaten yönlendiriyor; ajan için gereksiz iç detay.
+- `health_admin`'den: reset_circuit, active_requests_count, error_catalog
+  (kalır: `health_check` facade'ı zaten özetliyor).
+- `indexing`'den: rebuild_search_index, update_indexes, index_sync_status,
+  build_semantic_index, build_embedding_index (kalır: index durumu
+  `health_check` içinde; index kurma `corpus` CLI akışının parçası).
+- `dedup`: tüm 6 MCP aracı (find_duplicates, get_dedup_cluster, dedup_stats,
+  merge_dedup_cluster, find_fuzzy_duplicates, fuzzy_dedup_stats) —
+  dedup `corpus_builder` içinde otomatik çalışır; ajan eliyle cluster
+  merge etmesi tehlikeli.
+- `drafting_advanced`'den: save_draft_version, get_fill_report,
+  track_placeholders, diff_drafts, render_template_skeleton — taslak sürüm
+  yönetimi dosya sistemi/insan işi (kalır: build_multi_issue_pack,
+  inspect_*, argüman araçları, şablon listeleme).
+- `udf_admin`'den: install_udf_toolkit_tool (kurulum ajan işi değil).
+- Sonuç olarak `load_extended_tools` kategorileri küçülür/azalır:
+  `tool_profile.py`, `test_tool_surface.py` ve `legal_research_guide`
+  içeriği senkronlanır.
+- **Bitti sayılır:** full profil araç sayısı **<= 75** (önce: 131);
+  silinen her aracın CLI karşılığının çalıştığı 1'er duman testi var;
+  core profil hâlâ TAM 14.
+
+### M-106 — Doküman ve artık temizliği
+
+- Sil: `docs/dead_code_report.md`, `docs/message_inventory.json` +
+  `scripts/inventory_messages.py` (tek seferlik denetim artıkları),
+  `exports/` altındaki test fixture artıkları.
+- Güncelle: README (yeni sayılar + "Özellikler" tablosundaki 113/119
+  tutarsızlığı giderilir), docs/INDEX.md, API.md yeniden üretilir
+  (`scripts/gen_api_doc.py`), COOKBOOK'tan silinen araçlara atıf yapan
+  reçeteler düzeltilir, GLOSSARY/ERROR_CATALOG'dan ölü kodlar ayıklanır.
+- `pyproject.toml` version → **5.0.0**; CHANGELOG'a kapsamlı "Removed"
+  bölümü (ne, neden, CLI'da mı yaşıyor yoksa tamamen mi gitti).
+- **Bitti sayılır:** geçit yeşil; `grep -rn` ile silinen hiçbir aracın
+  adı src/docs'ta (tarihli CHANGELOG hariç) geçmiyor; README drift testi
+  geçer.
+
+**Sıra:** M-102 → M-103 → M-104 → M-105 → M-106 (bağımsızlar ama doküman
+senkronu en sonda tek seferde yapılır). Beklenen net etki: ~6 modül silinir,
+full MCP yüzeyi 131 → ~70, CLI ~160 → ~140, test süresi kısalır.
+Şüphede kalınan her sınır vakası için kural: **"ajan bunu kendi başına
+çağırmalı mı?" sorusunun cevabı hayırsa MCP'den sök; "bu modül citation-safe
+araştırma→taslak zincirinin parçası mı?" sorusunun cevabı hayırsa sil.**
 
 ---
 
