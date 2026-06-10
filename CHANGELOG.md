@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### M-101 — FAZ M denetim bulguları (2026-06-10)
+- **Facade test kapsamı:** `tests/test_facades.py` eklendi — 9 facade'ın tüm
+  `mode`/`scope`/`part`/`action`/`step`/`format` dalları için 31 dispatch/eşdeğerlik
+  testi (hermetik, monkeypatch ile; canlı ağ yok). Hata yolları dahil
+  (`UNSUPPORTED_FORMAT`, pdf yapısal hata).
+- **Token bütçesi testi:** core profildeki 14 aracın ad+docstring+imza toplamının
+  <20.000 karakter olduğu test ediliyor (`test_tool_surface.py`).
+- **`load_extended_tools` E2E:** kategori yükleme, idempotency (`already_loaded`),
+  geçersiz kategoride `INVALID_INPUT` yapısal hatası, kayıt-hatası yolu test edildi.
+- **Bug düzeltmesi:** `load_extended_tools` kayıt hatasını "yüklendi" diye
+  raporluyordu (`except Exception: loaded.append(name)`); artık `errors` listesine
+  yazıyor ve `ok` buna göre dönüyor.
+- **Temizlik:** `facades.py`'deki ölü `load_extended_tools` stub'ı kaldırıldı;
+  `citation_check_action` → `citation_check` olarak araç adıyla hizalandı.
+- Geçit: ruff 0, mypy 0, **1698 test**, import OK, v1-readiness true.
+
 ### Changed
 - **FAZ M (Araç Yüzeyi Diyeti):** MCP yüzeyi 119 → 14 araç. Varsayılan core profil, `EMSAL_TOOL_PROFILE=full` ile 119 araç geri gelir.
   - **M-97:** Tool profile altyapısı — `tool_profile.py`: `CORE_TOOLS` (14 ad), `CATEGORY_TOOLS` (15 kategori), `EXTENDED_TOOLS`, `TOOL_CATEGORY`/`TOOL_PROFILE` eşlemeleri, `get_active_profile()`/`is_tool_active()`/`get_category_summary()`. `EMSAL_TOOL_PROFILE` env değişkeni (`core`/`full`). `server.py`'de `_register_tool` dekoratörü profile-güdümlü filtre ekendi.

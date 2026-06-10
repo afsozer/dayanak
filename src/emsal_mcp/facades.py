@@ -149,6 +149,50 @@ def search_local_corpus(
 
 # ── get_legislation facade ──────────────────────────────────────────────
 
+def search_legislation(
+    query: str,
+    scope: str = "law",
+    sources: list[str] | None = None,
+    legislation_type: str | None = None,
+    limit: int = 10,
+    document_id: str | None = None,
+    article_number: str | None = None,
+    article_query: str | None = None,
+    source: str | None = None,
+    sources_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Search legislation at law or article scope."""
+    from .legislation import (
+        search_legislation as _search_law,
+        search_legislation_articles as _search_articles,
+    )
+
+    scope = scope.lower()
+
+    if scope == "law":
+        return _search_law(
+            query=query,
+            sources=sources,
+            legislation_type=legislation_type,
+            limit=limit,
+            sources_override=sources_override,
+        )
+
+    if scope == "article":
+        return _search_articles(
+            document_id=document_id or query,
+            article_number=article_number,
+            article_query=article_query or query,
+            source=source,
+            sources_override=sources_override,
+        )
+
+    return build_error(
+        "INVALID_ARGUMENT",
+        f"Unknown scope: {scope!r}. Valid: law, article.",
+    )
+
+
 def get_legislation(
     document_id: str,
     part: str = "document",
@@ -189,7 +233,7 @@ def get_legislation(
 
 # ── citation_check facade ───────────────────────────────────────────────
 
-def citation_check_action(
+def citation_check(
     action: str = "verify",
     text: str | None = None,
     file_path: str | None = None,
@@ -691,56 +735,3 @@ def health_check() -> dict[str, Any]:
 
 
 # ── load_extended_tools (M-99) ──────────────────────────────────────────
-
-def load_extended_tools(
-    categories: list[str],
-) -> dict[str, Any]:
-    """Load extended tool categories.  Stub in core profile; full
-    implementation loads tools into the running server via add_tool().
-
-    In core mode (this stub), returns category descriptions so the agent
-    knows what is available.  Actual registration requires the MCP instance.
-
-    Args:
-        categories: List of category names to load.
-
-    Returns:
-        Dict with ok, valid_categories, loaded_tools, errors, note.
-    """
-    from .tool_profile import CATEGORY_TOOLS
-
-    valid = set(CATEGORY_TOOLS.keys())
-    loaded: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
-
-    for cat in categories:
-        cat = cat.strip()
-        if not cat:
-            continue
-        if cat not in valid:
-            errors.append({"category": cat, "error": f"Unknown category: {cat!r}"})
-            continue
-        tool_names = CATEGORY_TOOLS[cat]
-        loaded.append({
-            "category": cat,
-            "tool_count": len(tool_names),
-            "tools": tool_names,
-        })
-
-    result: dict[str, Any] = {
-        "ok": len(errors) == 0,
-        "loaded_categories": [item["category"] for item in loaded],
-        "loaded_tools": loaded,
-    }
-    if errors:
-        result["errors"] = errors
-        result["valid_categories"] = sorted(valid)
-        result["message"] = "Some categories failed to load"
-
-    result["note"] = (
-        "Genisletilmis araclar tam profilde (EMSAL_TOOL_PROFILE=full) otomatik "
-        "yuklenir. Core profilde yalnizca bu liste doner; gercek kayit icin "
-        "load_extended_tools MCP sunucusu uzerinden cagrilmalidir."
-    )
-
-    return result

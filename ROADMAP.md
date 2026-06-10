@@ -3,7 +3,7 @@
 **Mevcut sürüm:** v4.0.0 · **Oluşturulma:** 2026-06-02
 **Durum:** M-01…M-68 tamamlandı (1526 test geçiyor, mypy temiz, ruff 0 hata, CI yeşil).
 **Sıradaki ufuk:** v4.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
-**Aktif sıradaki:** — (tüm fazlar tamamlandı)
+**Aktif sıradaki:** — (tüm fazlar tamamlandı; M-101 denetimden geçti, 2026-06-10)
 
 > **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
@@ -322,6 +322,87 @@ risk) → M-99 → M-100. M-99 teknik olarak en belirsiz olanı; FastMCP dinamik
 kayıt desteklemiyorsa fallback: `load_extended_tools` yerine profili env ile
 açıklayan bilgi aracı + dokümante edilmiş `EMSAL_TOOL_PROFILE=full` yolu
 (bu fallback da "bitti" sayılır, not düşülerek).
+
+---
+
+## FAZ N — FAZ M Denetim Bulguları (M-101) ✅ Tamamlandı
+
+> **Gerekçe:** FAZ M teslimatının bağımsız denetimi (2026-06-10, Claude)
+> şu sonucu verdi: çekirdek iş yapılmış, geçit yeşil (ruff 0, mypy 0,
+> 1663 test), 14 araçlık core profil ve snapshot testleri doğru. ANCAK
+> ROADMAP'in şart koştuğu üç test teslimatı atlanmış ve bir gerçek kod
+> hatası var. Bu milestone kapanmadan FAZ M "bitti" sayılmaz.
+>
+> Uygulayıcı için zorunlu kurallar FAZ M'dekiyle aynıdır (5 değişmez,
+> geçit `pytest -q` ile, iş mantığı kopyalanmaz, eski testler silinmez).
+
+### M-101 — Eksik testler + load_extended_tools düzeltmesi
+
+**(a) Facade eşdeğerlik testleri — EN ÖNEMLİSİ, pazarlıksız şart.**
+`src/emsal_mcp/facades.py` (746 satır, 9 facade) şu an test kapsamı
+dışında — testlerde tek referansı `test_tool_surface.py`'deki ad listesi.
+Yeni dosya `tests/test_facades.py`:
+- Her facade'ın HER dalı için, facade çıktısının soğurduğu eski araç
+  fonksiyonunun çıktısıyla aynı (veya alan-bazında eşdeğer) olduğunu
+  doğrula. Asgari kapsam:
+  - `search_local_corpus`: `mode="lexical" | "semantic" | "hybrid" | "rrf"`
+    → sırasıyla `search_local_cache` / `semantic_search` / `hybrid_search` /
+    `hybrid_search_rrf` ile aynı sonuç.
+  - `search_legislation`: `scope="law"` ve `scope="article"`.
+  - `get_legislation`: `part="document" | "article_tree" | "gerekce"`.
+  - `citation_check`: `action="verify" | "format" | "safety"`.
+  - `prepare_petition`: `step="input_pack" | "outline" | "controlled_draft"`.
+  - `export_document`: `format="docx" | "udf" | "plain" | "bundle" |
+    "capabilities"` (pdf, toolkit gerektiriyorsa yapısal hata yolunu test et).
+  - `read_legal_file`: `.udf` ve `.pdf` dispatch + bilinmeyen uzantıda
+    `build_error` (exception DEĞİL).
+  - `list_sources`: özet + `detail="birim_codes" | "legislation_types"`.
+  - `health_check` ve `legal_research_guide(topic=...)`: dönen dict'in
+    beklenen anahtarları içerdiği.
+- Hermetik: mevcut fixture'lar / fake client ile, canlı ağ YOK. Mevcut
+  testlerden (`test_semantic.py`, `test_legislation.py`, `test_petition.py`)
+  fixture deseni örnek alınabilir.
+
+**(b) Token bütçesi testi.** `test_tool_surface.py`'ye ekle: core
+profildeki 14 aracın `ad + docstring + parametre imzası` toplam metni
+**< 20.000 karakter**. (Yüzey diyetinin asıl amacı buydu; ölçülmeden
+bırakılmış.) Mevcut `_capture_tools("core")` helper'ı fonksiyonları zaten
+veriyor — `fn.__doc__` + `inspect.signature(fn)` üzerinden hesapla.
+
+**(c) M-99 E2E testi.** `test_tool_surface.py` veya `test_mcp_e2e.py`'ye
+ekle: core profilde başla → `load_extended_tools(["cache_admin"])` çağır →
+kayıtlı araç sayısının arttığını VE yüklenen bir aracın (örn.
+`get_cache_stats`) gerçekten çağrılabilir olduğunu doğrula → aynı
+kategoriyi ikinci kez yükle → `already_loaded` dönsün, hata dönmesin →
+geçersiz kategori → `build_error` yapısal hatası.
+
+**(d) Sessiz başarı bug'ı — kod düzeltmesi.** `server.py` içindeki
+`load_extended_tools`'ta (~satır 3305-3309):
+```python
+try:
+    mcp.tool()(fn)
+    loaded.append(name)
+except Exception:
+    loaded.append(name)  # Best-effort  ← HATA
+```
+Kayıt başarısız olsa bile araç "yüklendi" raporlanıyor — yanlış beyan;
+ajan var olmayan aracı çağırmaya kalkar. Düzeltme: `except` dalında
+`name` `loaded`'a DEĞİL, `errors` listesine `{"tool": name, "error": str(e)}`
+olarak eklensin; dönüş dict'ine `errors` alanı ve `ok: len(errors) == 0`
+girsin. (c)'deki E2E testine bu yol için bir case ekle (kayıt fonksiyonunu
+monkeypatch ile patlatıp `errors`'a düştüğünü doğrula).
+
+**(e) Stub temizliği.** `facades.py:695`'teki `load_extended_tools` stub'ı
+ile `server.py`'deki gerçek implementasyon çift kayıt karışıklığı yaratıyor.
+Stub'ı sil (gerçek implementasyon `server.py`'de kalabilir — `mcp` instance'ına
+ihtiyacı var). Ayrıca `facades.py`'deki `citation_check_action` fonksiyon adı
+ile MCP araç adı `citation_check` uyumsuz — fonksiyonu `citation_check` olarak
+yeniden adlandır (veya neden farklı olduğunu tek satır yorumla belgele).
+
+**Bitti sayılır:** (a)–(e) tamam; doğrulama geçidi yeşil
+(`ruff` 0, `mypy` 0, `pytest -q` tümü geçer, server import OK,
+v1-readiness true); `test_facades.py` en az 25 test içerir; core profil
+snapshot testi hâlâ tam 14 araç gösterir.
 
 ---
 

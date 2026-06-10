@@ -3293,6 +3293,7 @@ def main() -> None:
 
         loaded: list[str] = []
         already: list[str] = []
+        errors: list[dict[str, str]] = []
         for cat in categories:
             for name, fn in _EXTENDED_TOOLS.items():
                 if _TOOL_CATEGORIES.get(name) == cat:
@@ -3305,13 +3306,14 @@ def main() -> None:
                     try:
                         mcp.tool()(fn)
                         loaded.append(name)
-                    except Exception:
-                        loaded.append(name)  # Best-effort
+                    except Exception as exc:
+                        errors.append({"tool": name, "error": str(exc)})
 
         return {
-            "ok": True,
+            "ok": len(errors) == 0,
             "loaded_tools": loaded,
             "already_loaded": already,
+            "errors": errors,
             "categories_requested": categories,
             "note": (
                 "Araçlar yüklendi. MCP istemcisi araç listesini otomatik "
