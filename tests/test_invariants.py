@@ -432,13 +432,6 @@ class TestPublicAPIContracts:
         assert "ok" in result
         assert "warnings" in result
 
-    def test_version_bump_returns_ok(self):
-        """release.version_bump returns ok key."""
-        from emsal_mcp.release import version_bump
-
-        result = version_bump()
-        assert "ok" in result
-
 
 # ---------------------------------------------------------------------------
 # Invariant 5: Sources override preserves safety flags

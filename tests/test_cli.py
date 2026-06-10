@@ -54,12 +54,10 @@ def test_server_main_registers_tools():
         "search_decisions", "get_document", "source_capabilities", "source_smoke",
         "citation_safety", "build_input_pack", "draft_document", "export_bundle",
         "read_udf", "write_udf", "udf_toolkit_status", "install_udf_toolkit_tool",
-        "release_smoke", "release_dashboard", "release_notes_tool", "release_archive",
         "search_local_cache", "get_cache_stats", "list_cached_documents",
         "format_legal_citation", "verify_legal_citation",
         "search_legislation", "get_legislation_document",
-        "release_command_center", "version_bump", "final_v1_readiness",
-        "generate_release_summary", "build_semantic_index", "semantic_search",
+        "build_semantic_index", "semantic_search",
         "hybrid_search", "index_status", "rebuild_search_index",
         "chamber_overview", "profile_chamber", "chamber_timeline",
         "find_similar_chambers",
@@ -100,100 +98,15 @@ def test_server_source_smoke_tool():
     assert "sources" in result
 
 
-def test_server_release_smoke_tool():
-    """Test release_smoke MCP tool returns expected structure."""
-    registered_tools, mock_mcp = _setup_server_mock()
-
-    with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
-        main()
-
-    result = registered_tools["release_smoke"]()
-    assert "ok" in result
-    assert "version" in result
-    assert "checks" in result
-
-
-def test_server_release_dashboard_tool():
-    """Test release_dashboard MCP tool returns expected structure."""
-    registered_tools, mock_mcp = _setup_server_mock()
-
-    with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
-        main()
-
-    result = registered_tools["release_dashboard"]()
-    assert "ok" in result
-    assert "readiness_score" in result
-    assert "release_decision" in result
-
-
-def test_server_version_bump_tool():
-    """Test version_bump MCP tool returns expected structure."""
-    registered_tools, mock_mcp = _setup_server_mock()
-
-    with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
-        main()
-
-    result = registered_tools["version_bump"](major=False, minor=False, patch=True)
-    assert result["ok"] is True
-    assert "next_version" in result
-
-
-def test_server_release_command_center_tool():
-    """Test release_command_center MCP tool returns expected structure."""
-    registered_tools, mock_mcp = _setup_server_mock()
-
-    with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
-        main()
-
-    result = registered_tools["release_command_center"]()
-    assert "ok" in result
-    assert "overall_readiness" in result
-    assert "checks" in result
-
-
 def test_server_final_v1_readiness_tool():
-    """Test final_v1_readiness MCP tool returns expected structure."""
+    """Test final_v1_readiness is CLI-only, not registered as MCP tool (M-103)."""
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
         from emsal_mcp.server import main
         main()
 
-    result = registered_tools["final_v1_readiness"]()
-    assert "ok" in result
-    assert "ready" in result
-    assert "criteria" in result
-
-
-def test_server_generate_release_summary_tool():
-    """Test generate_release_summary MCP tool returns expected structure."""
-    registered_tools, mock_mcp = _setup_server_mock()
-
-    with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
-        main()
-
-    result = registered_tools["generate_release_summary"]()
-    assert result["ok"] is True
-    assert "markdown_summary" in result
-    assert "json_summary" in result
-
-
-def test_server_release_notes_tool():
-    """Test release_notes MCP tool returns expected structure."""
-    registered_tools, mock_mcp = _setup_server_mock()
-
-    with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
-        main()
-
-    result = registered_tools["release_notes_tool"]()
-    assert "markdown" in result
-    assert "Release Notes" in result["markdown"]
+    assert "final_v1_readiness" not in registered_tools
 
 
 def test_server_udf_toolkit_status_tool():

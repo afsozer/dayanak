@@ -176,9 +176,9 @@ class TestCoreProfile:
 
 
 class TestFullProfile:
-    """Full profile: all tools (>= 131, regression guard)."""
+    """Full profile: all tools (>= 113, regression guard)."""
 
-    FULL_TOOL_COUNT_SNAPSHOT = 131
+    FULL_TOOL_COUNT_SNAPSHOT = 113
 
     def test_full_profile_count_meets_snapshot(self) -> None:
         tools = _capture_tools("full")

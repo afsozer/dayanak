@@ -4,19 +4,6 @@ Auto-generated from module docstrings.
 
 ---
 
-## `api_server`
-
-### `def run_api_server(host: str, port: int, token: str | None) -> None`
-
-Start the HTTP API server (blocking).
-
-    Args:
-            host: Bind address.
-            port: Bind port.
-            token: Optional auth token.  Overrides EMSAL_API_TOKEN env var.
-
----
-
 ## `argument`
 
 ### `def build_argument_chain(pack_dir: str | Path, cache: Any | None) -> dict[str, Any]`
@@ -1152,12 +1139,6 @@ Measure safe request rate for a source.
 ### `def calibrate_all_cmd(online: bool, json_out: bool)`
 
 Calibrate all registered sources.
-
----
-
-### `def api_serve(host: str, port: int, token: Optional[str])`
-
-Start HTTP REST API server (read-only, stdlib only).
 
 ---
 

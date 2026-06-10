@@ -47,21 +47,7 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
         "cache_integrity_check",
         "sync_cache",
     ],
-    "release": [
-        "release_smoke",
-        "release_dashboard",
-        "release_notes_tool",
-        "release_archive",
-        "release_command_center",
-        "version_bump",
-        "generate_release_summary",
-    ],
-    "analytics": [
-        "search_analytics",
-        "get_empty_queries",
-        "get_top_queries",
-        "get_source_coverage",
-    ],
+    # M-103: release category removed
     "routing": [
         "get_capable_sources",
         "route_search",
@@ -143,16 +129,6 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
         "pdf_toolkit_status",
         "promote_pdf_to_full_text",
     ],
-    "research_admin": [
-        "refresh_research_bundle_tool",
-        "research_quality_dashboard_tool",
-        "run_evaluation",
-    ],
-    "query_tools": [
-        "normalize_law_ref",
-        "expand_query_terms",
-        "extract_query_filters",
-    ],
 }
 
 # ── Extended-only tools (single-source from server.py) ──────────────────
@@ -186,7 +162,6 @@ _LEGACY_ABSORBED: set[str] = {
     "export_bundle",
     "get_export_capabilities",
     "legislation_source_status",
-    "final_v1_readiness",
 }
 # fmt: on
 EXTENDED_TOOLS.update(_LEGACY_ABSORBED)
@@ -238,7 +213,6 @@ _LEGACY_CATEGORIES: dict[str, str] = {
     "research_topic_tool": "research",
     # Renamed / absorbed
     "export_bundle": "drafting_advanced",
-    "final_v1_readiness": "release",
 }
 
 # ── Per-tool → category reverse mapping ──────────────────────────────────

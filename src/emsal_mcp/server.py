@@ -129,7 +129,7 @@ def main() -> None:
         prepare_docx_export as prepare_docx_export_impl,
         prepare_export_package_bundle as prepare_export_package_bundle_impl,
     )
-    from .research import refresh_research_bundle, research_quality_dashboard, research_topic as research_topic_impl
+    from .research import research_topic as research_topic_impl
     from .safety import build_input_pack as build_input_pack_impl, citation_check as citation_check_impl
     from .sources.registry import capabilities, get_source, smoke_all_sync
     from .udf import (
@@ -143,13 +143,9 @@ def main() -> None:
         read_udf as read_udf_impl,
         write_udf as write_udf_impl,
     )
-    from .release import archive_release, readiness_dashboard, release_notes, release_smoke as release_smoke_result
-    from .release import (
-        final_v1_readiness as final_v1_readiness_impl,
-        generate_release_summary as generate_release_summary_impl,
-        release_command_center as release_command_center_impl,
-        version_bump as version_bump_impl,
-    )
+    # M-103: release.py trimmed to final_v1_readiness + version.
+    # final_v1_readiness is no longer registered as an MCP tool (used by
+    # CLI validation gate only).
     try:
         from mcp.server.fastmcp import FastMCP
     except Exception as exc:  # pragma: no cover
@@ -188,20 +184,7 @@ def main() -> None:
         "cache_cleanup_orphans":      "extended",
         "cache_integrity_check":      "extended",
         "sync_cache":                 "extended",
-        # ── Extended: release ───────────────────────────────────────────
-        "release_smoke":              "extended",
-        "release_dashboard":          "extended",
-        "release_notes_tool":         "extended",
-        "release_archive":            "extended",
-        "release_command_center":     "extended",
-        "version_bump":               "extended",
-        "final_v1_readiness":         "extended",
-        "generate_release_summary":   "extended",
-        # ── Extended: analytics ─────────────────────────────────────────
-        "search_analytics":           "extended",
-        "get_empty_queries":          "extended",
-        "get_top_queries":            "extended",
-        "get_source_coverage":        "extended",
+        # M-103: release tools removed from MCP surface
         # ── Extended: routing ───────────────────────────────────────────
         "get_capable_sources":        "extended",
         "route_search":               "extended",
@@ -307,15 +290,7 @@ def main() -> None:
         # ── Extended: discovery ─────────────────────────────────────────
         "source_capabilities":        "extended",
         "list_birim_codes":           "extended",
-        # ── Extended: research_admin ────────────────────────────────────
         "research_topic_tool":         "extended",
-        "refresh_research_bundle_tool":"extended",
-        "research_quality_dashboard_tool":"extended",
-        "run_evaluation":             "extended",
-        # ── Extended: query_tools ───────────────────────────────────────
-        "normalize_law_ref":          "extended",
-        "expand_query_terms":         "extended",
-        "extract_query_filters":      "extended",
     }
 
     _TOOL_CATEGORIES: dict[str, str] = {
@@ -342,18 +317,7 @@ def main() -> None:
         "cache_cleanup_orphans":        "cache_admin",
         "cache_integrity_check":        "cache_admin",
         "sync_cache":                   "cache_admin",
-        "release_smoke":                "release",
-        "release_dashboard":            "release",
-        "release_notes_tool":           "release",
-        "release_archive":              "release",
-        "release_command_center":       "release",
-        "version_bump":                 "release",
-        "final_v1_readiness":           "release",
-        "generate_release_summary":     "release",
-        "search_analytics":             "analytics",
-        "get_empty_queries":            "analytics",
-        "get_top_queries":              "analytics",
-        "get_source_coverage":          "analytics",
+        # M-103: release category removed
         "get_capable_sources":          "routing",
         "route_search":                 "routing",
         "route_get_document":           "routing",
@@ -445,12 +409,6 @@ def main() -> None:
         "get_export_capabilities":      "export",
         "source_capabilities":          "discovery",
         "list_birim_codes":             "discovery",
-        "refresh_research_bundle_tool": "research_admin",
-        "research_quality_dashboard_tool":"research_admin",
-        "run_evaluation":               "research_admin",
-        "normalize_law_ref":            "query_tools",
-        "expand_query_terms":           "query_tools",
-        "extract_query_filters":        "query_tools",
     }
 
     # Extended tool functions collected for dynamic loading (M-99)
@@ -791,22 +749,6 @@ def main() -> None:
         """
         return convert_docx_to_udf_experimental(file_path, out_path, experimental=experimental)
 
-    @_tool
-    def release_smoke() -> dict:
-        return release_smoke_result()
-
-    @_tool
-    def release_dashboard() -> dict:
-        return readiness_dashboard()
-
-    @_tool
-    def release_notes_tool() -> dict:
-        return {"markdown": release_notes()}
-
-    @_tool
-    def release_archive(out_dir: str) -> dict:
-        return archive_release(out_dir)
-
     # ── Cache v2 MCP tools ────────────────────────────────────────────
 
     @_tool
@@ -963,30 +905,6 @@ def main() -> None:
             filters=filters or {},
             output_dir=output_dir,
         )
-
-    @_tool
-    def refresh_research_bundle_tool(
-        bundle_path: str,
-        dry_run: bool = False,
-    ) -> dict:
-        """Re-run research from an existing bundle.json, detecting new/changed docs.
-
-        Returns report with new_documents, changed_documents, hash_changed.
-        Preserves manual notes in index.md.
-        """
-        return refresh_research_bundle(bundle_path, dry_run=dry_run)
-
-    @_tool
-    def research_quality_dashboard_tool(
-        bundle_path: str,
-    ) -> dict:
-        """Compute quality metrics for a research bundle.
-
-        Returns full_text_ratio, citation_safe_ratio, metadata_only_count,
-        source_distribution, missing_metadata_count, duplicate_citation_count,
-        draft_readiness_score, and recommendations.
-        """
-        return research_quality_dashboard(bundle_path)
 
     # ── Citation v0.6 MCP tools ──────────────────────────────────────────
 
@@ -2249,139 +2167,6 @@ def main() -> None:
         finally:
             cache.close()
 
-    # ── Release v0.13 MCP tools ──────────────────────────────────────────
-
-    @_tool
-    def release_command_center() -> dict:
-        """Comprehensive release verification running ALL checks.
-
-        Runs source smoke, cache integrity, module imports, FTS5 index status,
-        chamber overview, and UDF toolkit status.  Aggregates into a single
-        readiness report.
-
-        Returns:
-            Dict with ok, overall_readiness (0-100), checks detail, warnings,
-            recommended_actions.
-        """
-        return release_command_center_impl()
-
-    @_tool
-    def version_bump(
-        major: bool = False,
-        minor: bool = False,
-        patch: bool = True,
-    ) -> dict:
-        """Compute a bumped version string (does NOT modify files).
-
-        Args:
-            major: Bump major version.
-            minor: Bump minor version.
-            patch: Bump patch version (default).
-
-        Returns:
-            Dict with current_version, next_version, bump_type.
-        """
-        return version_bump_impl(major=major, minor=minor, patch=patch)
-
-    @_tool
-    def final_v1_readiness() -> dict:
-        """Final v1.0.0 readiness gate.
-
-        Checks all criteria needed for v1 release: module imports, stable
-        sources, smoke tests, and no blocking issues.
-
-        Returns:
-            Dict with ok, ready, criteria, blocking_issues, recommendation.
-        """
-        return final_v1_readiness_impl()
-
-    @_tool
-    def generate_release_summary() -> dict:
-        """Generate a human-readable release summary.
-
-        Includes version, module inventory, source status, document counts,
-        and readiness assessment.  Returns both markdown and JSON formats.
-
-        Returns:
-            Dict with ok, markdown_summary, json_summary, version.
-        """
-        return generate_release_summary_impl()
-
-    # ── Search Analytics v0.16 MCP tools ────────────────────────────────
-
-    @_tool
-    def search_analytics(days: int = 30) -> dict:
-        """Comprehensive search analytics: success rate, empty queries, source distribution, cache hit ratio.
-
-        All metrics are deterministic and derived from cache data.
-
-        Args:
-            days: Number of days to include (default 30).
-
-        Returns:
-            Dict with ok, total_searches, empty_result_rate, avg_result_count,
-            cache_hit_rate, top_queries, empty_queries, source_distribution,
-            daily_activity.
-        """
-        from .search_analytics import get_search_analytics
-
-        cache = Cache()
-        try:
-            return get_search_analytics(cache=cache, days=days)
-        finally:
-            cache.close()
-
-    @_tool
-    def get_empty_queries(limit: int = 20) -> dict:
-        """List queries that returned 0 results.
-
-        Args:
-            limit: Max results (default 20).
-
-        Returns:
-            Dict with ok and empty_queries list.
-        """
-        from .search_analytics import get_empty_queries as get_empty_queries_impl
-
-        cache = Cache()
-        try:
-            return get_empty_queries_impl(cache=cache, limit=limit)
-        finally:
-            cache.close()
-
-    @_tool
-    def get_top_queries(limit: int = 20) -> dict:
-        """Most frequent queries.
-
-        Args:
-            limit: Max results (default 20).
-
-        Returns:
-            Dict with ok and top_queries list.
-        """
-        from .search_analytics import get_top_queries as get_top_queries_impl
-
-        cache = Cache()
-        try:
-            return get_top_queries_impl(cache=cache, limit=limit)
-        finally:
-            cache.close()
-
-    @_tool
-    def get_source_coverage() -> dict:
-        """Source coverage: doc counts and full_text percentage.
-
-        Returns:
-            Dict with ok and coverage list.
-        """
-        from .search_analytics import get_source_coverage as get_source_coverage_impl
-
-        cache = Cache()
-        try:
-            return get_source_coverage_impl(cache=cache)
-        finally:
-            cache.close()
-
     # ── Capability Router MCP tools (M-19) ──────────────────────────────
 
     @_tool
@@ -2695,27 +2480,6 @@ def main() -> None:
         """
         return audit_privacy_impl(path)
 
-    # ── Eval v4.0 M-71 tool ──────────────────────────────────────────────
-
-    @_tool
-    def run_evaluation(golden_path: str | None = None, k: int = 5) -> dict:
-        """Run retrieval evaluation harness against golden query set.
-
-        Uses recall@k and nDCG@k metrics.  Returns per-query scores and
-        aggregate metrics.
-
-        Args:
-            golden_path: Optional path to golden_queries.json (default: eval/golden_queries.json).
-            k: Cutoff rank (default 5).
-
-        Returns:
-            Dict with ok, query_count, metrics (recall_at_k, ndcg_at_k, pass_rate),
-            per_query details.
-        """
-        from .eval_metrics import evaluate_search
-        from .semantic import hybrid_search
-        return evaluate_search(search_fn=hybrid_search, golden_path=golden_path, k_default=k)
-
     # ── RRF M-69 tool ────────────────────────────────────────────────────
 
     @_tool
@@ -2753,50 +2517,6 @@ def main() -> None:
         return _attach_corpus_hint(_hybrid_search_rrf(
             query=query, limit=limit, filters=filters, include_dense=include_dense,
         ))
-
-    # ── Query understanding M-70 tools ────────────────────────────────────
-
-    @_tool
-    def normalize_law_ref(query: str) -> dict:
-        """Normalize law abbreviations to full references.
-
-        Example: 'İYUK 11' → '2577 (İdari Yargılama Usulü Kanunu) m.11'
-        Uses deterministic hardcoded mappings — no fabrication.
-
-        Args:
-            query: Text containing law abbreviation references.
-
-        Returns:
-            Dict with normalized_query and replacements list.
-        """
-        from .query_understanding import normalize_law_ref as _norm_law
-        return _norm_law(query)
-
-    @_tool
-    def expand_query_terms(query: str) -> dict:
-        """Expand query with legal synonyms from curated dictionary.
-
-        Args:
-            query: Query text to expand.
-
-        Returns:
-            Dict with expanded_query and added_terms.
-        """
-        from .query_understanding import expand_query_terms as _expand
-        return _expand(query)
-
-    @_tool
-    def extract_query_filters(query: str) -> dict:
-        """Extract court/chamber filters from query text.
-
-        Args:
-            query: Query text to analyze.
-
-        Returns:
-            Dict with filters dict and confidence level.
-        """
-        from .query_understanding import extract_query_filters as _extract
-        return _extract(query)
 
     # ── M-98: Core profile facade tools ──────────────────────────────────
 
@@ -3226,7 +2946,6 @@ def main() -> None:
                 "Core profilde 14 araç bulunur. Aşağıdaki kategoriler load_extended_tools\n"
                 "ile dinamik olarak yüklenebilir:\n\n"
                 "  cache_admin    — Cache yönetimi, bakım, senkronizasyon\n"
-                "  release        — Sürüm yönetimi, smoke test, dashboard\n"
                 "  analytics      — Arama analitiği, sorgu istatistikleri\n"
                 "  routing        — Akıllı kaynak yönlendirme\n"
                 "  health_admin   — Circuit breaker, kaynak sağlığı, hata kataloğu\n"
@@ -3267,7 +2986,7 @@ def main() -> None:
         without restarting the server.
 
         Valid categories:
-          cache_admin, release, analytics, routing, health_admin, citation_graph,
+          cache_admin, analytics, routing, health_admin, citation_graph,
           dedup, watch, privacy, chambers, indexing, drafting_advanced,
           udf_admin, research_admin, query_tools
 
@@ -3279,7 +2998,7 @@ def main() -> None:
             and a note if the MCP client may need to refresh its tool list.
         """
         valid_categories = {
-            "cache_admin", "release", "analytics", "routing", "health_admin",
+            "cache_admin", "analytics", "routing", "health_admin",
             "citation_graph", "dedup", "watch", "privacy", "chambers", "indexing",
             "drafting_advanced", "udf_admin", "research_admin", "query_tools",
         }

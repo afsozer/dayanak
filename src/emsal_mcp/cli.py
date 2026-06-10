@@ -17,9 +17,8 @@ if TYPE_CHECKING:
 # module level so that `emsal-mcp --help` is fast.
 
 app = typer.Typer(help="Emsal-mcp citation-safe hukuk araştırma CLI")
-api_app = typer.Typer(help="HTTP REST API server")
 udf_app = typer.Typer(help="UDF okuma/yazma araçları")
-release_app = typer.Typer(help="Release smoke/dashboard/history/regression/notes/archive")
+release_app = typer.Typer(help="Release readiness gate")
 cache_app = typer.Typer(help="Cache v2: istatistik, listeleme, arama, yedekleme, import/export")
 research_app = typer.Typer(help="Research workflow: topic search, refresh, quality dashboard")
 cite_app = typer.Typer(help="Citation verification and formatting")
@@ -29,18 +28,15 @@ legislation_app = typer.Typer(help="Mevzuat: ara, belge al, madde ara, gerekçe 
 semantic_app = typer.Typer(help="Semantic search: FTS5 + TF-IDF hybrid, index yönetimi")
 chamber_app = typer.Typer(help="Chamber profiling: istatistik, timeline, benzer daire bulma")
 graph_app = typer.Typer(help="Citation graph: build, show, citing, cited, stats")
-analytics_app = typer.Typer(help="Search analytics: report, empty queries, top queries, source coverage")
 template_app = typer.Typer(help="Petition templates: list, show, render")
 draft_app = typer.Typer(help="Draft diffing, placeholder tracking, versioning")
 export_app = typer.Typer(help="Export formats: plain text, DOCX, PDF, UDF")
 circuit_app = typer.Typer(help="Circuit breaker: status, health, reset")
 router_app = typer.Typer(help="Capability-based routing: capable sources, search routing, document routing")
 pdf_app = typer.Typer(help="PDF content extraction: text layer, toolkit status")
-calibrate_app = typer.Typer(help="Source calibration: measure safe request rates")
 watch_app = typer.Typer(help="Research watchlist: add, list, run, remove watches")
 privacy_app = typer.Typer(help="PII detection, redaction, and privacy audit")
 eval_app = typer.Typer(help="Retrieval evaluation: run eval harness, recall@k, nDCG")
-app.add_typer(api_app, name="api")
 app.add_typer(udf_app, name="udf")
 app.add_typer(release_app, name="release")
 app.add_typer(cache_app, name="cache")
@@ -52,21 +48,17 @@ app.add_typer(legislation_app, name="legislation")
 app.add_typer(semantic_app, name="semantic")
 app.add_typer(chamber_app, name="chamber")
 app.add_typer(graph_app, name="graph")
-app.add_typer(analytics_app, name="analytics")
 app.add_typer(template_app, name="template")
 app.add_typer(draft_app, name="draft")
 app.add_typer(export_app, name="export")
 app.add_typer(circuit_app, name="circuit")
 app.add_typer(router_app, name="router")
 app.add_typer(pdf_app, name="pdf")
-app.add_typer(calibrate_app, name="calibrate")
 app.add_typer(watch_app, name="watch")
 app.add_typer(privacy_app, name="privacy")
 app.add_typer(eval_app, name="eval")
 corpus_app = typer.Typer(help="Corpus builder: batch-fetch, dedup, status")
 app.add_typer(corpus_app, name="corpus")
-query_app = typer.Typer(help="Legal query understanding: norm reference, expand terms, extract filters")
-app.add_typer(query_app, name="query")
 
 
 def _print(obj, json_out: bool):
@@ -220,9 +212,34 @@ def bundle(matter: str, issue: str, docs_json: Path, out_dir: Path, json_out: bo
 @app.command("smoke")
 def smoke(offline: bool = True, json_out: bool = typer.Option(False, "--json")) -> None:
     """Run release smoke tests (offline by default)."""
-    from .release import release_smoke
-    from .sources.registry import registry
-    result = release_smoke() | {"offline": offline, "sources": list(registry().keys())}
+    from .sources.registry import registry, smoke_all_sync
+    from .verification import check_cache_integrity, smoke_test_offline
+    offline_result = smoke_test_offline()
+    cache_result = check_cache_integrity()
+    source_smoke = smoke_all_sync(online=False)
+    source_ok = all(s.get("offline_ok", False) for s in source_smoke)
+    ok = (
+        bool(offline_result.get("ok"))
+        and bool(cache_result.get("ok"))
+        and source_ok
+        and all(
+            bool(t.get("ok"))
+            for t in offline_result.get("tests", []) + cache_result.get("tests", [])
+        )
+    )
+    result = {
+        "ok": ok,
+        "version": __import__("emsal_mcp", fromlist=["__version__"]).__version__,
+        "checks": {
+            "sources_registered": list(registry()),
+            "offline_smoke": offline_result,
+            "cache_integrity": cache_result,
+            "source_smoke": source_smoke,
+            "source_smoke_ok": source_ok,
+        },
+        "offline": offline,
+        "sources": list(registry().keys()),
+    }
     _print(result, json_out)
 
 
@@ -522,68 +539,6 @@ def cache_fuzzy_dedup_stats(
 # ── Release subcommands ────────────────────────────────────────────────────
 
 
-@release_app.command("dashboard")
-def release_dashboard(json_out: bool = typer.Option(False, "--json")) -> None:
-    """Show release readiness dashboard."""
-    from .release import readiness_dashboard
-    _print(readiness_dashboard(), json_out)
-
-
-@release_app.command("history")
-def release_history(out_dir: Path = Path("exports/release-history"), json_out: bool = typer.Option(False, "--json")) -> None:
-    """Write release history record to output directory."""
-    from .release import write_history
-    _print(write_history(out_dir), json_out)
-
-
-@release_app.command("compare")
-def release_compare(left: Path, right: Path, json_out: bool = typer.Option(False, "--json")) -> None:
-    """Compare two release history records and report score delta."""
-    from .release import compare_history
-    _print(compare_history(left, right), json_out)
-
-
-@release_app.command("notes")
-def release_notes_cmd(out: Optional[Path] = None) -> None:
-    """Generate markdown release notes."""
-    from .release import release_notes
-    notes = release_notes()
-    if out:
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(notes, encoding="utf-8")
-        typer.echo(str(out))
-    else:
-        sys.stdout.buffer.write((notes + "\n").encode("utf-8"))
-
-
-@release_app.command("archive")
-def release_archive(out_dir: Path = Path("exports/release-archive"), json_out: bool = typer.Option(False, "--json")) -> None:
-    """Create a release archive with dashboard, notes, and history."""
-    from .release import archive_release
-    _print(archive_release(out_dir), json_out)
-
-
-@release_app.command("command-center")
-def release_cmd_center(
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Comprehensive release verification - all checks."""
-    from .release import release_command_center as cmd_center_impl
-    _print(cmd_center_impl(), json_out)
-
-
-@release_app.command("version-bump")
-def release_version_bump(
-    major: bool = typer.Option(False, "--major"),
-    minor: bool = typer.Option(False, "--minor"),
-    patch: bool = typer.Option(True, "--patch"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Compute next version (does NOT modify files)."""
-    from .release import version_bump as version_bump_impl
-    _print(version_bump_impl(major=major, minor=minor, patch=patch), json_out)
-
-
 @release_app.command("v1-readiness")
 def release_v1_readiness(
     json_out: bool = typer.Option(False, "--json"),
@@ -593,13 +548,13 @@ def release_v1_readiness(
     _print(final_v1_readiness_impl(), json_out)
 
 
-@release_app.command("summary")
-def release_summary(
+@release_app.command("version")
+def release_version(
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Human-readable release summary."""
-    from .release import generate_release_summary as generate_summary_impl
-    _print(generate_summary_impl(), json_out)
+    """Show emsal-mcp version info."""
+    from .release import version as release_version_impl
+    _print(release_version_impl(), json_out)
 
 
 # ── UDF subcommands ────────────────────────────────────────────────────────
@@ -1379,80 +1334,6 @@ def graph_export(
     _print(result, json_out)
 
 
-# ── Analytics subcommands ────────────────────────────────────────────────
-
-
-@analytics_app.command("report")
-def analytics_report(
-    days: int = typer.Option(30, help="Number of days to include"),
-    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Comprehensive search analytics report."""
-    from .cache import Cache
-    from .search_analytics import get_search_analytics
-
-    cache = Cache(cache_path)
-    try:
-        result = get_search_analytics(cache=cache, days=days)
-        _print(result, json_out)
-    finally:
-        cache.close()
-
-
-@analytics_app.command("empty-queries")
-def analytics_empty_queries(
-    limit: int = typer.Option(20, help="Max results"),
-    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """List queries that returned 0 results."""
-    from .cache import Cache
-    from .search_analytics import get_empty_queries
-
-    cache = Cache(cache_path)
-    try:
-        result = get_empty_queries(cache=cache, limit=limit)
-        _print(result, json_out)
-    finally:
-        cache.close()
-
-
-@analytics_app.command("top-queries")
-def analytics_top_queries(
-    limit: int = typer.Option(20, help="Max results"),
-    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Most frequent queries."""
-    from .cache import Cache
-    from .search_analytics import get_top_queries
-
-    cache = Cache(cache_path)
-    try:
-        result = get_top_queries(cache=cache, limit=limit)
-        _print(result, json_out)
-    finally:
-        cache.close()
-
-
-@analytics_app.command("source-coverage")
-def analytics_source_coverage(
-    cache_path: Optional[Path] = typer.Option(None, help="Cache DB path"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Source coverage: doc counts and full_text percentage."""
-    from .cache import Cache
-    from .search_analytics import get_source_coverage
-
-    cache = Cache(cache_path)
-    try:
-        result = get_source_coverage(cache=cache)
-        _print(result, json_out)
-    finally:
-        cache.close()
-
-
 # ── Template subcommands ────────────────────────────────────────────────────
 
 
@@ -1713,66 +1594,7 @@ def pdf_promote(
     _print(promote_pdf_impl(doc, ocr_enabled=ocr), json_out)
 
 
-# ── Calibrate subcommands (M-30) ──────────────────────────────────────────
-
-
-@calibrate_app.command("source")
-def calibrate_source_cmd(
-    source_id: str = typer.Argument(..., help="Source ID to calibrate"),
-    online: bool = typer.Option(False, "--online", help="Make actual HTTP calls"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Measure safe request rate for a source."""
-    from .calibrate import calibrate_source as calibrate_source_impl
-    _print(calibrate_source_impl(source_id, online=online), json_out)
-
-
-@calibrate_app.command("all")
-def calibrate_all_cmd(
-    online: bool = typer.Option(False, "--online", help="Make actual HTTP calls"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Calibrate all registered sources."""
-    from .calibrate import calibrate_all as calibrate_all_impl
-    _print(calibrate_all_impl(online=online), json_out)
-
-
 # ── API server subcommands (M-33) ─────────────────────────────────────────
-
-
-@api_app.command("serve")
-def api_serve(
-    host: str = typer.Option("127.0.0.1", help="Bind address"),
-    port: int = typer.Option(8765, help="Bind port"),
-    token: Optional[str] = typer.Option(None, help="Auth token (overrides EMSAL_API_TOKEN env)"),
-) -> None:
-    """Start HTTP REST API server (read-only, stdlib only)."""
-    from .api_server import run_api_server
-
-    run_api_server(host=host, port=port, token=token)
-
-
-# ── Benchmark (M-31) ───────────────────────────────────────────────────────
-
-
-@app.command("benchmark")
-def benchmark_cmd(
-    corpus_size: int = typer.Option(50, help="Synthetic corpus size"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Run micro-benchmark suite (deterministic corpus)."""
-    from .benchmark import run_benchmarks as run_benchmarks_impl
-    _print(run_benchmarks_impl(corpus_size=corpus_size), json_out)
-
-
-@app.command("error-catalog")
-def error_catalog(
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """List all known error codes used in the codebase."""
-    from .server_utils import get_error_codes
-
-    _print(get_error_codes(), json_out)
 
 
 # ── Research Watchlist subcommands (M-36) ─────────────────────────────────
@@ -1873,39 +1695,6 @@ def eval_run(
     from .semantic import hybrid_search
     result = evaluate_search(search_fn=hybrid_search, golden_path=golden_path, k_default=k)
     _print(result, json_out)
-
-
-# ── Query understanding commands (M-70) ──────────────────────────────────────
-
-
-@query_app.command("norm")
-def query_norm(
-    query: str = typer.Argument(..., help="Sorgu metni"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Normalize law references in query (İYUK 11 → 2577 s.K. m.11)."""
-    from .query_understanding import normalize_law_ref
-    _print(normalize_law_ref(query), json_out)
-
-
-@query_app.command("expand")
-def query_expand(
-    query: str = typer.Argument(..., help="Sorgu metni"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Expand query with legal synonyms."""
-    from .query_understanding import expand_query_terms
-    _print(expand_query_terms(query), json_out)
-
-
-@query_app.command("extract-filters")
-def query_extract(
-    query: str = typer.Argument(..., help="Sorgu metni"),
-    json_out: bool = typer.Option(False, "--json"),
-) -> None:
-    """Extract court/chamber filters from query text."""
-    from .query_understanding import extract_query_filters
-    _print(extract_query_filters(query), json_out)
 
 
 # ── Corpus builder command (M-76) ────────────────────────────────────────────
