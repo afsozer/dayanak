@@ -1,6 +1,6 @@
 # Emsal-mcp Documentation Index
 
-> v3.1.0
+> v5.0.0
 
 This index provides a comprehensive listing of all project documentation.
 Documents are grouped by category for easy navigation.
@@ -12,8 +12,8 @@ Documents are grouped by category for easy navigation.
 | Document | Description |
 |---|---|
 | [README.md](../README.md) | Project overview, quick start, and feature summary |
-| [CHANGELOG.md](../CHANGELOG.md) | Full release history (v0.1.0 → v3.1.0) |
-| [ROADMAP.md](../ROADMAP.md) | Forward-looking roadmap (open milestones M-59+) |
+| [CHANGELOG.md](../CHANGELOG.md) | Full release history (v0.1.0 → v5.0.0) |
+| [ROADMAP.md](../ROADMAP.md) | Forward-looking roadmap (open milestones M-69+) |
 
 ## Installation & Setup
 
@@ -38,7 +38,6 @@ Documents are grouped by category for easy navigation.
 | [COOKBOOK.md](COOKBOOK.md) | Usage cookbook with 8 copy-paste workflow recipes |
 | [GLOSSARY.md](GLOSSARY.md) | Bilingual Turkish-English glossary of 77 legal and technical terms |
 | [ERROR_CATALOG.md](ERROR_CATALOG.md) | Complete error code catalog (76 codes) with recommended actions |
-| [dead_code_report.md](dead_code_report.md) | Dead code analysis report (M-45 audit) |
 
 > Historical release reports and session changelogs were consolidated into
 > [CHANGELOG.md](../CHANGELOG.md); older standalone files were removed (history in git).

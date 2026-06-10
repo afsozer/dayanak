@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### FAZ O — Kesim v5.0.0 (2026-06-10)
+
+**Breaking change:** Sürüm 4.0.0 → 5.0.0. Aşağıdaki modüller/araçlar kalıcı olarak silindi.
+
+#### Removed
+
+- **REST API katmanı (M-102):** `api_server.py`, `tests/test_api_server.py`, `cli.py`'deki `api serve` komutu, `pyproject.toml`'daki boş `api` extra'sı, çok-kullanıcı modu (`EMSAL_MULTI_USER`) kaldırıldı. MCP zaten transport; REST ayrı bir projenin işi.
+- **Release yönetimi budaması (M-103):** `release_command_center`, `readiness_dashboard`, `write_history`, `compare_history`, `release_notes`, `archive_release`, `version_bump`, `generate_release_summary`, `release_smoke` kaldırıldı. Kalan: `final_v1_readiness` + `version`. CLI'da yalnızca `release v1-readiness` ve `version` kaldı. MCP'den `release` kategorisi tamamen kalktı.
+- **Analitik/benchmark/kalibrasyon (M-104):** `benchmark.py`, `calibrate.py` + CLI komutları + testleri kaldırıldı. `search_analytics.py` MCP araçları (`search_analytics`, `get_empty_queries`, `get_top_queries`, `get_source_coverage`) ve CLI komutları kaldırıldı. `record_search` + kayıt tablosu korundu (düşük maliyetli, ileride faydalı olabilir).
+- **Yönetim araçları MCP'den söküldü (M-105):** `cache_admin`, `routing`, `health_admin` (kısmi), `indexing` (kısmi), `dedup` (tamamı 6 araç), `drafting_advanced` (kısmi), `udf_admin` (kısmi) MCP kaydından kaldırıldı. Bu araçların işlevleri CLI komutları olarak yaşamaya devam ediyor (modül kodu silinmedi). Full MCP yüzeyi 131 → ~82 araç.
+- **Doküman artık temizliği (M-106):** `docs/dead_code_report.md`, `docs/message_inventory.json`, `scripts/inventory_messages.py` silindi; `exports/` test fixture artıkları temizlendi.
+
+#### Changed
+
+- **Sürüm bump:** `pyproject.toml` ve `src/emsal_mcp/__init__.py` version → **5.0.0**.
+- **README.md:** Başlık ve "Özellikler" tablosu senkronize edildi (14 core + 68 extended = 82 MCP tool, 138 CLI, 52 test, 41 modül).
+
 ### M-101 — FAZ M denetim bulguları (2026-06-10)
 - **Facade test kapsamı:** `tests/test_facades.py` eklendi — 9 facade'ın tüm
   `mode`/`scope`/`part`/`action`/`step`/`format` dalları için 31 dispatch/eşdeğerlik

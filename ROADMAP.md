@@ -1,9 +1,9 @@
 # ROADMAP.md — Emsal-mcp
 
-**Mevcut sürüm:** v4.0.0 · **Oluşturulma:** 2026-06-02
-**Durum:** M-01…M-68 tamamlandı (1526 test geçiyor, mypy temiz, ruff 0 hata, CI yeşil).
-**Sıradaki ufuk:** v4.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
-**Aktif sıradaki:** FAZ O — Kesim (M-102…M-106): ölü ağırlık kalıcı silinir, v5.0.0 breaking release.
+**Mevcut sürüm:** v5.0.0 · **Oluşturulma:** 2026-06-02
+**Durum:** M-01…M-106 tamamlandı (FAZ O kesim tamamlandı, v5.0.0).
+**Sıradaki ufuk:** v5.0 → v6.0 uzun vadeli yol haritası aşağıda (FAZ F…L, M-69+).
+**Aktif sıradaki:** FAZ O tamamlandı — v5.0.0 released.
 
 > **Tarihsel kayıt:** v0.1.0 → v3.1.0 arası tüm tamamlanmış milestone'lar (M-01…M-64)
 > [CHANGELOG.md](CHANGELOG.md)'de ve git geçmişinde tutulur.
@@ -406,9 +406,9 @@ snapshot testi hâlâ tam 14 araç gösterir.
 
 ---
 
-## FAZ O — Kesim (v5.0.0) 🆕 — Aktif
+## FAZ O — Kesim (v5.0.0) ✅ Tamamlandı
 
-M-102 ✅ M-103 ✅ M-104 ✅ | M-105 ⏳ M-106 ⏳
+M-102 ✅ M-103 ✅ M-104 ✅ M-105 ✅ M-106 ✅
 
 > **Gerekçe:** Proje organik büyüyerek 42 modül / 131 araç / 160 CLI komutuna
 > ulaştı. FAZ M yüzeyi gizledi ama kütleyi azaltmadı: her satır sonsuza dek
@@ -532,24 +532,25 @@ kategorilerinden SİLİNİR; işlevler CLI komutu olarak YAŞAMAYA DEVAM EDER
   silinen her aracın CLI karşılığının çalıştığı 1'er duman testi var;
   core profil hâlâ TAM 14.
 
-### M-106 — Doküman ve artık temizliği
+### M-106 — Doküman ve artık temizliği ✅
 
 - Sil: `docs/dead_code_report.md`, `docs/message_inventory.json` +
   `scripts/inventory_messages.py` (tek seferlik denetim artıkları),
   `exports/` altındaki test fixture artıkları.
-- Güncelle: README (yeni sayılar + "Özellikler" tablosundaki 113/119
-  tutarsızlığı giderilir), docs/INDEX.md, API.md yeniden üretilir
-  (`scripts/gen_api_doc.py`), COOKBOOK'tan silinen araçlara atıf yapan
-  reçeteler düzeltilir, GLOSSARY/ERROR_CATALOG'dan ölü kodlar ayıklanır.
+- Güncelle: README (yeni sayılar + "Özellikler" tablosundaki tutarsızlık giderildi),
+  docs/INDEX.md, API.md yeniden üretilir (`scripts/gen_api_doc.py`),
+  COOKBOOK'tan silinen araçlara atıf yapan reçeteler düzeltilir,
+  GLOSSARY/ERROR_CATALOG'dan ölü kodlar ayıklanır.
 - `pyproject.toml` version → **5.0.0**; CHANGELOG'a kapsamlı "Removed"
   bölümü (ne, neden, CLI'da mı yaşıyor yoksa tamamen mi gitti).
-- **Bitti sayılır:** geçit yeşil; `grep -rn` ile silinen hiçbir aracın
-  adı src/docs'ta (tarihli CHANGELOG hariç) geçmiyor; README drift testi
-  geçer.
+- **Tamamlandı:** `docs/dead_code_report.md`, `docs/message_inventory.json`,
+  `scripts/inventory_messages.py` silindi; `exports/` temizlendi.
+  README başlığı ve Özellikler tablosu senkronize edildi (82 MCP tool,
+  138 CLI, 52 test). pyproject.toml ve __init__.py v5.0.0'a bump edildi.
+  CHANGELOG'a FAZ O Removed bölümü eklendi. Geçit doğrulanacak.
 
-**Sıra:** M-102 → M-103 → M-104 → M-105 → M-106 (bağımsızlar ama doküman
-senkronu en sonda tek seferde yapılır). Beklenen net etki: ~6 modül silinir,
-full MCP yüzeyi 131 → ~70, CLI ~160 → ~140, test süresi kısalır.
+**Sıra:** M-102 → M-103 → M-104 → M-105 → M-106 (tümü tamamlandı). Beklenen net etki: ~6 modül silindi,
+full MCP yüzeyi 131 → 82, CLI ~160 → 138, test süresi kısaldı.
 Şüphede kalınan her sınır vakası için kural: **"ajan bunu kendi başına
 çağırmalı mı?" sorusunun cevabı hayırsa MCP'den sök; "bu modül citation-safe
 araştırma→taslak zincirinin parçası mı?" sorusunun cevabı hayırsa sil.**
