@@ -246,7 +246,7 @@ class TestIntegrityCheck:
         result = cache.check_integrity_full()
         counts = result["checks"]["table_row_counts"]["counts"]
         assert counts["documents_v2"] == 1
-        assert counts["documents"] == 1
+        assert counts["documents"] == 0  # legacy table no longer written
         cache.close()
 
     def test_integrity_check_logs_history(self, tmp_path):

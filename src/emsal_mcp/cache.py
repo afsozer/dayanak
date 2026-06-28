@@ -328,15 +328,14 @@ class Cache:
     # ------------------------------------------------------------------
 
     def store_document(self, doc: Document) -> None:
-        """Store a Document in both legacy and v2 tables."""
+        """Store a Document in the v2 table (FTS auto-syncs via triggers).
+
+        The legacy ``documents`` table is no longer written — it duplicated the
+        full document JSON (incl. text) and roughly doubled the DB size. Reads
+        go through the v2 table; see ``get_document``.
+        """
         import time as _t
         _s = _t.monotonic()
-        # Legacy table
-        self.db.execute(
-            "REPLACE INTO documents(document_id, source, value, content_hash) VALUES(?, ?, ?, ?)",
-            (doc.document_id, doc.source, doc.model_dump_json(), doc.content_hash),
-        )
-        # v2 table
         cached = CachedDocument.from_document(doc)
         self._upsert_cached_document(cached)
         self.db.commit()
@@ -380,15 +379,22 @@ class Cache:
         self.db.commit()
 
     def get_document(self, document_id: str, source: str) -> Document | None:
-        row = self.db.execute(
-            "SELECT value, content_hash FROM documents WHERE document_id=? AND source=?",
-            (document_id, source),
-        ).fetchone()
-        if not row:
-            return None
-        doc = Document.model_validate_json(row[0])
+        # Reads from the v2 table (the legacy ``documents`` table is no longer
+        # populated). Falls back to the legacy table for any pre-existing rows
+        # not yet migrated to v2.
+        cached = self.get_cached_document(document_id, source)
+        if cached is not None:
+            doc = cached.to_document()
+        else:
+            row = self.db.execute(
+                "SELECT value FROM documents WHERE document_id=? AND source=?",
+                (document_id, source),
+            ).fetchone()
+            if not row:
+                return None
+            doc = Document.model_validate_json(row[0])
         # Verify hash on read
-        if doc.content_hash and row[1]:
+        if doc.content_hash:
             text = doc.text
             if text:
                 computed = hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
@@ -412,6 +418,18 @@ class Cache:
         )
         self.db.commit()
         return self._row_to_cached_document(row)
+
+    def has_document(self, document_id: str, source: str) -> bool:
+        """Cheap existence check — no row materialization, no access-stat update.
+
+        Used by the incremental crawler to skip the expensive full-text fetch
+        for decisions already in the cache.
+        """
+        row = self.db.execute(
+            "SELECT 1 FROM documents_v2 WHERE document_id=? AND source=? LIMIT 1",
+            (document_id, source),
+        ).fetchone()
+        return row is not None
 
     def _row_to_cached_document(self, row: sqlite3.Row) -> CachedDocument:
         """Convert a sqlite3.Row to CachedDocument."""

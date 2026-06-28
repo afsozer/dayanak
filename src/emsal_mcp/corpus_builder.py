@@ -11,7 +11,7 @@ from typing import Any
 from .cache import Cache
 from .models import build_error
 
-CORPUS_BUILDER_VERSION = "1.1.0"
+CORPUS_BUILDER_VERSION = "1.2.0"
 
 
 def crawl_full_text(
@@ -24,6 +24,8 @@ def crawl_full_text(
     max_pages: int = 200,
     page_size: int = 100,
     start_page: int = 1,
+    incremental: bool = False,
+    stop_after_seen: int = 200,
     cache: Cache | None = None,
 ) -> dict[str, Any]:
     """Systematically crawl FULL-TEXT decisions into the local cache.
@@ -48,11 +50,19 @@ def crawl_full_text(
         max_pages: Safety cap on pages scanned.
         page_size: Results per search page (server max 100).
         start_page: Page to start from (for resuming).
+        incremental: When True (use with ``sort_direction='desc'``), skip the
+            expensive full-text fetch for decisions already in the cache and stop
+            once ``stop_after_seen`` consecutive already-cached decisions are seen
+            (i.e. the crawl has reached the region it covered last time). In this
+            mode ``stored`` counts ONLY genuinely new decisions.
+        stop_after_seen: Consecutive-already-cached threshold that ends an
+            incremental run. Ignored when ``incremental`` is False.
         cache: Optional Cache instance.
 
     Returns:
         Dict with ok, stored, scanned, skipped_unavailable, skipped_metadata,
-        pages_scanned, next_page, time_seconds, warnings.
+        skipped_cached, pages_scanned, next_page, stopped_reason, time_seconds,
+        warnings.
     """
     import asyncio
 
@@ -66,6 +76,9 @@ def crawl_full_text(
     c = cache or Cache()
     start_time = datetime.now(timezone.utc)
     stored = scanned = skipped_unavailable = skipped_metadata = pages_scanned = 0
+    skipped_cached = 0
+    consecutive_seen = 0
+    stopped_reason = "max_docs"
     warnings: list[str] = []
     page = start_page
     full_text_statuses = {ContentStatus.FULL_TEXT, ContentStatus.HTML_MARKDOWN}
@@ -92,6 +105,7 @@ def crawl_full_text(
 
     async def _run() -> None:
         nonlocal stored, scanned, skipped_unavailable, skipped_metadata, pages_scanned, page
+        nonlocal skipped_cached, consecutive_seen, stopped_reason
         client = get_source(source)
         while stored < max_docs and pages_scanned < max_pages:
             try:
@@ -101,8 +115,10 @@ def crawl_full_text(
                 ))
             except Exception as exc:
                 warnings.append(f"search page {page} failed: {exc}")
+                stopped_reason = "search_error"
                 break
             if not results:
+                stopped_reason = "exhausted"
                 break  # past the last page
             # Process the WHOLE page (never break mid-page) so resuming from
             # next_page can't skip the unprocessed tail of a page. A batch may
@@ -110,6 +126,17 @@ def crawl_full_text(
             # next clean page boundary.
             for sr in results:
                 scanned += 1
+                # Incremental mode: skip the expensive full-text fetch for
+                # decisions we already hold, and end the run once we've hit a
+                # long enough run of already-cached decisions (we've caught up
+                # with the previous crawl). Only meaningful with sort=desc.
+                if incremental and c.has_document(sr.document_id, source):
+                    skipped_cached += 1
+                    consecutive_seen += 1
+                    if consecutive_seen >= stop_after_seen:
+                        stopped_reason = "caught_up"
+                        return
+                    continue
                 try:
                     doc = await _retry_429(lambda sr=sr: client.get_document(sr.document_id))
                 except Exception as exc:
@@ -120,6 +147,7 @@ def crawl_full_text(
                     try:
                         c.store_document(doc)
                         stored += 1
+                        consecutive_seen = 0  # a genuinely new full-text doc
                     except Exception as exc:
                         warnings.append(f"store {sr.document_id} failed: {exc}")
                 elif doc.content_status == ContentStatus.UNAVAILABLE:
@@ -128,6 +156,10 @@ def crawl_full_text(
                     skipped_metadata += 1
             pages_scanned += 1
             page += 1
+        else:
+            # while condition went false (not a break/return)
+            if pages_scanned >= max_pages:
+                stopped_reason = "max_pages"
 
     try:
         asyncio.run(_run())
@@ -139,8 +171,11 @@ def crawl_full_text(
             "scanned": scanned,
             "skipped_unavailable": skipped_unavailable,  # full text not published yet (404)
             "skipped_metadata": skipped_metadata,
+            "skipped_cached": skipped_cached,  # already in cache (incremental mode)
             "pages_scanned": pages_scanned,
             "next_page": page,  # pass as start_page to resume
+            "stopped_reason": stopped_reason,  # caught_up|exhausted|max_docs|max_pages|search_error
+            "incremental": incremental,
             "rate_limit_retries": rl_429,  # 429s recovered via wait+retry (not dropped)
             "time_seconds": round(elapsed, 1),
             "warnings": warnings[:50],

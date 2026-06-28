@@ -1721,6 +1721,8 @@ def corpus_crawl(
     max_pages: int = typer.Option(200, help="Taranacak azami sayfa (güvenlik sınırı)"),
     page_size: int = typer.Option(100, help="Sayfa başına sonuç (sunucu max 100)"),
     start_page: int = typer.Option(1, help="Bu sayfadan başla (devam için next_page'i ver)"),
+    incremental: bool = typer.Option(False, "--incremental", help="Sadece YENİ kararları çek: cache'de olanı atlar, eski bölgeye ulaşınca durur (sort=desc ile kullan)"),
+    stop_after_seen: int = typer.Option(200, help="Incremental: üst üste bu kadar karar zaten cache'deyse dur"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Yalnızca tam metni olan kararları yerel cache'e tarar (tüm daireler, sayfalı).
@@ -1728,11 +1730,16 @@ def corpus_crawl(
     Tam metni yayımlanmamış (404) ve yalnız-metadata kararları atlar; uydurmaz.
     Pacing otomatik (yerleşik rate limiter). Uzun taramayı `next_page` ile parça
     parça sürdürebilirsin.
+
+    `--incremental` (sort=desc ile): cache'de olan kararların pahalı tam-metin
+    çekimini atlar ve önceki tarama bölgesine ulaşınca durur; `stored` yalnızca
+    gerçekten YENİ eklenen kararları sayar.
     """
     from .corpus_builder import crawl_full_text
     _print(crawl_full_text(
         source=source, phrase=phrase, item_type=item_type, sort_direction=sort,
         max_docs=max_docs, max_pages=max_pages, page_size=page_size, start_page=start_page,
+        incremental=incremental, stop_after_seen=stop_after_seen,
     ), json_out)
 
 

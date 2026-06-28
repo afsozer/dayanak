@@ -363,7 +363,7 @@ class TestCacheMaintenance:
         stats = cache.cache_stats()
         assert stats["schema_version"] == 4
         assert stats["documents_v2"] == 1
-        assert stats["documents_legacy"] == 1
+        assert stats["documents_legacy"] == 0  # legacy table no longer written
         assert stats["db_path"] == str(tmp_path / "test.sqlite3")
         assert stats["db_size_bytes"] > 0
         cache.close()
