@@ -428,6 +428,7 @@ def main() -> None:
         esas_no: str | None = None,
         karar_no: str | None = None,
         sort_by: str | None = None,
+        include_snippets: bool = False,
     ) -> list[dict] | dict:
         """✅ PRIMARY, MANDATORY TOOL FOR ALL CASE-LAW / DECISION / MEVZUAT RESEARCH.
 
@@ -525,6 +526,11 @@ def main() -> None:
                 only filters like esas_no/karar_no/date range are given). When
                 omitted, the source infers: non-empty query → relevance,
                 filter-only lookup → date.
+            include_snippets: When true, fetch the full text of the first 5
+                results and attach a ``snippet`` (~360-char passage centred on
+                the query terms) to each.  Lets you triage relevance without
+                calling get_document per result.  Results already in the local
+                corpus get a snippet for free even when this is false.
 
         Returns:
             List of matching document dicts.
@@ -572,6 +578,62 @@ def main() -> None:
         # Store search results in cache for later local search
         cache = Cache()
         cache.set(f"search:{source}:{query}:{limit}:{page}", results)
+
+        # ── Snippet enrichment (Yargı-MCP parity Görev 4) ──────────────
+        # Attach a query-term snippet to each result.  Free for documents
+        # already in the local corpus (no network); for the rest, optionally
+        # fetch the first 5 full texts concurrently when include_snippets=true.
+        from .snippet import extract_query_terms, make_snippet
+        terms = extract_query_terms(query)
+        # 1) Free corpus snippets — try the cache first for every result.
+        for r in results:
+            if r.get("snippet"):
+                continue
+            cached_doc = cache.get_document(r.get("document_id", ""), source)
+            if cached_doc is not None:
+                txt = cached_doc.full_text or cached_doc.markdown or ""
+                if txt:
+                    snip = make_snippet(txt, terms)
+                    if snip:
+                        r["snippet"] = snip
+
+        # 2) Opt-in live snippet fetch for the first N results still lacking one.
+        if include_snippets:
+            snippet_top_n = 5
+            need: list[dict] = []
+            for r in results:
+                if r.get("snippet"):
+                    continue
+                if len(need) >= snippet_top_n:
+                    break
+                need.append(r)
+            if need:
+                src_client = get_source(source)
+                from .concurrency import run_concurrently
+                fetch_coros = [src_client.get_document(r["document_id"]) for r in need]
+                fetched = await run_concurrently(fetch_coros)
+                skipped_pdf = 0
+                for r, doc in zip(need, fetched):
+                    if isinstance(doc, Exception) or doc is None:
+                        continue
+                    # Skip PDF-only docs (snippet would require extraction).
+                    if doc.content_status.value == "pdf_link_only":
+                        skipped_pdf += 1
+                        continue
+                    txt = doc.full_text or doc.markdown or ""
+                    if txt:
+                        snip = make_snippet(txt, terms)
+                        if snip:
+                            r["snippet"] = snip
+                    # Persist the fetched full text so a follow-up get_document
+                    # call is cache-served (no second network round-trip).
+                    cache.store_document(doc)
+                if skipped_pdf:
+                    # Surface the skip count on the first result's metadata.
+                    need[0].setdefault("metadata", {})
+                    need[0]["metadata"]["snippet_note"] = (
+                        f"{skipped_pdf} PDF-only sonuç snippet için atlandı."
+                    )
         cache.close()
         return results
 

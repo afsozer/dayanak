@@ -85,6 +85,7 @@ relied on the v0.1 capability shape. New code should use the snake_case keys.
   "metadata_confidence": "high",
   "metadata_confidence_reason": "Başlık, kaynak ve güçlü karar metadata alanları var.",
   "recommended_next_step": "Bu kayıtta tam metin yok; dilekçede kullanmadan önce resmi kaynaktan doğrulayın.",
+  "snippet": null,
   "metadata": {}
 }
 ```

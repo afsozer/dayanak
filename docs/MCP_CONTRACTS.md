@@ -1,4 +1,4 @@
-﻿# docs/MCP_CONTRACTS.md — MCP Tool Contracts
+# docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
 > **emsal-mcp v5.0.0** — 14 core MCP tools (default) · 82 tools in full profile.
 > Input parameters use Python type hints; output shapes are documented per tool.
@@ -33,7 +33,7 @@ Dynamically loads extended tool categories into the running server (core profile
 <!-- drift:categories-start -->
 | Category | Tools |
 |----------|-------|
-| `health_admin` | circuit_breaker_status, source_health, source_smoke |
+| `health_admin` | circuit_breaker_status, source_health, source_smoke, check_government_servers_health |
 | `citation_graph` | build_citation_graph, get_citation_graph, find_citing_documents, find_cited_documents, citation_graph_stats, export_citation_graph |
 | `watch` | watch_add, watch_list, watch_run, watch_remove |
 | `privacy` | privacy_scan, privacy_redact, privacy_audit |
@@ -76,7 +76,9 @@ Dynamically loads extended tool categories into the running server (core profile
 - `limit: int = 10`
 - `page: int = 1`
 
-**Output**: `list[dict]` — each dict is a `SearchResult` dump.
+**Output**: `list[dict]` — each dict is a `SearchResult` dump (now includes an
+optional `snippet` field — a ~360-char passage around the query terms, populated
+for free from the local corpus, or for the first 5 results when `include_snippets=true`).
 
 **Errors**: raises `KeyError` for unknown sources. Registered partial/experimental
 sources return structured unavailable/metadata-only payloads instead of MCP

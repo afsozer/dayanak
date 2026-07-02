@@ -221,6 +221,13 @@ class SearchResult(BaseModel):
     content_status: ContentStatus = ContentStatus.METADATA_ONLY
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    # ── Snippet (Yargı-MCP parity Görev 4) ───────────────────────────────
+    # When include_snippets=true (or the document is in the local corpus),
+    # this holds the first ~300–400 char passage containing the query terms,
+    # extracted from the full text.  Lets the LLM triage relevance without
+    # fetching every result individually.
+    snippet: str | None = None
+
     # ── Enrichment fields (v0.2) ────────────────────────────────────────
     content_status_label: str | None = None
     content_available: bool = False
