@@ -536,3 +536,48 @@ def check_http_response(r: httpx.Response, source: str = "") -> None:
             request=r.request,
             response=r,
         )
+
+
+# ── Bedesten upstream-error detection ────────────────────────────────────────
+# Bedesten wraps its responses as {"data": ..., "metadata": {"FMTY": ...}}.
+# When the upstream Solr/service faults, it returns
+# {"data": null, "metadata": {"FMTY": "ERROR", "FMC": "ADALET_RUNTIME_EXCEPTION",
+#  "FMTE": ...}}.  The old code silently turned `data: null` into an empty list,
+# which the LLM misread as "no results" — leading to false "no precedent"
+# conclusions.  This helper surfaces such faults explicitly.
+
+
+class BedestenUpstreamError(Exception):
+    """Raised when Bedesten returns a structured upstream error.
+
+    Carries the raw ``FMC`` (fault code) and ``FMTE`` (fault message) so the
+    MCP tool layer can produce an actionable, retryable error response.
+    """
+
+    def __init__(self, fmc: str, fmte: str = "", *, source: str = "") -> None:
+        self.fmc = fmc
+        self.fmte = fmte
+        self.source = source
+        super().__init__(f"Bedesten upstream error: {fmc} — {fmte}")
+
+
+def check_bedesten_response_error(raw: dict, source: str = "") -> None:
+    """Inspect a raw Bedesten JSON envelope for a structured upstream error.
+
+    Raises :class:`BedestenUpstreamError` when ``metadata.FMTY == "ERROR"``.
+    A null ``data`` WITHOUT an ERROR flag is not raised here — it legitimately
+    means "no rows" (e.g. past the last page, too-short phrase), which callers
+    translate to an empty result set as before.
+
+    This keeps invariant #3 (structured result, not crash) intact: the MCP
+    tool layer catches the exception and converts it to an ``ok: false`` dict.
+    """
+    if not isinstance(raw, dict):
+        return
+    metadata = raw.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    if str(metadata.get("FMTY", "")).upper() == "ERROR":
+        fmc = str(metadata.get("FMC", "") or "")
+        fmte = str(metadata.get("FMTE", "") or "")
+        raise BedestenUpstreamError(fmc, fmte=fmte, source=source)

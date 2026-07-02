@@ -549,7 +549,26 @@ def main() -> None:
             filters["karar_no"] = karar_no
         if sort_by:
             filters["sort_by"] = sort_by
-        results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page, **filters)]
+        try:
+            results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page, **filters)]
+        except Exception as exc:
+            # Bedesten upstream fault (ADALET_RUNTIME_EXCEPTION etc.) — surface
+            # as a structured error, NOT an empty list.  An empty list would be
+            # misread as "no precedent exists", which is false: the source is
+            # temporarily faulty.  See Yargı-MCP parity Görev 3.
+            from .sources.base import BedestenUpstreamError
+            if isinstance(exc, BedestenUpstreamError):
+                return build_error(
+                    "SOURCE_UPSTREAM_ERROR",
+                    f"Kaynak ({source}) geçici hata döndürdü ({exc.fmc}); bu 'sonuç yok' "
+                    "anlamına gelmez, sorguyu daha sonra tekrarlayın.",
+                    source=source,
+                    retryable=True,
+                    recommended_next_steps=["Sorguyu birkaç saniye/dakika sonra tekrarlayın."],
+                    upstream_error_code=exc.fmc,
+                    upstream_error_message=exc.fmte,
+                )
+            raise
         # Store search results in cache for later local search
         cache = Cache()
         cache.set(f"search:{source}:{query}:{limit}:{page}", results)
@@ -568,7 +587,22 @@ def main() -> None:
         Returns:
             Document dict with all metadata and content fields.
         """
-        doc = await get_source(source).get_document(document_id)
+        try:
+            doc = await get_source(source).get_document(document_id)
+        except Exception as exc:
+            from .sources.base import BedestenUpstreamError
+            if isinstance(exc, BedestenUpstreamError):
+                return build_error(
+                    "SOURCE_UPSTREAM_ERROR",
+                    f"Kaynak ({source}) geçici hata döndürdü ({exc.fmc}); belge metni "
+                    "şu an alınamıyor, daha sonra tekrar deneyin.",
+                    source=source,
+                    retryable=True,
+                    recommended_next_steps=["Belgeyi birkaç saniye/dakika sonra tekrar isteyin."],
+                    upstream_error_code=exc.fmc,
+                    upstream_error_message=exc.fmte,
+                )
+            raise
         cache = Cache()
         # M-65: merge cached provenance so standalone get has metadata
         _cached = cache.get_document(document_id, source)

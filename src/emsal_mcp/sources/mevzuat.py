@@ -17,7 +17,12 @@ class MevzuatClient(BedestenClient):
     _get_document_response_keys = ["content"]
 
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
-        from .base import check_http_response, client
+        from .base import (
+            BedestenUpstreamError,
+            check_bedesten_response_error,
+            check_http_response,
+            client,
+        )
         from emsal_mcp.models import ContentStatus, SearchResult
         # ── sort_by: relevance vs date ──────────────────────────────────
         # Mirror Bedesten: default to relevance when a phrase is present, date
@@ -55,6 +60,17 @@ class MevzuatClient(BedestenClient):
             r = await c.post(f"{self.base}/mevzuat/searchDocuments", json=body, headers=self.headers)
             check_http_response(r, self.source_id)
             raw_data = r.json()
+        # Surface upstream Solr/service faults explicitly (one short retry).
+        try:
+            check_bedesten_response_error(raw_data, source=self.source_id)
+        except BedestenUpstreamError:
+            import asyncio as _aio
+            await _aio.sleep(self._upstream_retry_delay)
+            async with client() as c:
+                r2 = await c.post(f"{self.base}/mevzuat/searchDocuments", json=body, headers=self.headers)
+                check_http_response(r2, self.source_id)
+                raw_data = r2.json()
+            check_bedesten_response_error(raw_data, source=self.source_id)
         data = raw_data.get("data", raw_data)
         # M-60: schema validation
         _ = self._check_response_schema(data, self._search_response_keys, "search")
@@ -95,13 +111,32 @@ class MevzuatClient(BedestenClient):
         return out
 
     async def get_document(self, document_id: str, **kwargs) -> Document:
-        from .base import check_http_response, client, decode_b64, html_to_text, sha
+        from .base import (
+            BedestenUpstreamError,
+            check_bedesten_response_error,
+            check_http_response,
+            client,
+            decode_b64,
+            html_to_text,
+            sha,
+        )
         from emsal_mcp.models import ContentStatus, Document, finalize_document
         payload = {"data": {"id": document_id, "documentType": "MEVZUAT"}, "applicationName": "UyapMevzuat"}
         async with client() as c:
             r = await c.post(f"{self.base}/mevzuat/getDocumentContent", json=payload, headers=self.headers)
             check_http_response(r, self.source_id)
             raw = r.json()
+        # Surface upstream faults explicitly (one short retry).
+        try:
+            check_bedesten_response_error(raw, source=self.source_id)
+        except BedestenUpstreamError:
+            import asyncio as _aio
+            await _aio.sleep(self._upstream_retry_delay)
+            async with client() as c:
+                r2 = await c.post(f"{self.base}/mevzuat/getDocumentContent", json=payload, headers=self.headers)
+                check_http_response(r2, self.source_id)
+                raw = r2.json()
+            check_bedesten_response_error(raw, source=self.source_id)
         data = raw.get("data", raw)
         # M-60: schema validation
         _ = self._check_response_schema(data, self._get_document_response_keys, "get_document")

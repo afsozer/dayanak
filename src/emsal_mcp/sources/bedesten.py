@@ -3,8 +3,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .base import SourceClient, check_http_response, client, decode_b64, html_to_text, sha
-from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceSmokeResult, finalize_document
+from .base import (
+    BedestenUpstreamError,
+    SourceClient,
+    check_bedesten_response_error,
+    check_http_response,
+    client,
+    decode_b64,
+    html_to_text,
+    sha,
+)
+from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceSmokeResult, build_error, finalize_document
 
 
 # ── Bedesten Solr query preprocessing ────────────────────────────────────────
@@ -55,6 +64,10 @@ class BedestenClient(SourceClient):
         "Origin": "https://mevzuat.adalet.gov.tr",
         "Referer": "https://mevzuat.adalet.gov.tr/",
     }
+
+    # Delay (seconds) before the single upstream-error retry.  Overridable in
+    # tests so the suite isn't slowed by a real sleep at the tail position.
+    _upstream_retry_delay: float = 1.0
 
     # Bedesten item_type constants (used by Yargıtay adapter override)
     _default_item_type = "YARGITAYKARARI"
@@ -155,6 +168,20 @@ class BedestenClient(SourceClient):
             r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
             check_http_response(r, self.source_id)
             raw_data = r.json()
+        # Surface upstream Solr/service faults explicitly instead of silently
+        # turning them into an empty list. One short retry first (the Solr
+        # fault is often transient); if it persists, raise so the MCP tool
+        # layer can produce an ok:false structured response.
+        try:
+            check_bedesten_response_error(raw_data, source=self.source_id)
+        except BedestenUpstreamError:
+            import asyncio as _aio
+            await _aio.sleep(self._upstream_retry_delay)
+            async with client() as c:
+                r2 = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
+                check_http_response(r2, self.source_id)
+                raw_data = r2.json()
+            check_bedesten_response_error(raw_data, source=self.source_id)
         data = raw_data.get("data", raw_data)
         # M-60: schema validation — never silently swallow an API shape change
         _ = self._check_response_schema(data, self._search_response_keys, "search")
@@ -219,6 +246,17 @@ class BedestenClient(SourceClient):
                     "büyük olasılıkla çok yeni bir karar, içerik henüz yayımlanmamış."
                 ])
             raise
+        # Surface upstream faults explicitly (do not silently return UNAVAILABLE).
+        try:
+            check_bedesten_response_error(raw, source=self.source_id)
+        except BedestenUpstreamError:
+            import asyncio as _aio
+            await _aio.sleep(self._upstream_retry_delay)
+            async with client() as c:
+                r2 = await c.post(f"{self.base}/emsal-karar/getDocumentContent", json=payload, headers=self.headers)
+                check_http_response(r2, self.source_id)
+                raw = r2.json()
+            check_bedesten_response_error(raw, source=self.source_id)
         data = raw.get("data", raw)
         # M-60: schema validation
         _ = self._check_response_schema(data, self._get_document_response_keys, "get_document")
