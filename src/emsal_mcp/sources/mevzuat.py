@@ -19,13 +19,31 @@ class MevzuatClient(BedestenClient):
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
         from .base import check_http_response, client
         from emsal_mcp.models import ContentStatus, SearchResult
+        # ── sort_by: relevance vs date ──────────────────────────────────
+        # Mirror Bedesten: default to relevance when a phrase is present, date
+        # when only filters are used.  Bedesten's Solr default ordering is by
+        # score (relevance) when sortFields is omitted; sending RESMI_GAZETE_TARIHI
+        # forces newest-first which buries the actual matching law beneath
+        # recent unrelated regulation amendments.
+        sort_by = filters.get("sort_by")
+        if sort_by is None:
+            sort_by = "relevance" if query and query.strip() else "date"
+        sort_by = str(sort_by).lower()
+        if sort_by not in ("relevance", "date", "kayit_tarihi", "resmi_gazete_tarihi"):
+            sort_by = "relevance" if query and query.strip() else "date"
+
         data_payload: dict[str, Any] = {
             "pageSize": min(int(limit), 100),
             "pageNumber": filters.get("page", 1),
             "phrase": query,
-            "sortFields": ["RESMI_GAZETE_TARIHI"],
-            "sortDirection": "desc",
         }
+        if sort_by == "date" or sort_by == "resmi_gazete_tarihi":
+            data_payload["sortFields"] = ["RESMI_GAZETE_TARIHI"]
+            data_payload["sortDirection"] = filters.get("sort_direction") or "desc"
+        elif sort_by == "kayit_tarihi":
+            data_payload["sortFields"] = ["KAYIT_TARIHI"]
+            data_payload["sortDirection"] = filters.get("sort_direction") or "desc"
+        # relevance → omit sortFields/sortDirection (Solr score default).
         body: dict[str, Any] = {
             "data": data_payload,
             "applicationName": "UyapMevzuat",
@@ -59,12 +77,19 @@ class MevzuatClient(BedestenClient):
                 ]))
                 or f"Mevzuat {doc_id}"
             )
+            url = i.get("url")
+            if not url and i.get("mevzuatNo") and i.get("mevzuatTur"):
+                tur_id = i["mevzuatTur"].get("id") if isinstance(i["mevzuatTur"], dict) else i["mevzuatTur"]
+                tertip = i.get("mevzuatTertip") or 5
+                url = f"https://www.mevzuat.gov.tr/mevzuat?MevzuatNo={i['mevzuatNo']}&MevzuatTur={tur_id}&MevzuatTertip={tertip}"
+
             out.append(SearchResult(
                 source=self.source_id, document_id=doc_id, title=title,
                 summary=i.get("summary") or i.get("ozet"),
                 court="Mevzuat",
                 decision_date=i.get("resmiGazeteTarihi") or i.get("date"),
                 karar_no=(str(i["mevzuatNo"]) if i.get("mevzuatNo") is not None else None),
+                source_url=url,
                 content_status=ContentStatus.METADATA_ONLY, metadata=i,
             ))
         return out
@@ -72,7 +97,7 @@ class MevzuatClient(BedestenClient):
     async def get_document(self, document_id: str, **kwargs) -> Document:
         from .base import check_http_response, client, decode_b64, html_to_text, sha
         from emsal_mcp.models import ContentStatus, Document, finalize_document
-        payload = {"data": {"documentId": document_id}, "applicationName": "UyapMevzuat"}
+        payload = {"data": {"id": document_id, "documentType": "MEVZUAT"}, "applicationName": "UyapMevzuat"}
         async with client() as c:
             r = await c.post(f"{self.base}/mevzuat/getDocumentContent", json=payload, headers=self.headers)
             check_http_response(r, self.source_id)
@@ -100,12 +125,19 @@ class MevzuatClient(BedestenClient):
                     status = ContentStatus.HTML_MARKDOWN
         # Fix title: prefer mevzuatAdi
         title = data.get("mevzuatAdi") or data.get("title") or document_id
+        url = data.get("url")
+        if not url and data.get("mevzuatNo") and data.get("mevzuatTur"):
+            tur_id = data["mevzuatTur"].get("id") if isinstance(data["mevzuatTur"], dict) else data["mevzuatTur"]
+            tertip = data.get("mevzuatTertip") or 5
+            url = f"https://www.mevzuat.gov.tr/mevzuat?MevzuatNo={data['mevzuatNo']}&MevzuatTur={tur_id}&MevzuatTertip={tertip}"
+
         doc = Document(
             source=self.source_id, document_id=document_id,
             title=title,
             markdown=text, full_text=text,
             content_status=status,
             content_hash=sha(text) if text else None,
+            source_url=url,
             raw=raw, metadata=data,
         )
         return finalize_document(doc, warnings)

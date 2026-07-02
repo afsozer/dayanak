@@ -427,6 +427,7 @@ def main() -> None:
         karar_tarihi_end: str | None = None,
         esas_no: str | None = None,
         karar_no: str | None = None,
+        sort_by: str | None = None,
     ) -> list[dict] | dict:
         """✅ PRIMARY, MANDATORY TOOL FOR ALL CASE-LAW / DECISION / MEVZUAT RESEARCH.
 
@@ -519,6 +520,11 @@ def main() -> None:
             karar_no: Optional decision number in YIL/SIRA format
                 (e.g. "2023/5678"). Parsed into separate year/sequence int
                 fields for the upstream API.
+            sort_by: Result ordering — "relevance" (Solr score, default when a
+                query/phrase is present) or "date" (newest first, default when
+                only filters like esas_no/karar_no/date range are given). When
+                omitted, the source infers: non-empty query → relevance,
+                filter-only lookup → date.
 
         Returns:
             List of matching document dicts.
@@ -541,6 +547,8 @@ def main() -> None:
             filters["esas_no"] = esas_no
         if karar_no:
             filters["karar_no"] = karar_no
+        if sort_by:
+            filters["sort_by"] = sort_by
         results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page, **filters)]
         # Store search results in cache for later local search
         cache = Cache()
@@ -1229,6 +1237,7 @@ def main() -> None:
         limit: int = 10,
         scope: str = "law",
         document_id: str | None = None,
+        sort_by: str | None = None,
     ) -> dict:
         """Search legislation via the Mevzuat source.
 
@@ -1242,6 +1251,11 @@ def main() -> None:
                    (delegates to search_legislation_articles).
             document_id: Required when scope='article'. The mevzuat
                 document ID to search articles within.
+            sort_by: Result ordering — "relevance" (default when query present),
+                "date" / "resmi_gazete_tarihi" (newest gazette first),
+                "kayit_tarihi" (newest registry entry first). When omitted,
+                the source infers relevance vs date from whether a phrase is
+                present.
 
         Returns:
             Dict with ok, query, results, total_results, warnings, etc.
@@ -1257,6 +1271,7 @@ def main() -> None:
             sources=sources,
             legislation_type=legislation_type,
             limit=limit,
+            sort_by=sort_by,
         )
 
     @_tool

@@ -127,9 +127,9 @@ def _fetch_doc(
     client = _resolve_source(source, sources_override)
     if client is None:
         return None, f"Kaynak bulunamadı: {source or 'mevzuat'}"
-    import asyncio
+    from .concurrency import run_sync
     try:
-        doc = asyncio.run(client.get_document(document_id))
+        doc = run_sync(client.get_document(document_id))
         return doc, None
     except Exception as exc:
         return None, f"Belge alınamadı: {exc}"
@@ -218,6 +218,7 @@ def search_legislation(
     sources: list[str] | None = None,
     legislation_type: str | None = None,
     limit: int = 10,
+    sort_by: str | None = None,
     sources_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search legislation via the Mevzuat source.
@@ -227,6 +228,10 @@ def search_legislation(
         sources: Source IDs to search (default: ["mevzuat"]).
         legislation_type: Optional filter (e.g. "Kanun", "Yönetmelik").
         limit: Max results.
+        sort_by: Result ordering — "relevance" (default when query present),
+            "date" / "resmi_gazete_tarihi" (newest gazette first),
+            "kayit_tarihi" (newest registry entry first). When omitted, the
+            source infers relevance vs date from whether a phrase is present.
         sources_override: Dict mapping source_id -> fake client for tests.
 
     Returns:
@@ -251,10 +256,12 @@ def search_legislation(
                 .replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
             )
             filters["type"] = turkish_normalized
+        if sort_by:
+            filters["sort_by"] = sort_by
 
-        import asyncio
+        from .concurrency import run_sync
         try:
-            raw = asyncio.run(client.search(query, limit=limit, **filters))
+            raw = run_sync(client.search(query, limit=limit, **filters))
         except Exception as exc:
             warnings.append(f"{src_id} araması başarısız: {exc}")
             continue

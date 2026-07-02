@@ -159,6 +159,7 @@ def search_legislation(
     article_number: str | None = None,
     article_query: str | None = None,
     source: str | None = None,
+    sort_by: str | None = None,
     sources_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search legislation at law or article scope."""
@@ -175,6 +176,7 @@ def search_legislation(
             sources=sources,
             legislation_type=legislation_type,
             limit=limit,
+            sort_by=sort_by,
             sources_override=sources_override,
         )
 

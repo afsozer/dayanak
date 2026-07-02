@@ -104,14 +104,32 @@ class BedestenClient(SourceClient):
         esas_yil, esas_sira = _parse_yy_slash_ss(filters.get("esas_no"))
         karar_yil, karar_sira = _parse_yy_slash_ss(filters.get("karar_no"))
 
+        # ── sort_by: relevance (Solr score) vs date ────────────────────
+        # Bedesten's Solr default ordering is by score (relevance) when no
+        # sortFields are sent.  Hosted yargi-mcp exposes this as
+        # sort_by: "relevance"|"date" and defaults to relevance when a phrase
+        # is present, date when only filters (docket no / date range) are used.
+        # We mirror that: callers can force sort_by; otherwise we infer it —
+        # a non-empty phrase → relevance, an empty phrase (filter-only lookup)
+        # → date desc.
+        sort_by = filters.get("sort_by")
+        if sort_by is None:
+            sort_by = "relevance" if query and query.strip() else "date"
+        sort_by = str(sort_by).lower()
+        if sort_by not in ("relevance", "date"):
+            sort_by = "relevance" if query and query.strip() else "date"
+
         data_payload: dict[str, Any] = {
             "pageSize": min(int(limit), 100),
             "pageNumber": filters.get("page", 1),
             "itemTypeList": item_type_list,
             "phrase": query,
-            "sortFields": ["KARAR_TARIHI"],
-            "sortDirection": filters.get("sort_direction") or "desc",
         }
+        if sort_by == "date":
+            data_payload["sortFields"] = ["KARAR_TARIHI"]
+            data_payload["sortDirection"] = filters.get("sort_direction") or "desc"
+        # relevance → omit sortFields/sortDirection so Solr uses score-based
+        # ordering (its default).
         payload: dict[str, Any] = {
             "data": data_payload,
             "applicationName": "UyapMevzuat",
