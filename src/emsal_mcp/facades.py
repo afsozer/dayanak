@@ -594,6 +594,12 @@ _GUIDE_SEARCH_HYGIENE = """\
 - Sorguyu 2-5 hukuki anahtar kelimeye indir.
 - Turkce aksanlari KORU: "karari" ✓, "karari" ✗
 
+### ⚠️ Onemli: Varsayilan Operator OR'dur
+Bedesten Solr'da CIPLAK terimler arasi BOSLUK = OR demektir (UNION).
+`tahliye taahhüdü geçerlilik` → bu 3 kelimeden HERANGI birini iceren kararlar.
+Birden fazla kavrami ZORUNLU kilmak icin HER terime `+` koy veya BUYUK
+harfle AND kullan.
+
 ### Solr Operatorleri (search_decisions query icine)
 | Operator       | Anlami                                  |
 |----------------|-----------------------------------------|
@@ -604,10 +610,20 @@ _GUIDE_SEARCH_HYGIENE = """\
 | (grouping)     | Gruplama: (+isci OR +memur) +tazminat   |
 | * wildcard     | Sonek jokeri: tazmin*                   |
 
+### Guvenlik Agi (Otomatik Yeniden Yazim)
+Operator icermeyen (+, -, ", AND, OR, NOT, parantez YOK) duz cok-kelimeli
+sorgular emsal-mcp tarafindan otomatik olarak her terimi + ile zorunlu hale
+getirilecek sekilde yeniden yazilir. Bu, OR-varsayilinin gurultu dondurmesini
+engeller. Yine de kesinlik icin acikca + veya AND kullan.
+
 ### Ornek Sorgular
 - +isci +tazminat → HER IKI terim zorunlu
-- "is kazasi" tazminat → tam ifade + terim
+- +"is kazasi" +tazminat → tam ifade + terim
 - (+isci OR +memur) +tazminat -manevi → isci/memur + tazminat, manevi haric
+
+### Yanlis Ornekler (OR'a donusur, kacinin)
+- tahliye taahhüdü geçerlilik → 3 kelimenin OR'u = cogunlukla ilgisiz
+- boşanma tazminat* → OR, "boşanma AND tazminat*" DEGIL
 """
 
 _GUIDE_SOURCES = """\

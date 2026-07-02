@@ -1,9 +1,49 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .base import SourceClient, check_http_response, client, decode_b64, html_to_text, sha
 from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceSmokeResult, finalize_document
+
+
+# ── Bedesten Solr query preprocessing ────────────────────────────────────────
+# Bedesten runs Apache Solr with StandardQueryParser and the *default operator
+# is OR*.  That means bare terms separated by whitespace match the UNION of the
+# terms, not the intersection — `tahliye taahhüdü geçerlilik` returns any
+# decision containing *any* of the three words, which is rarely what the caller
+# wants.  Hosted yargı-mcp documents this explicitly; we go one step further and
+# transparently rewrite queries that contain no Solr operators so that every
+# bare term becomes required (`+term`).  Operator-bearing queries are passed
+# through untouched.  The rewrite is reported back via `query_rewritten` so the
+# behaviour stays auditable.
+
+_SOLR_OPERATOR_RE = re.compile(r'[+\-"()]|\b(?:AND|OR|NOT)\b', re.UNICODE)
+
+
+def rewrite_solr_query(query: str) -> tuple[str, bool]:
+    """Rewrite a bare-term Solr query so every term is required.
+
+    Bedesten's default Solr operator is OR — whitespace between bare terms
+    means UNION.  When the caller writes a plain multi-word phrase without any
+    Solr operator (``+``, ``-``, ``"``, ``AND``, ``OR``, ``NOT``, parens), we
+    prefix each whitespace-separated token with ``+`` so all terms become
+    required (intersection).  Queries that already use operators are returned
+    unchanged — the caller clearly knows the dialect.
+
+    Returns ``(rewritten_query, was_rewritten)``.
+    """
+    if not query or not query.strip():
+        return query, False
+    # If the query already uses any Solr operator, leave it alone.
+    if _SOLR_OPERATOR_RE.search(query):
+        return query, False
+    tokens = query.split()
+    # Single token — no rewrite needed.
+    if len(tokens) <= 1:
+        return query, False
+    rewritten = " ".join(f"+{t}" for t in tokens)
+    return rewritten, True
 
 
 class BedestenClient(SourceClient):
@@ -24,6 +64,15 @@ class BedestenClient(SourceClient):
     _get_document_response_keys = ["content", "document", "data"]
 
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
+        # ── Solr query preprocessing ────────────────────────────────────
+        # Bedesten's default Solr operator is OR: bare whitespace-separated
+        # terms are unioned, not intersected.  When the caller hands us a plain
+        # multi-word phrase with no Solr operators, transparently prefix every
+        # token with `+` so all terms are required.  Operator-bearing queries
+        # pass through untouched.  See rewrite_solr_query docstring.
+        original_query = query
+        query, query_rewritten = rewrite_solr_query(query)
+
         # ── court_types → itemTypeList ────────────────────────────────
         # Accept a list of court types for multi-court search in a single call.
         # Falls back to single item_type (backward-compatible).
@@ -110,12 +159,19 @@ class BedestenClient(SourceClient):
                     it.get("esasNo"), it.get("kararNo"),
                 ] if x
             ]) or did
+            # Carry the Solr query-rewrite flag into result metadata so the
+            # auto-+ safety net stays auditable end-to-end.
+            meta = dict(it) if isinstance(it, dict) else {}
+            if query_rewritten:
+                meta["query_rewritten"] = True
+                meta["original_query"] = original_query
             out.append(SearchResult(
                 source=self.source_id, document_id=did, title=title,
                 court=court, chamber=chamber,
                 decision_date=it.get("kararTarihiStr") or it.get("kararTarihi"),
                 esas_no=it.get("esasNo"), karar_no=it.get("kararNo"),
-                content_status=ContentStatus.METADATA_ONLY, metadata=it,
+                source_url=f"https://emsal.uyap.gov.tr/getDokuman?id={did}",
+                content_status=ContentStatus.METADATA_ONLY, metadata=meta,
             ))
         return out
 
@@ -174,6 +230,7 @@ class BedestenClient(SourceClient):
             title=data.get("title") or document_id,
             full_text=text, markdown=text, mime_type=mime,
             content_hash=sha(text) if text else None,
+            source_url=f"https://emsal.uyap.gov.tr/getDokuman?id={document_id}",
             content_status=status, raw=raw, metadata=data,
         )
         return finalize_document(doc, warnings)

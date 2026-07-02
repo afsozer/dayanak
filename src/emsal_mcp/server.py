@@ -176,6 +176,7 @@ def main() -> None:
         "source_health":              "extended",
         # M-105: reset_circuit, error_catalog, active_requests_count removed
         "source_smoke":               "extended",
+        "check_government_servers_health": "extended",
         # ── Extended: citation_graph ────────────────────────────────────
         "build_citation_graph":       "extended",
         "get_citation_graph":         "extended",
@@ -285,6 +286,7 @@ def main() -> None:
         "source_health":                "health_admin",
         # M-105: reset_circuit, error_catalog, active_requests_count removed
         "source_smoke":                 "health_admin",
+        "check_government_servers_health": "health_admin",
         "build_citation_graph":         "citation_graph",
         "get_citation_graph":           "citation_graph",
         "find_citing_documents":        "citation_graph",
@@ -458,7 +460,12 @@ def main() -> None:
 
         --- BEDESTEN SOLR OPERATOR COOKBOOK ---
         The Bedesten backend runs Apache Solr with StandardQueryParser.
-        You can use these operators inside the `query` string:
+        ⚠️ The DEFAULT OPERATOR IS OR — whitespace between bare terms means
+        UNION, not intersection.  `tahliye taahhüdü geçerlilik` returns any
+        decision containing ANY of the three words (rarely what you want).
+
+        To REQUIRE multiple concepts, mark EACH term with `+` or join with
+        UPPERCASE `AND`.  Available operators inside the `query` string:
 
         +required    Prefix + forces the term to appear (MUST match).  +tazminat
         -excluded    Prefix - excludes documents containing the term.  -bölge
@@ -469,16 +476,24 @@ def main() -> None:
         (grouping)   Parentheses for sub-expressions.  (+işçi OR +memur) +tazminat
         * wildcard   Suffix wildcard (use sparingly).  tazmin*
 
+        SAFETY NET: If you submit a plain multi-word query with NO operators
+        (no +, -, ", AND, OR, NOT, parens), emsal-mcp transparently rewrites
+        it so every term is prefixed with `+` (all required).  This prevents
+        the OR-default from returning irrelevant noise.
+
         Worked examples (query string → what it does):
           +işçi +tazminat                    → docs with BOTH "işçi" AND "tazminat"
-          "iş kazası" tazminat               → exact phrase "iş kazası" AND term "tazminat"
+          +"iş kazası" +tazminat             → exact phrase "iş kazası" AND "tazminat"
           (+işçi OR +memur) +tazminat -manevi → (işçi OR memur) AND tazminat, exclude "manevi"
-          boşanma tazminat*                  → "boşanma" AND any word starting "tazminat"
           kıdem AND ihbar AND tazminat       → all three terms required
 
+        ⚠️ WRONG (these fall back to OR — avoid):
+          tahliye taahhüdü geçerlilik        → OR of 3 words = mostly irrelevant
+          boşanma tazminat*                  → OR, not "boşanma AND tazminat*"
+        (emsal-mcp auto-rewrites the bare-term case, but DO NOT rely on it —
+        be explicit with + or AND for precision.)
+
         Notes:
-        - Solr AND is the default operator for bare terms (tazminat zamanaşımı means
-          tazminat AND zamanaşımı). OR must be explicit.
         - Overly broad queries (single common term like "karar") return noise; add
           at least one specific legal-term constraint.
 
@@ -2503,6 +2518,70 @@ def main() -> None:
             },
             "circuit_breakers": cb_status,
             "search_index": idx,
+        }
+
+    @_tool
+    async def check_government_servers_health() -> dict:
+        """Check the operational status of Turkish government legal search servers.
+
+        Tests connection to official portals (UYAP emsal, Mevzuat, Danıştay, AYM)
+        and returns their status and response times.
+        """
+        import httpx
+        import time
+        from datetime import datetime, timezone
+        import urllib3
+
+        # Disable SSL warnings for the InsecureRequestWarning when verifying=False
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        targets = {
+            "bedesten": "https://bedesten.adalet.gov.tr",
+            "mevzuat": "https://www.mevzuat.gov.tr",
+            "danistay": "https://danistay.gov.tr",
+            "aym": "https://www.anayasa.gov.tr"
+        }
+        
+        results = {}
+        healthy_count = 0
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        # Use verify=False to bypass local SSL certificate store issues (common on gov sites)
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True, verify=False) as client:
+            for name, url in targets.items():
+                start = time.monotonic()
+                try:
+                    r = await client.get(url, headers=headers)
+                    elapsed = (time.monotonic() - start) * 1000
+                    
+                    # 4xx still means the server is online and responding (e.g. Bedesten API gateway returns 404 on root).
+                    # 5xx represents a server-side crash/unavailability.
+                    if r.status_code < 500:
+                        results[name] = {"status": "healthy", "response_time_ms": round(elapsed, 2)}
+                        healthy_count += 1
+                    else:
+                        results[name] = {
+                            "status": "degraded", 
+                            "response_time_ms": round(elapsed, 2),
+                            "error": f"HTTP {r.status_code}"
+                        }
+                except Exception as exc:
+                    elapsed = (time.monotonic() - start) * 1000
+                    results[name] = {
+                        "status": "unavailable", 
+                        "response_time_ms": round(elapsed, 2),
+                        "error": str(exc)
+                    }
+
+        return {
+            "overall_status": "healthy" if healthy_count == len(targets) else "degraded" if healthy_count > 0 else "unhealthy",
+            "healthy_servers": healthy_count,
+            "total_servers": len(targets),
+            "servers": results,
+            "check_timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     mcp.run()
