@@ -71,10 +71,16 @@ Dynamically loads extended tool categories into the running server (core profile
 ### `search_decisions`
 
 **Input**:
-- `source: str` — source_id (e.g. `"bedesten"`, `"aym"`)
-- `query: str` — search query
+- `source: str | None` — source_id (e.g. `"bedesten"`, `"aym"`); optional, defaults
+  to `"bedesten"` (combined Yargıtay + Danıştay sweep via `court_types`)
+- `query: str | None` — search query (optional; at least one criterion required:
+  query / esas_no / karar_no / birimAdi / date range)
 - `limit: int = 10`
 - `page: int = 1`
+- `court_types: list[str] | None` — defaults to `["YARGITAYKARARI","DANISTAYKARARI"]`
+  when source=bedesten and omitted
+- `sort_by: str | None` — `"relevance"` (default when query present) | `"date"`
+- `include_snippets: bool = False` — attach a ~360-char query-term snippet
 
 **Output**: `list[dict]` — each dict is a `SearchResult` dump (now includes an
 optional `snippet` field — a ~360-char passage around the query terms, populated

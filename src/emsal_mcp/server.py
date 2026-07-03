@@ -415,10 +415,10 @@ def main() -> None:
         return result
 
     @_tool
-    @validate_tool_input(query=validate_non_empty, limit=validate_positive_int)
+    @validate_tool_input(limit=validate_positive_int)
     async def search_decisions(
-        source: str,
-        query: str,
+        source: str | None = None,
+        query: str | None = None,
         limit: int = 10,
         page: int = 1,
         court_types: list[str] | None = None,
@@ -498,19 +498,30 @@ def main() -> None:
         Notes:
         - Overly broad queries (single common term like "karar") return noise; add
           at least one specific legal-term constraint.
+        - At least ONE search criterion is required (query, esas_no, karar_no,
+          birimAdi, or a date range). court_types alone is rejected — it is a
+          filter, not a search.
 
         Args:
-            source: Source identifier (e.g. 'bedesten', 'mevzuat').
-            query: Search query string (must not be empty). For best results,
-                craft a short 2–5 term keyword query using the operators above.
+            source: Optional source identifier (e.g. 'bedesten', 'mevzuat').
+                Defaults to 'bedesten' (combined Yargıtay + Danıştay sweep when
+                court_types is omitted).
+            query: Search query string (optional when filtering by docket no /
+                chamber / date). For best results, craft a short 2–5 term
+                keyword query using the operators above.
             limit: Max results (default 10, must be positive).
             page: Page number for pagination (default 1).
             court_types: Optional list of court item types for multi-court search
                 in a single call. Bedesten values: YARGITAYKARARI, DANISTAYKARARI,
-                YERELKARARI, ISTINAFKARARI, KYBKARAR. Defaults to the source's
-                default type when omitted.
-            birimAdi: Optional chamber/unit code (e.g. "1. Daire", "HGK").
-                For the validated 79-option enum, see source_capabilities tool.
+                YERELKARARI, ISTINAFKARARI, KYBKARAR. Defaults to
+                ["YARGITAYKARARI", "DANISTAYKARARI"] when source=bedesten and
+                omitted.
+            birimAdi: Optional chamber/unit code. Use the short enum codes:
+                Yargıtay: H1–H23 (hukuk daireleri), C1–C23 (ceza daireleri),
+                HGK (Hukuk Genel Kurulu), CGK (Ceza Genel Kurulu), BGK (Büyük
+                Genel Kurul); Danıştay: D1–D17 (daireler), IDDK (İdari Dava
+                Daireleri Kurulu), VDDK (Vergi Dava Daireleri Kurulu); Askeri:
+                AYIM. Full 79-option list: list_sources(detail="birim_codes").
             karar_tarihi_start: Optional start date filter (ISO format,
                 e.g. "2023-01-01"). Inclusive.
             karar_tarihi_end: Optional end date filter (ISO format,
@@ -535,6 +546,31 @@ def main() -> None:
         Returns:
             List of matching document dicts.
         """
+        # ── "At least one criterion required" guard (Yargı-MCP parity Görev 6).
+        # A court_types-only call is too broad; require a query, docket number,
+        # chamber, or date range so we never run a meaningless full-corpus scan.
+        has_criterion = any([
+            query and query.strip(),
+            esas_no, karar_no, birimAdi,
+            karar_tarihi_start, karar_tarihi_end,
+        ])
+        if not has_criterion:
+            return build_error(
+                "MISSING_CRITERION",
+                "En az bir arama kriteri zorunludur: query, esas_no, karar_no, "
+                "birimAdi veya tarih aralığından birini verin. Yalnızca court_types "
+                "yeterli değildir.",
+                recommended_next_steps=[
+                    "Anahtar kelime sorgusu (query) verin, örn. '+\"kıdem tazminatı\" +zamanaşımı'.",
+                    "Belirli bir kararı arıyorsanız esas_no/karar_no verin.",
+                ],
+            )
+        # ── Default source = bedesten (multi-court search, no source forcing).
+        effective_source = source or "bedesten"
+        # Default court_types when none given and the source is bedesten: a
+        # combined Yargıtay + Danıştay sweep (mirrors yargı-mcp ictihat_ara).
+        if not court_types and effective_source == "bedesten":
+            court_types = ["YARGITAYKARARI", "DANISTAYKARARI"]
         # M-93: validate birimAdi against 79-code enum
         if birimAdi:
             birim_err = _validate_birim_adi(birimAdi)
@@ -556,7 +592,7 @@ def main() -> None:
         if sort_by:
             filters["sort_by"] = sort_by
         try:
-            results = [r.model_dump(mode="json") for r in await get_source(source).search(query, limit=limit, page=page, **filters)]
+            results = [r.model_dump(mode="json") for r in await get_source(effective_source).search(query or "", limit=limit, page=page, **filters)]
         except Exception as exc:
             # Bedesten upstream fault (ADALET_RUNTIME_EXCEPTION etc.) — surface
             # as a structured error, NOT an empty list.  An empty list would be
@@ -566,9 +602,9 @@ def main() -> None:
             if isinstance(exc, BedestenUpstreamError):
                 return build_error(
                     "SOURCE_UPSTREAM_ERROR",
-                    f"Kaynak ({source}) geçici hata döndürdü ({exc.fmc}); bu 'sonuç yok' "
+                    f"Kaynak ({effective_source}) geçici hata döndürdü ({exc.fmc}); bu 'sonuç yok' "
                     "anlamına gelmez, sorguyu daha sonra tekrarlayın.",
-                    source=source,
+                    source=effective_source,
                     retryable=True,
                     recommended_next_steps=["Sorguyu birkaç saniye/dakika sonra tekrarlayın."],
                     upstream_error_code=exc.fmc,
@@ -577,19 +613,19 @@ def main() -> None:
             raise
         # Store search results in cache for later local search
         cache = Cache()
-        cache.set(f"search:{source}:{query}:{limit}:{page}", results)
+        cache.set(f"search:{effective_source}:{query}:{limit}:{page}", results)
 
         # ── Snippet enrichment (Yargı-MCP parity Görev 4) ──────────────
         # Attach a query-term snippet to each result.  Free for documents
         # already in the local corpus (no network); for the rest, optionally
         # fetch the first 5 full texts concurrently when include_snippets=true.
         from .snippet import extract_query_terms, make_snippet
-        terms = extract_query_terms(query)
+        terms = extract_query_terms(query or "")
         # 1) Free corpus snippets — try the cache first for every result.
         for r in results:
             if r.get("snippet"):
                 continue
-            cached_doc = cache.get_document(r.get("document_id", ""), source)
+            cached_doc = cache.get_document(r.get("document_id", ""), effective_source)
             if cached_doc is not None:
                 txt = cached_doc.full_text or cached_doc.markdown or ""
                 if txt:
@@ -608,7 +644,7 @@ def main() -> None:
                     break
                 need.append(r)
             if need:
-                src_client = get_source(source)
+                src_client = get_source(effective_source)
                 from .concurrency import run_concurrently
                 fetch_coros = [src_client.get_document(r["document_id"]) for r in need]
                 fetched = await run_concurrently(fetch_coros)
