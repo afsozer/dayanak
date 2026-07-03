@@ -106,8 +106,25 @@ class TestAbbreviationRouting:
 
         class FakeClient:
             async def search(self, q, limit=10, **f):
-                captured.append({"filters": f})
+                captured.append({"query": q, "filters": f})
                 return []
 
         search_legislation("kişisel verilerin korunması", sources_override={"mevzuat": FakeClient()})
         assert "mevzuat_no" not in captured[0]["filters"]
+
+    def test_mevzuat_no_drops_phrase(self):
+        """When mevzuat_no is given, the body phrase is dropped so Bedesten
+        doesn't apply it as a filter that suppresses the number match.
+        Discovered during end-to-end parity verification."""
+        from emsal_mcp.legislation import search_legislation
+        captured: list[dict] = []
+
+        class FakeClient:
+            async def search(self, q, limit=10, **f):
+                captured.append({"query_passed": q, "filters": f})
+                return []
+
+        search_legislation("KVKK", mevzuat_no="6698", sources_override={"mevzuat": FakeClient()})
+        # query should be emptied (number lookup takes priority over phrase)
+        assert captured[0]["query_passed"] == ""
+        assert captured[0]["filters"].get("mevzuat_no") == "6698"

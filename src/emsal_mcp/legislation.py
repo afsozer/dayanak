@@ -295,7 +295,11 @@ def search_legislation(
 
         from .concurrency import run_sync
         try:
-            raw = run_sync(client.search(query, limit=limit, **filters))
+            # When a direct number lookup is requested, don't also send the
+            # (possibly abbreviation) query as a body phrase — Bedesten applies
+            # the phrase as a filter that suppresses the number match.
+            effective_query = "" if mevzuat_no else query
+            raw = run_sync(client.search(effective_query, limit=limit, **filters))
         except Exception as exc:
             warnings.append(f"{src_id} araması başarısız: {exc}")
             continue

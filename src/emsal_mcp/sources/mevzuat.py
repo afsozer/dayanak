@@ -67,6 +67,11 @@ class MevzuatClient(BedestenClient):
         mevzuat_no = filters.get("mevzuat_no") or filters.get("mevzuatNo")
         if mevzuat_no is not None and str(mevzuat_no).strip():
             data_payload["mevzuatNo"] = str(mevzuat_no).strip()
+            # A direct number lookup should NOT be constrained by an empty
+            # body phrase — Bedesten applies an empty phrase as a filter that
+            # suppresses matches. Drop it so the number resolves cleanly.
+            if not (query and query.strip()):
+                data_payload.pop("phrase", None)
         # mevzuat_tur_list → multi-type filter (KANUN, KHK, YONETMELIK, ...).
         tur_list = (
             filters.get("mevzuat_tur_list")
