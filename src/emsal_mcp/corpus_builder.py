@@ -24,6 +24,8 @@ def crawl_full_text(
     max_pages: int = 200,
     page_size: int = 100,
     start_page: int = 1,
+    start_date: str | None = None,
+    end_date: str | None = None,
     incremental: bool = False,
     stop_after_seen: int = 200,
     cache: Cache | None = None,
@@ -112,6 +114,7 @@ def crawl_full_text(
                 results = await _retry_429(lambda: client.search(
                     phrase, limit=page_size, page=page,
                     item_type=item_type, sort_direction=sort_direction,
+                    start_date=start_date, end_date=end_date,
                 ))
             except Exception as exc:
                 warnings.append(f"search page {page} failed: {exc}")

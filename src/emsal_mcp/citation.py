@@ -632,12 +632,12 @@ def _live_search_fake(
         return []
 
     try:
-        import asyncio
+        from .concurrency import run_sync
         query_parts = [p for p in [candidate.court, candidate.esas_no, candidate.karar_no] if p]
         query = " ".join(query_parts)
         if not query:
             return []
-        results = asyncio.run(source_client.search(query, limit=3))
+        results = run_sync(source_client.search(query, limit=3))
         return [r.model_dump(mode="json") if hasattr(r, "model_dump") else r for r in results]
     except Exception:
         return []

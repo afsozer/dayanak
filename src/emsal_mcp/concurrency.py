@@ -17,6 +17,36 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+
+def run_sync(coro: Coroutine[Any, Any, T]) -> T:
+    """Run an async coroutine from synchronous code, event-loop safe.
+
+    When called from within an already-running event loop (e.g. inside the
+    MCP server's asyncio loop), ``asyncio.run()`` raises
+    ``RuntimeError: This event loop is already running``.
+
+    This helper detects the situation and uses a background thread with its
+    own event loop to execute the coroutine, avoiding the conflict.
+    When no loop is running (CLI context), it simply delegates to
+    ``asyncio.run()``.
+    """
+    import concurrent.futures
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        # We are inside a running event loop (MCP server).
+        # Spawn a new loop in a worker thread.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result()
+    else:
+        return asyncio.run(coro)
+
+
 # Global semaphore for concurrency control
 _semaphore: asyncio.Semaphore | None = None
 

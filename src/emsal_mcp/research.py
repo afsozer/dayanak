@@ -98,8 +98,8 @@ def research_topic(
     search_errors: list[str] = []
     for sid, client in source_clients.items():
         try:
-            import asyncio
-            results = asyncio.run(client.search(query, limit=fetch_count, **filters))
+            from .concurrency import run_sync
+            results = run_sync(client.search(query, limit=fetch_count, **filters))
             all_results.extend(results)
         except Exception as exc:
             search_errors.append(f"{sid}: {exc}")
@@ -114,8 +114,8 @@ def research_topic(
         if client is None:
             continue
         try:
-            import asyncio
-            doc = asyncio.run(client.get_document(sr.document_id))
+            from .concurrency import run_sync
+            doc = run_sync(client.get_document(sr.document_id))
             # Carry structured search metadata (esas/karar/date/court) into the
             # fetched document; getDocumentContent returns content-only for some
             # sources, which otherwise blocks citation_check despite full text.

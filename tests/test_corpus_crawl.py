@@ -32,7 +32,7 @@ class _Fake:
         self.ids = ids
         self.fetches = 0
 
-    async def search(self, phrase, limit, page, item_type, sort_direction):
+    async def search(self, phrase, limit, page, item_type, sort_direction, **kwargs):
         start = (page - 1) * limit
         return [_sr(d) for d in self.ids[start:start + limit]]
 

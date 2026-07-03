@@ -36,6 +36,7 @@ Documents are grouped by category for easy navigation.
 | Document | Description |
 |---|---|
 | [COOKBOOK.md](COOKBOOK.md) | Usage cookbook with 8 copy-paste workflow recipes |
+| [YARGI_MCP_PARITY_TALIMAT.md](YARGI_MCP_PARITY_TALIMAT.md) | Yargı-MCP parite talimatı — arama kalitesini kapatan 7 öncelikli görev |
 | [GLOSSARY.md](GLOSSARY.md) | Bilingual Turkish-English glossary of 77 legal and technical terms |
 | [ERROR_CATALOG.md](ERROR_CATALOG.md) | Complete error code catalog (76 codes) with recommended actions |
 

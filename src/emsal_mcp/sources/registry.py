@@ -202,5 +202,5 @@ async def smoke_all(online: bool = False) -> list[SourceSmokeResult]:
 
 def smoke_all_sync(online: bool = False) -> list[dict[str, Any]]:
     """Synchronous wrapper for smoke_all (for CLI)."""
-    import asyncio
-    return [r.model_dump(mode="json") for r in asyncio.run(smoke_all(online=online))]
+    from ..concurrency import run_sync
+    return [r.model_dump(mode="json") for r in run_sync(smoke_all(online=online))]

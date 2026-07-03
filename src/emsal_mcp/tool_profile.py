@@ -45,6 +45,7 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
         "circuit_breaker_status",
         "source_health",
         "source_smoke",
+        "check_government_servers_health",
     ],
     "citation_graph": [
         "build_citation_graph",

@@ -263,10 +263,15 @@ def _compute_tfidf_vectors(db: sqlite3.Connection, limit: int = 1000) -> int:
     """
     # M-51: Use cursor iteration instead of fetchall() to reduce peak memory.
     # First pass: tokenize and build document frequency (DF).
-    cursor = db.execute(
-        "SELECT document_id, source, full_text, markdown FROM documents_v2 LIMIT ?",
-        (limit,),
-    )
+    if limit > 0:
+        cursor = db.execute(
+            "SELECT document_id, source, full_text, markdown FROM documents_v2 LIMIT ?",
+            (limit,),
+        )
+    else:
+        cursor = db.execute(
+            "SELECT document_id, source, full_text, markdown FROM documents_v2",
+        )
 
     doc_tokens: list[tuple[str, str, Counter]] = []  # (doc_id, source, token_counter)
     df: Counter = Counter()  # document frequency per term
@@ -517,7 +522,7 @@ def build_semantic_index(cache: Cache | None = None, force_rebuild: bool = False
 
         fts5_existed = _ensure_fts5(db)
         _ensure_search_vectors(db)
-        vectors_count = _compute_tfidf_vectors(db)
+        vectors_count = _compute_tfidf_vectors(db, limit=0)  # 0 = no limit
 
         fts5_row_count = db.execute("SELECT COUNT(*) FROM documents_v2_fts").fetchone()[0]
         docs_total = db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]

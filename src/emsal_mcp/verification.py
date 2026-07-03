@@ -75,17 +75,15 @@ def smoke_test_offline() -> dict[str, Any]:
 
 def smoke_test_online(source: str = "bedesten") -> dict[str, Any]:
     """Online smoke test: basic source connectivity."""
-    import asyncio
+    from .concurrency import run_sync
     from .sources.registry import get_source
 
     results: dict[str, Any] = {"ok": True, "tests": []}
 
     try:
         client = get_source(source)
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            search_results = loop.run_until_complete(client.search("test", limit=1))
+            search_results = run_sync(client.search("test", limit=1))
             results["tests"].append({
                 "name": f"search_{source}",
                 "ok": True,
@@ -97,8 +95,6 @@ def smoke_test_online(source: str = "bedesten") -> dict[str, Any]:
                 "ok": False,
                 "error": str(e),
             })
-        finally:
-            loop.close()
     except Exception as e:
         results["ok"] = False
         results["tests"].append({"name": f"source_{source}", "ok": False, "error": str(e)})

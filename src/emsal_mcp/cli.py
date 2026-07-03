@@ -1721,6 +1721,8 @@ def corpus_crawl(
     max_pages: int = typer.Option(200, help="Taranacak azami sayfa (güvenlik sınırı)"),
     page_size: int = typer.Option(100, help="Sayfa başına sonuç (sunucu max 100)"),
     start_page: int = typer.Option(1, help="Bu sayfadan başla (devam için next_page'i ver)"),
+    start_date: str = typer.Option(None, help="Karar tarihi başlangıç filtresi, ISO: 2016-01-01T00:00:00.000Z (eski yılları çekmek için ŞART — sortDirection API'de çalışmıyor)"),
+    end_date: str = typer.Option(None, help="Karar tarihi bitiş filtresi, ISO: 2016-12-31T23:59:59.999Z"),
     incremental: bool = typer.Option(False, "--incremental", help="Sadece YENİ kararları çek: cache'de olanı atlar, eski bölgeye ulaşınca durur (sort=desc ile kullan)"),
     stop_after_seen: int = typer.Option(200, help="Incremental: üst üste bu kadar karar zaten cache'deyse dur"),
     json_out: bool = typer.Option(False, "--json"),
@@ -1739,6 +1741,7 @@ def corpus_crawl(
     _print(crawl_full_text(
         source=source, phrase=phrase, item_type=item_type, sort_direction=sort,
         max_docs=max_docs, max_pages=max_pages, page_size=page_size, start_page=start_page,
+        start_date=start_date, end_date=end_date,
         incremental=incremental, stop_after_seen=stop_after_seen,
     ), json_out)
 
