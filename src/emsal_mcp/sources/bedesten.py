@@ -210,12 +210,16 @@ class BedestenClient(SourceClient):
             if query_rewritten:
                 meta["query_rewritten"] = True
                 meta["original_query"] = original_query
+            # Legacy link kept as alternate_url for callers depending on it.
+            meta["alternate_url"] = f"https://emsal.uyap.gov.tr/getDokuman?id={did}"
+            # Public source URL: mevzuat.adalet.gov.tr hosts a browsable
+            # emsal-karar viewer at /ictihat/{id} (same backend).
             out.append(SearchResult(
                 source=self.source_id, document_id=did, title=title,
                 court=court, chamber=chamber,
                 decision_date=it.get("kararTarihiStr") or it.get("kararTarihi"),
                 esas_no=it.get("esasNo"), karar_no=it.get("kararNo"),
-                source_url=f"https://emsal.uyap.gov.tr/getDokuman?id={did}",
+                source_url=f"https://mevzuat.adalet.gov.tr/ictihat/{did}",
                 content_status=ContentStatus.METADATA_ONLY, metadata=meta,
             ))
         return out
@@ -286,8 +290,9 @@ class BedestenClient(SourceClient):
             title=data.get("title") or document_id,
             full_text=text, markdown=text, mime_type=mime,
             content_hash=sha(text) if text else None,
-            source_url=f"https://emsal.uyap.gov.tr/getDokuman?id={document_id}",
-            content_status=status, raw=raw, metadata=data,
+            source_url=f"https://mevzuat.adalet.gov.tr/ictihat/{document_id}",
+            content_status=status, raw=raw,
+            metadata={**data, "alternate_url": f"https://emsal.uyap.gov.tr/getDokuman?id={document_id}"} if isinstance(data, dict) else data,
         )
         return finalize_document(doc, warnings)
 
