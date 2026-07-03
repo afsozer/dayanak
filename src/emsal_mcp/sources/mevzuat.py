@@ -54,7 +54,27 @@ class MevzuatClient(BedestenClient):
             "applicationName": "UyapMevzuat",
             "paging": True,
         }
-        if filters.get("type"):
+        # ── Title / number / type filters (mevzuat.gov.tr-style) ──────────
+        # mevzuat_adi → search ONLY in the title (mevzuatAdi).  When a title is
+        # given, we replace the body-text `phrase` with the title search so the
+        # actual law (e.g. KVKK) surfaces instead of recent unrelated amendments.
+        mevzuat_adi = filters.get("mevzuat_adi") or filters.get("mevzuatAdi")
+        if mevzuat_adi:
+            data_payload["mevzuatAdi"] = mevzuat_adi
+            # Drop the body phrase — we want a title-scoped search, not a
+            # full-text search that buries the law under amendments.
+            data_payload.pop("phrase", None)
+        mevzuat_no = filters.get("mevzuat_no") or filters.get("mevzuatNo")
+        if mevzuat_no is not None and str(mevzuat_no).strip():
+            data_payload["mevzuatNo"] = str(mevzuat_no).strip()
+        # mevzuat_tur_list → multi-type filter (KANUN, KHK, YONETMELIK, ...).
+        tur_list = (
+            filters.get("mevzuat_tur_list")
+            or filters.get("mevzuatTurList")
+        )
+        if tur_list and isinstance(tur_list, list) and len(tur_list) > 0:
+            data_payload["mevzuatTurList"] = tur_list
+        elif filters.get("type"):
             data_payload["mevzuatTurList"] = [filters["type"]]
         async with client() as c:
             r = await c.post(f"{self.base}/mevzuat/searchDocuments", json=body, headers=self.headers)

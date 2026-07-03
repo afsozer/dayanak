@@ -219,12 +219,18 @@ def search_legislation(
     legislation_type: str | None = None,
     limit: int = 10,
     sort_by: str | None = None,
+    mevzuat_adi: str | None = None,
+    mevzuat_no: str | None = None,
+    mevzuat_tur_list: list[str] | None = None,
     sources_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Search legislation via the Mevzuat source.
 
     Args:
-        query: Search phrase.
+        query: Search phrase (body-text search). Use ``mevzuat_adi`` for
+            title-only search and ``mevzuat_no`` to look up a specific law by
+            its official number. Never guess ``mevzuat_no`` — if unsure, use
+            ``mevzuat_adi`` first.
         sources: Source IDs to search (default: ["mevzuat"]).
         legislation_type: Optional filter (e.g. "Kanun", "Yönetmelik").
         limit: Max results.
@@ -232,6 +238,13 @@ def search_legislation(
             "date" / "resmi_gazete_tarihi" (newest gazette first),
             "kayit_tarihi" (newest registry entry first). When omitted, the
             source infers relevance vs date from whether a phrase is present.
+        mevzuat_adi: Search ONLY in the legislation title (multi-word AND'd).
+            Best when you know the law's name (e.g. "kişisel veri" → KVKK).
+        mevzuat_no: Official legislation number (e.g. "6698" → KVKK, "5237" →
+            TCK). Never guess — confirm via mevzuat_adi first if unsure.
+        mevzuat_tur_list: Filter by one or more of the 12 types: KANUN, KHK,
+            TUZUK, YONETMELIK, CB_KARARNAME, CB_YONETMELIK, CB_KARAR,
+            CB_GENELGE, KKY, UY, TEBLIGLER, MULGA.
         sources_override: Dict mapping source_id -> fake client for tests.
 
     Returns:
@@ -241,6 +254,21 @@ def search_legislation(
     warnings: list[str] = []
     source_list = sources or ["mevzuat"]
     all_results: list[dict[str, Any]] = []
+
+    # ── Abbreviation routing ───────────────────────────────────────────
+    # "TCK 157" / "HMK 190" / "KVKK" → redirect to mevzuat_no lookup so the
+    # actual law is fetched by its official number instead of a fuzzy phrase.
+    if not mevzuat_no and query:
+        from .query_understanding import _LAW_ABBREV, _tr_lower
+        q_lower = _tr_lower(query).strip()
+        # Strip a trailing article reference ("tck 157" → "tck") for the lookup.
+        bare = q_lower.split()[0] if q_lower.split() else q_lower
+        if bare in _LAW_ABBREV:
+            mevzuat_no = _LAW_ABBREV[bare][0]
+            warnings.append(
+                f"Kısaltma '{bare.upper()}' → mevzuat_no={mevzuat_no} "
+                f"({_LAW_ABBREV[bare][1]}) olarak yönlendirildi."
+            )
 
     for src_id in source_list:
         client = _resolve_source(src_id, sources_override)
@@ -258,6 +286,12 @@ def search_legislation(
             filters["type"] = turkish_normalized
         if sort_by:
             filters["sort_by"] = sort_by
+        if mevzuat_adi:
+            filters["mevzuat_adi"] = mevzuat_adi
+        if mevzuat_no:
+            filters["mevzuat_no"] = str(mevzuat_no)
+        if mevzuat_tur_list:
+            filters["mevzuat_tur_list"] = list(mevzuat_tur_list)
 
         from .concurrency import run_sync
         try:

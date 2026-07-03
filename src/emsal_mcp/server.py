@@ -1334,24 +1334,30 @@ def main() -> None:
         scope: str = "law",
         document_id: str | None = None,
         sort_by: str | None = None,
+        mevzuat_adi: str | None = None,
+        mevzuat_no: str | None = None,
+        mevzuat_tur_list: list[str] | None = None,
     ) -> dict:
         """Search legislation via the Mevzuat source.
 
+        Use ``mevzuat_adi`` to search ONLY in titles (e.g. "kişisel veri" →
+        KVKK surfaces). Use ``mevzuat_no`` for direct lookup by official number
+        (e.g. "6698" → KVKK, "5237" → TCK) — never guess the number; if unsure
+        use ``mevzuat_adi`` first. ``query`` does a body-text/concept search.
+        Common abbreviations (TCK, HMK, KVKK, ...) in ``query`` are auto-routed
+        to ``mevzuat_no``.
+
         Args:
-            query: Search phrase.
+            query: Search phrase (body-text). Auto-routes TCK/HMK/etc → number.
             sources: Source IDs (default: ["mevzuat"]).
-            legislation_type: Filter by type (e.g. "Kanun", "YÃ¶netmelik").
+            legislation_type: Filter by type (e.g. "Kanun", "Yönetmelik").
             limit: Max results.
-            scope: 'law' (default) searches legislation documents;
-                   'article' searches individual articles within documents
-                   (delegates to search_legislation_articles).
-            document_id: Required when scope='article'. The mevzuat
-                document ID to search articles within.
-            sort_by: Result ordering — "relevance" (default when query present),
-                "date" / "resmi_gazete_tarihi" (newest gazette first),
-                "kayit_tarihi" (newest registry entry first). When omitted,
-                the source infers relevance vs date from whether a phrase is
-                present.
+            scope: 'law' (default) or 'article'.
+            document_id: Required when scope='article'.
+            sort_by: "relevance" (default) | "date" | "kayit_tarihi".
+            mevzuat_adi: Title-only search.
+            mevzuat_no: Official legislation number (NEVER guess).
+            mevzuat_tur_list: Multi-type filter (KANUN, KHK, YONETMELIK, ...).
 
         Returns:
             Dict with ok, query, results, total_results, warnings, etc.
@@ -1368,6 +1374,9 @@ def main() -> None:
             legislation_type=legislation_type,
             limit=limit,
             sort_by=sort_by,
+            mevzuat_adi=mevzuat_adi,
+            mevzuat_no=mevzuat_no,
+            mevzuat_tur_list=mevzuat_tur_list,
         )
 
     @_tool
