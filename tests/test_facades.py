@@ -90,7 +90,11 @@ def test_search_local_corpus_dispatches_lexical(monkeypatch: pytest.MonkeyPatch)
 
     result = facades.search_local_corpus("x", mode="lexical", limit=4)
 
-    assert result == {"ok": True, "results": [{"id": 1}], "total_matches": 1}
+    assert result["ok"] is True
+    assert result["total_matches"] == 1
+    assert result["results"][0]["id"] == 1
+    # Enrichment (Görev 7) may add related_quotes; assert it exists.
+    assert "related_quotes" in result["results"][0]
 
 
 @pytest.mark.parametrize(

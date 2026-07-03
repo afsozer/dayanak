@@ -1544,26 +1544,30 @@ def main() -> None:
         limit: int = 10,
         filters: dict | None = None,
     ) -> dict:
-        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
+        """Concept DISCOVERY over the local corpus (TF-IDF cosine).
 
-        This ONLY re-ranks documents ALREADY fetched via `search_decisions`.
-        It cannot find any decision that was not fetched first; the local cache
-        is small by design (not a crawler, not a full corpus).
+        Use this to find precedent for a legal CONCEPT when the exact wording
+        is unknown — write a focused natural-language phrase, not operators.
+        The corpus is the set of decisions already fetched this session / via
+        the corpus crawl; it is NOT a live mirror and may lag.
 
-        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
-        (live, online) first — it is the primary, mandatory entry point. Use
-        this tool only to re-rank already-fetched results. Never web-search,
-        never cite esas/karar numbers not from a fetched full-text document.
+        ✅ Good query: `işçinin haklı nedenle feshinde kıdem tazminatı hakkı`
+        ❌ Bad query: `tahliye` (single word, too broad) or the user's entire
+           question pasted verbatim.
+
+        Complementary roles: THIS tool = concept discovery over the local
+        corpus; `search_decisions` = live current search + citation
+        verification. Always confirm any decision you cite via
+        `search_decisions` + `get_document`.
 
         Pure term-frequency (TF-IDF cosine) search over the cache.
-        Works best with documents that share vocabulary.
         Uses Turkish suffix stripping for query expansion — stemmed
         variants of query terms are generated automatically.
 
         Snippets include **highlighted** matching terms.
 
         Args:
-            query: Search query string.
+            query: Natural-language legal concept (no Solr operators).
             limit: Max results (default 10).
             filters: Optional dict with source, court, chamber, content_status,
                      quote_usable, draft_usable.
@@ -1585,24 +1589,19 @@ def main() -> None:
         hybrid_weight: float = 0.6,
         rerank: bool = False,
     ) -> dict:
-        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
+        """Concept DISCOVERY over the local corpus (hybrid BM25 + TF-IDF).
 
-        This ONLY re-ranks documents ALREADY fetched via `search_decisions`.
-        It is a re-ranker over an existing local result set, NOT a way to find
-        case law. It CANNOT discover any decision that was not fetched first,
-        and the local cache is small by design (this is NOT a crawler and NOT a
-        corpus of all decisions — it holds only what you fetched this session).
+        Use this to find precedent for a legal CONCEPT when the exact wording
+        is unknown.  Write a focused natural-language phrase (no operators).
+        The corpus is the set of decisions already fetched this session / via
+        the corpus crawl; it is NOT a live mirror and may lag.  Empty/limited
+        results here mean the corpus is small or stale — fetch fresh via
+        `search_decisions`, then re-run.
 
-        HARD RULES — no exceptions, no interpretation:
-        - To find decisions on ANY topic you MUST call `search_decisions`
-          (live, online). That is THE primary, mandatory entry point.
-        - Use this tool ONLY to refine/re-rank results AFTER `search_decisions`
-          has fetched documents in the same session.
-        - "Empty/limited results here" means "you have not fetched yet" — go
-          call `search_decisions`. It does NOT mean no case law exists.
-        - NEVER substitute web search for `search_decisions`. NEVER cite an
-          esas/karar number, date, or chamber not coming from a fetched
-          full-text document.
+        Complementary roles: THIS tool = concept discovery + re-ranking over
+        the local corpus; `search_decisions` = live current search + citation
+        verification.  Always confirm any decision you cite via
+        `search_decisions` + `get_document`.
 
         Balances exact keyword matching (FTS5 BM25) with semantic similarity
         (TF-IDF cosine).  hybrid_weight controls the balance: higher = more
@@ -1615,7 +1614,7 @@ def main() -> None:
         hybrid_weight must be between 0.0 and 1.0.
 
         Args:
-            query: Search query string.
+            query: Natural-language legal concept (no Solr operators).
             limit: Max results (default 10).
             filters: Optional dict with source, court, chamber, content_status,
                      quote_usable, draft_usable.
@@ -1655,23 +1654,24 @@ def main() -> None:
         limit: int = 10,
         provider: str | None = None,
     ) -> dict:
-        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
+        """Concept DISCOVERY over the local corpus (dense embeddings).
 
-        Dense-embedding re-ranking over documents ALREADY fetched via
-        `search_decisions`. Cannot find decisions that were not fetched first;
-        the local index is small by design (not a crawler, not a full corpus).
+        Use this to find precedent for a legal CONCEPT when the exact wording
+        is unknown — write a focused natural-language phrase.  The corpus is
+        the set of decisions already fetched this session / via the corpus
+        crawl; it is NOT a live mirror and may lag.
 
-        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
-        (live, online) first — it is the primary, mandatory entry point. Use
-        this tool only to re-rank already-fetched results. Never web-search,
-        never cite esas/karar numbers not from a fetched full-text document.
+        Complementary roles: THIS tool = concept discovery over the local
+        corpus; `search_decisions` = live current search + citation
+        verification.  Always confirm any decision you cite via
+        `search_decisions` + `get_document`.
 
         Uses brute-force cosine similarity over indexed embeddings.
         No approximate nearest-neighbor (ANN) — exact but slower for large
         corpora.
 
         Args:
-            query: Search query string.
+            query: Natural-language legal concept (no Solr operators).
             limit: Max results (default 10).
             provider: Optional provider ID.
 
@@ -2167,18 +2167,21 @@ def main() -> None:
         filters: dict | None = None,
         provider: str | None = None,
     ) -> dict:
-        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
+        """Concept DISCOVERY over the local corpus.
 
-        Searches documents ALREADY fetched via `search_decisions`. It cannot
-        find any decision that was not fetched first; the local cache is small
-        by design (not a crawler, not a full corpus).
+        Searches the local corpus (~decisions already fetched this session or
+        via the corpus crawl) for a legal CONCEPT when the exact wording is
+        unknown.  Write a focused natural-language phrase (no operators).
+        Each result carries ``related_quotes`` — matched passages — so you can
+        spot relevant precedent without fetching every full text.
 
-        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
-        (live, online) first. Use this tool only to filter/re-rank already-fetched
-        results. Never web-search, never cite numbers from uncached documents.
+        Roles are complementary: THIS tool = semantic/concept DISCOVERY over
+        the local corpus; ``search_decisions`` = live CURRENT search + citation
+        verification.  The corpus may lag; always confirm any decision you
+        cite with ``search_decisions`` + ``get_document`` first.
 
         Args:
-            query: Search query string.
+            query: Natural-language legal concept (no Solr operators).
             mode: Search method — 'rrf' (default, hybrid+RRF fusion),
                   'lexical' (FTS5 full-text), 'semantic' (embedding vector),
                   'hybrid' (weighted lexical+semantic).

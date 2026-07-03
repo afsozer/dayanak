@@ -35,17 +35,24 @@ def search_local_corpus(
     quote_usable: bool | None = None,
     sort: str = "relevance",
 ) -> dict[str, Any]:
-    """Unified local corpus search.
+    """Unified local corpus search — DISCOVERY tool over the fetched corpus.
 
-    ⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY.
+    Searches the local corpus (~decisions already fetched this session or via
+    the corpus crawl) for a legal CONCEPT when the exact wording is unknown.
+    Each result carries ``related_quotes`` — matched passages from the text —
+    so you can spot relevant precedent without fetching every full text.
 
-    Re-ranks documents ALREADY fetched via ``search_decisions``. Cannot find
-    new decisions.  The local cache is small (not a crawler).
+    Roles are complementary:
+    - THIS tool = semantic/concept DISCOVERY over the local corpus.
+    - ``search_decisions`` = live CURRENT search + citation verification.
 
-    HARD RULE: call ``search_decisions`` (live, online) FIRST.
+    The corpus may lag (it is not a live mirror); always confirm any decision
+    you cite with ``search_decisions`` + ``get_document`` first.
 
     Args:
-        query: Search query string.
+        query: Natural-language legal concept (no operators). Write a focused
+            phrase/sentence, e.g. "işçinin haklı nedenle feshinde kıdem
+            tazminatı hakkı". Avoid single words or pasting whole questions.
         mode: "lexical", "semantic", "hybrid", or "rrf" (default "rrf").
         limit: Max results.
         filters: Optional dict with source, court, chamber, content_status.
@@ -58,7 +65,8 @@ def search_local_corpus(
         sort: Sort order (lexical mode).
 
     Returns:
-        Dict with ok, results, total_matches, method, optional hint.
+        Dict with ok, results (each with related_quotes), total_matches,
+        method, optional hint, corpus_coverage.
     """
     from .cache import Cache
     from .semantic import (
@@ -66,6 +74,7 @@ def search_local_corpus(
         hybrid_search_rrf,
         semantic_search,
     )
+    from .snippet import extract_query_terms, make_snippet
 
     filters = dict(filters or {})
     for key, val in [
@@ -76,33 +85,70 @@ def search_local_corpus(
         if val is not None:
             filters[key] = val
 
-    def _corpus_hint(result: dict) -> dict:
-        if not isinstance(result, dict):
-            return result
+    def _corpus_info() -> tuple[int | None, str | None]:
+        """Return (doc_count, coverage_range) for the local corpus."""
         try:
             c = Cache()
             try:
-                corpus = c.db.execute(
+                count = c.db.execute(
                     "SELECT COUNT(*) FROM documents_v2"
                 ).fetchone()[0]
+                coverage = None
+                if count:
+                    row = c.db.execute(
+                        "SELECT MIN(decision_date), MAX(decision_date) "
+                        "FROM documents_v2 WHERE decision_date IS NOT NULL"
+                    ).fetchone()
+                    if row and row[0] and row[1]:
+                        coverage = f"{row[0]} — {row[1]}"
             finally:
                 c.close()
+            return count, coverage
         except Exception:
-            corpus = None
+            return None, None
+
+    doc_count, coverage = _corpus_info()
+
+    def _enrich(result: dict) -> dict:
+        """Attach related_quotes + corpus metadata to each result entry."""
+        if not isinstance(result, dict):
+            return result
+        terms = extract_query_terms(query)
+        # Dedup by document_id: collect all matched passages per decision.
+        by_doc: dict[str, dict] = {}
+        ordered_ids: list[str] = []
+        for r in result.get("results") or []:
+            did = r.get("document_id") or r.get("documentId") or ""
+            text = r.get("snippet") or r.get("text") or ""
+            quote = make_snippet(text, terms, max_length=280) if text else ""
+            if did in by_doc:
+                if quote:
+                    by_doc[did].setdefault("related_quotes", []).append(quote)
+            else:
+                r.setdefault("related_quotes", [])
+                if quote:
+                    r["related_quotes"].append(quote)
+                by_doc[did] = r
+                ordered_ids.append(did)
+        if by_doc:
+            result["results"] = [by_doc[d] for d in ordered_ids]
+        # corpus metadata
         total = result.get("total_matches", len(result.get("results") or []))
+        if coverage:
+            result["corpus_coverage"] = coverage
         if total == 0:
             result["hint"] = (
-                "0 eslesme. Bu arac YALNIZCA daha once cekilmis belgelerde "
-                "arar. Karar bulmak icin search_decisions (canli) aracini "
-                "cagir; web aramasina basvurma."
+                "0 eşleşme. Bu araç YALNIZCA daha önce çekilmiş belgelerde "
+                "arar, canlı kaynakta DEĞİL. Karar bulmak için search_decisions "
+                "(canlı) aracını çağır; web aramasına başvurma."
             )
-        elif corpus is not None and corpus < 200:
+        elif doc_count is not None and doc_count < 200:
             result["hint"] = (
-                f"Yerel cache yalnizca {corpus} belge iceriyor. Eksiksiz "
-                "sonuc icin once search_decisions (canli) ile getir."
+                f"Yerel cache yalnızca {doc_count} belge içeriyor. Eksiksiz "
+                "sonuç için önce search_decisions (canlı) ile getir."
             )
-        if result.get("hint") and corpus is not None:
-            result["cache_document_count"] = corpus
+        if result.get("hint") and doc_count is not None:
+            result["cache_document_count"] = doc_count
         return result
 
     mode = mode.lower()
@@ -117,26 +163,26 @@ def search_local_corpus(
                 draft_usable=draft_usable, quote_usable=quote_usable,
                 sort=sort, limit=limit,
             )
-            return {"ok": True, "results": results, "total_matches": len(results)}
+            return _enrich({"ok": True, "results": results, "total_matches": len(results)})
         finally:
             cache.close()
 
     if mode == "semantic":
         if provider:
             from .semantic import embedding_search as _emb
-            return _corpus_hint(_emb(query=query, limit=limit, provider=provider))
-        return _corpus_hint(semantic_search(
+            return _enrich(_emb(query=query, limit=limit, provider=provider))
+        return _enrich(semantic_search(
             query=query, limit=limit, filters=filters,
         ))
 
     if mode == "hybrid":
-        return _corpus_hint(hybrid_search(
+        return _enrich(hybrid_search(
             query=query, limit=limit, filters=filters,
             hybrid_weight=hybrid_weight, rerank=rerank,
         ))
 
     if mode == "rrf":
-        return _corpus_hint(hybrid_search_rrf(
+        return _enrich(hybrid_search_rrf(
             query=query, limit=limit, filters=filters,
             include_dense=include_dense,
         ))
