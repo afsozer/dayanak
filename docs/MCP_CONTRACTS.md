@@ -82,11 +82,21 @@ Dynamically loads extended tool categories into the running server (core profile
 - `sort_by: str | None` — `"relevance"` (default when query present) | `"date"`
 - `include_snippets: bool = False` — attach a ~360-char query-term snippet
 
-**Output**: `list[dict]` — each dict is a `SearchResult` dump (now includes an
-optional `snippet` field — a ~360-char passage around the query terms, populated
-for free from the local corpus, or for the first 5 results when `include_snippets=true`).
+**Output**: `dict` — paginated response with ``results``, ``total_results``,
+``page``, and ``total_pages``::
 
-**Errors**: raises `KeyError` for unknown sources. Registered partial/experimental
+    {
+      "results": [ /* SearchResult dicts */ ],
+      "total_results": 543,       // null when source cannot provide total
+      "page": 1,
+      "total_pages": 55           // null when total is null
+    }
+
+Each result dict is a ``SearchResult`` dump (now includes an optional ``snippet``
+field — a ~360-char passage around the query terms, populated for free from the
+local corpus, or for the first 5 results when ``include_snippets=true``).
+
+**Errors**: raises ``KeyError`` for unknown sources. Registered partial/experimental
 sources return structured unavailable/metadata-only payloads instead of MCP
 tool errors.
 

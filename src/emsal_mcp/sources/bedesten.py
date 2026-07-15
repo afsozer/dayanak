@@ -13,7 +13,7 @@ from .base import (
     html_to_text,
     sha,
 )
-from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceSmokeResult, build_error, finalize_document
+from emsal_mcp.models import ContentStatus, Document, SearchPage, SearchResult, SourceSmokeResult, build_error, finalize_document
 
 
 # ── Bedesten Solr query preprocessing ────────────────────────────────────────
@@ -77,54 +77,51 @@ class BedestenClient(SourceClient):
     _get_document_response_keys = ["content", "document", "data"]
 
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
+        """Search and return only the results list.
+
+        Delegates to ``search_page()`` and unwraps the ``SearchPage``
+        container.  Keeps the ``list[SearchResult]`` contract intact.
+        """
+        page_num = filters.pop("page", 1)
+        sp = await self.search_page(query=query, limit=limit, page=page_num, **filters)
+        return sp.results
+
+    async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters: Any) -> SearchPage:
+        """Search with pagination metadata from the upstream Bedesten response.
+
+        The upstream returns ``data.total`` (total matching records) and
+        ``data.start`` (0-based offset), letting us compute ``total_pages``.
+        """
         # ── Solr query preprocessing ────────────────────────────────────
-        # Bedesten's default Solr operator is OR: bare whitespace-separated
-        # terms are unioned, not intersected.  When the caller hands us a plain
-        # multi-word phrase with no Solr operators, transparently prefix every
-        # token with `+` so all terms are required.  Operator-bearing queries
-        # pass through untouched.  See rewrite_solr_query docstring.
         original_query = query
         query, query_rewritten = rewrite_solr_query(query)
 
         # ── court_types → itemTypeList ────────────────────────────────
-        # Accept a list of court types for multi-court search in a single call.
-        # Falls back to single item_type (backward-compatible).
         court_types: list[str] | None = filters.get("court_types") or filters.get("court_types_list")
         if court_types and isinstance(court_types, list) and len(court_types) > 0:
             item_type_list = court_types
         else:
             item_type = filters.get("item_type") or filters.get("court") or self._default_item_type
-            # Normalize item_type: accept common variations
             if item_type and not item_type.isupper():
                 item_type = item_type.upper().replace(" ", "").replace("İ", "I").replace("Ş", "S").replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
             item_type_list = [item_type]
 
-        # ── esas_no / karar_no parsing (YIL/SIRA → int fields) ───────
+        # ── esas_no / karar_no parsing ─────────────────────────────────
         def _parse_yy_slash_ss(raw: str | None) -> tuple[int | None, int | None]:
-            """Parse 'YIL/SIRA' (e.g. '2023/1234') into (year, sequence) ints."""
             if not raw:
                 return None, None
             parts = raw.split("/")
             if len(parts) != 2:
                 return None, None
             try:
-                yil = int(parts[0].strip())
-                sira = int(parts[1].strip())
-                return yil, sira
+                return int(parts[0].strip()), int(parts[1].strip())
             except (ValueError, TypeError):
                 return None, None
 
         esas_yil, esas_sira = _parse_yy_slash_ss(filters.get("esas_no"))
         karar_yil, karar_sira = _parse_yy_slash_ss(filters.get("karar_no"))
 
-        # ── sort_by: relevance (Solr score) vs date ────────────────────
-        # Bedesten's Solr default ordering is by score (relevance) when no
-        # sortFields are sent.  Hosted yargi-mcp exposes this as
-        # sort_by: "relevance"|"date" and defaults to relevance when a phrase
-        # is present, date when only filters (docket no / date range) are used.
-        # We mirror that: callers can force sort_by; otherwise we infer it —
-        # a non-empty phrase → relevance, an empty phrase (filter-only lookup)
-        # → date desc.
+        # ── sort_by ────────────────────────────────────────────────────
         sort_by = filters.get("sort_by")
         if sort_by is None:
             sort_by = "relevance" if query and query.strip() else "date"
@@ -134,21 +131,18 @@ class BedestenClient(SourceClient):
 
         data_payload: dict[str, Any] = {
             "pageSize": min(int(limit), 100),
-            "pageNumber": filters.get("page", 1),
+            "pageNumber": page,
             "itemTypeList": item_type_list,
             "phrase": query,
         }
         if sort_by == "date":
             data_payload["sortFields"] = ["KARAR_TARIHI"]
             data_payload["sortDirection"] = filters.get("sort_direction") or "desc"
-        # relevance → omit sortFields/sortDirection so Solr uses score-based
-        # ordering (its default).
         payload: dict[str, Any] = {
             "data": data_payload,
             "applicationName": "UyapMevzuat",
             "paging": True,
         }
-        # birimAdi: accept both "chamber" (legacy) and "birimAdi" (new, direct)
         birim = filters.get("birimAdi") or filters.get("chamber")
         if birim:
             data_payload["birimAdi"] = birim
@@ -168,10 +162,6 @@ class BedestenClient(SourceClient):
             r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
             check_http_response(r, self.source_id)
             raw_data = r.json()
-        # Surface upstream Solr/service faults explicitly instead of silently
-        # turning them into an empty list. One short retry first (the Solr
-        # fault is often transient); if it persists, raise so the MCP tool
-        # layer can produce an ok:false structured response.
         try:
             check_bedesten_response_error(raw_data, source=self.source_id)
         except BedestenUpstreamError:
@@ -183,11 +173,18 @@ class BedestenClient(SourceClient):
                 raw_data = r2.json()
             check_bedesten_response_error(raw_data, source=self.source_id)
         data = raw_data.get("data", raw_data)
-        # M-60: schema validation — never silently swallow an API shape change
         _ = self._check_response_schema(data, self._search_response_keys, "search")
+
+        # ── Extract total before processing items ──────────────────────
+        total: int | None = data.get("total") if isinstance(data, dict) else None
+        page_size = min(int(limit), 100)
+        total_pages: int | None = None
+        if total is not None and isinstance(total, int):
+            total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 0
+
         if not isinstance(data, dict):
-            # Null/non-dict data (empty phrase, past last page) → no results.
-            return []
+            return SearchPage(results=[], total=total, page=page, page_size=page_size, total_pages=total_pages)
+
         items = data.get("emsalKararList") or data.get("data") or data.get("items") or data.get("content") or []
         out: list[SearchResult] = []
         for it in items[:limit]:
@@ -204,16 +201,12 @@ class BedestenClient(SourceClient):
                     it.get("esasNo"), it.get("kararNo"),
                 ] if x
             ]) or did
-            # Carry the Solr query-rewrite flag into result metadata so the
-            # auto-+ safety net stays auditable end-to-end.
             meta = dict(it) if isinstance(it, dict) else {}
             if query_rewritten:
                 meta["query_rewritten"] = True
                 meta["original_query"] = original_query
             # Legacy link kept as alternate_url for callers depending on it.
             meta["alternate_url"] = f"https://emsal.uyap.gov.tr/getDokuman?id={did}"
-            # Public source URL: mevzuat.adalet.gov.tr hosts a browsable
-            # emsal-karar viewer at /ictihat/{id} (same backend).
             out.append(SearchResult(
                 source=self.source_id, document_id=did, title=title,
                 court=court, chamber=chamber,
@@ -222,7 +215,7 @@ class BedestenClient(SourceClient):
                 source_url=f"https://mevzuat.adalet.gov.tr/ictihat/{did}",
                 content_status=ContentStatus.METADATA_ONLY, metadata=meta,
             ))
-        return out
+        return SearchPage(results=out, total=total, page=page, page_size=page_size, total_pages=total_pages)
 
     async def get_document(self, document_id: str, **kwargs: Any) -> Document:
         import httpx

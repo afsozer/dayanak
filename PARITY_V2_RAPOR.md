@@ -55,3 +55,56 @@ payload = doc.to_tool_payload()
 
 ---
 
+## Görev 2 — `search_decisions` yanıtına toplam sonuç / sayfa bilgisi ekle
+
+**Durum:** ✅ Tamamlandı
+
+**Tarih:** 2026-07-15
+
+### Değişen dosyalar
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/emsal_mcp/models.py` | `SearchPage` modeli eklendi: `results`, `total`, `page`, `page_size`, `total_pages` alanları. |
+| `src/emsal_mcp/sources/base.py` | `SourceClient`'a opsiyonel `search_page(query, limit, page, **filters) -> SearchPage` metodu eklendi. Varsayılan: `search()`'ü çağırıp `total=None` döndürür. |
+| `src/emsal_mcp/sources/bedesten.py` | `search_page()` override edildi: upstream yanıtındaki `data.total` alanını okur (`total=973` vb.), `total_pages` hesaplar. `search()`, `search_page()`'e yönlendirildi (backward compat korundu). |
+| `src/emsal_mcp/server.py` | `search_decisions` aracı `search_page()` kullanır oldu. Yanıt dict'inde üst düzey `results`, `total_results`, `page`, `total_pages` alanları. Toplam alınamazsa `null` + warning. |
+| `docs/MCP_CONTRACTS.md` | `search_decisions` çıktı kontratı güncellendi: pagination alanları belgelendi. |
+
+### Upstream doğrulama
+
+Canlı sorgu ile upstream yanıtındaki total alan adı doğrulandı:
+
+```
+Bedesten API response: {"emsalKararList": [...], "total": 973, "start": 10}
+```
+
+Alan adı: **`data.total`** (int, toplam eşleşen kayıt sayısı).
+
+### Test çıktısı özeti
+
+```
+pytest -x -q (tam suite)
+1696 passed, 1 warning
+```
+
+Regresyon yok.
+
+### Canlı doğrulama örneği
+
+```python
+sp = await ci.search_page("+tahliye +taahhüt +kira", limit=5, page=1)
+```
+
+| Metrik | Değer |
+|---|---|
+| `total` | 973 |
+| `page` | 1 |
+| `page_size` | 5 |
+| `total_pages` | 195 |
+| `results` count | 5 |
+| `alternate_url` metadata'da | ✅ Evet |
+| `search()` `list[SearchResult]` döndürüyor | ✅ Evet |
+
+---
+

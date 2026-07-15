@@ -19,6 +19,7 @@ from emsal_mcp import __version__
 from emsal_mcp.models import (
     ContentStatus,
     Document,
+    SearchPage,
     SearchResult,
     SourceCapability,
     SourceSmokeResult,
@@ -170,6 +171,19 @@ class SourceClient(ABC):
 
     @abstractmethod
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]: ...
+
+    async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters: Any) -> SearchPage:
+        """Search with pagination metadata (total, total_pages).
+
+        Default implementation delegates to ``search()`` and returns
+        ``total=None``.  Sources that can extract a real total from the
+        upstream response (e.g. Bedesten) SHOULD override this method.
+
+        The ``search()`` contract (returns list[SearchResult]) is preserved
+        for backward compatibility.
+        """
+        results = await self.search(query=query, limit=limit, page=page, **filters)
+        return SearchPage(results=results, total=None, page=page, page_size=limit)
 
     @abstractmethod
     async def get_document(self, document_id: str, **kwargs: Any) -> Document: ...

@@ -544,7 +544,20 @@ def main() -> None:
                 corpus get a snippet for free even when this is false.
 
         Returns:
-            List of matching document dicts.
+            Dict with results, pagination metadata, and optional warnings.
+            The ``results`` key holds the list of matching document dicts.
+            ``total_results`` (int or null) is the total count across pages,
+            ``page`` (int) the current page, and ``total_pages`` (int or null)
+            the total number of pages.  When the source cannot provide a total
+            (e.g. Mevzuat search), ``total_results`` and ``total_pages`` are
+            ``null`` and a warning is appended.  Example::
+
+                {
+                  "results": [ /* SearchResult dicts */ ],
+                  "total_results": 543,
+                  "page": 1,
+                  "total_pages": 55
+                }
         """
         # ── "At least one criterion required" guard (Yargı-MCP parity Görev 6).
         # A court_types-only call is too broad; require a query, docket number,
@@ -592,7 +605,9 @@ def main() -> None:
         if sort_by:
             filters["sort_by"] = sort_by
         try:
-            results = [r.model_dump(mode="json") for r in await get_source(effective_source).search(query or "", limit=limit, page=page, **filters)]
+            src_client = get_source(effective_source)
+            sp = await src_client.search_page(query or "", limit=limit, page=page, **filters)
+            results = [r.model_dump(mode="json") for r in sp.results]
         except Exception as exc:
             # Bedesten upstream fault (ADALET_RUNTIME_EXCEPTION etc.) — surface
             # as a structured error, NOT an empty list.  An empty list would be
@@ -671,7 +686,21 @@ def main() -> None:
                         f"{skipped_pdf} PDF-only sonuç snippet için atlandı."
                     )
         cache.close()
-        return results
+
+        # ── Build response with pagination metadata ─────────────────────
+        response: dict[str, Any] = {
+            "results": results,
+            "total_results": sp.total,
+            "page": sp.page,
+            "total_pages": sp.total_pages,
+        }
+        if sp.total is None:
+            response.setdefault("warnings", [])
+            response["warnings"].append(
+                f"Kaynak '{effective_source}' toplam sonuç sayısı sağlamıyor; "
+                "yalnızca mevcut sayfa döndürüldü."
+            )
+        return response
 
     @_tool
     @validate_tool_input(document_id=validate_non_empty)

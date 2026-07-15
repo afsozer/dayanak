@@ -244,6 +244,21 @@ class SearchResult(BaseModel):
                 setattr(self, key, value)
 
 
+class SearchPage(BaseModel):
+    """Paginated search response containing results plus pagination metadata.
+
+    Carried from source client up through the MCP tool layer so that the
+    agent can see total result counts and navigate pages.  Uses the same
+    fields as hosted yargi-mcp (total, page, page_size, total_pages).
+    """
+
+    results: list[SearchResult]
+    total: int | None = None
+    page: int = 1
+    page_size: int = 10
+    total_pages: int | None = None
+
+
 class Document(SearchResult):
     full_text: str | None = None
     markdown: str | None = None
