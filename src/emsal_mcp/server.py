@@ -704,7 +704,12 @@ def main() -> None:
 
     @_tool
     @validate_tool_input(document_id=validate_non_empty)
-    async def get_document(source: str, document_id: str, include_raw: bool = False) -> dict:
+    async def get_document(
+        source: str,
+        document_id: str,
+        include_raw: bool = False,
+        page_number: int = 1,
+    ) -> dict:
         """Fetch a single document by ID from the given source.
 
         Args:
@@ -713,11 +718,19 @@ def main() -> None:
             include_raw: If True, include the raw upstream response in the
                          output (debugging).  Default: False (deduplicated
                          output with single markdown text field).
+            page_number: 1-indexed page number for long documents (>= 40 000
+                         chars).  Default 1 returns the first page.  Long
+                         documents are split at paragraph boundaries so no
+                         page starts or ends mid-paragraph.
 
         Returns:
             Document dict with deduplicated metadata and content fields.
             Text is served as a single ``markdown`` field; ``full_text``,
             ``raw``, and ``metadata.content`` are omitted by default.
+
+            For long documents (>= 40 000 chars), the response includes
+            ``current_page``, ``total_pages``, and ``total_chars`` so the
+            agent can request subsequent pages via ``page_number``.
         """
         try:
             doc = await get_source(source).get_document(document_id)
@@ -746,7 +759,20 @@ def main() -> None:
         cache.store_document(doc)
         cache.log("get", {"source": source, "document_id": document_id})
         cache.close()
-        return doc.to_tool_payload(include_raw=include_raw)
+
+        # Build deduplicated payload
+        payload = doc.to_tool_payload(include_raw=include_raw)
+
+        # ── Long-document pagination (Yargı-MCP parity Görev 4) ──────────
+        from .server_utils import split_markdown_for_pagination
+        text = payload.get("markdown") or ""
+        page_info = split_markdown_for_pagination(text, page_number=page_number)
+        payload["markdown"] = page_info["markdown"]
+        payload["current_page"] = page_info["current_page"]
+        payload["total_pages"] = page_info["total_pages"]
+        payload["total_chars"] = page_info["total_chars"]
+
+        return payload
 
     @_tool
     def source_capabilities() -> list[dict]:

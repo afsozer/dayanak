@@ -106,6 +106,8 @@ tool errors.
 - `source: str` — source_id
 - `document_id: str`
 - `include_raw: bool = False` — if True, include raw upstream response (debug)
+- `page_number: int = 1` — 1-indexed page for long documents (≥ 40 000 chars);
+  splitted at paragraph boundaries.  Default 1.
 
 **Output**: `dict` — a deduplicated `Document` dump.
 
@@ -113,7 +115,10 @@ tool errors.
 - ``raw`` and ``metadata.content`` (base64 HTML) are stripped by default.
 - ``content_status``, ``source_url``, ``esas_no``, ``karar_no``, ``decision_date``,
   ``metadata_confidence``, and other metadata fields are preserved.
-- Cache stores the full ``Document``; trimming is output-only.
+- For long documents (≥ 40 000 chars), ``current_page``, ``total_pages``,
+  and ``total_chars`` are included; the agent can request subsequent pages.
+- Documents under 40 000 chars always return ``current_page: 1, total_pages: 1``.
+- Cache stores the full ``Document``; trimming and pagination are output-only.
 
 **Errors**: same as `search_decisions`.
 

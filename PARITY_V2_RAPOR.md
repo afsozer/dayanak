@@ -157,3 +157,45 @@ Regresyon yok.
 
 ---
 
+## Görev 4 — Uzun belgelerde sayfalama (40k karakter)
+
+**Durum:** ✅ Tamamlandı
+
+**Tarih:** 2026-07-15
+
+### Değişen dosyalar
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/emsal_mcp/server_utils.py` | `split_markdown_for_pagination(text, page_number, max_chars=40000)` saf fonksiyonu + `_split_paragraphs`, `_split_sentences`, `_split_forced` yardımcıları eklendi. |
+| `src/emsal_mcp/server.py` | `get_document` aracına `page_number: int = 1` parametresi eklendi. Metin 40k karakteri aşarsa paragraf sınırından böler; yanıta `current_page`, `total_pages`, `total_chars` alanları eklendi. |
+| `docs/MCP_CONTRACTS.md` | `get_document` kontratı `page_number` ve sayfa alanları ile güncellendi. |
+| `tests/test_invariants.py` | `TestSplitMarkdownForPagination` sınıfı (6 test): kısa metin tek sayfa, 100k+ yapay metin çoklu sayfa, paragraf bütünlüğü, dev paragraf fallback, sayfa sınırı clamp. |
+
+### Test çıktısı özeti
+
+```
+pytest tests/test_invariants.py::TestSplitMarkdownForPagination -v
+6 passed
+
+pytest -x -q (tam suite)
+1702 passed, 1 warning
+```
+
+Regresyon yok.
+
+### Yapay test doğrulaması
+
+114k karakterlik yapay metin (2000 paragraf) → 4 sayfa:
+
+| Kontrol | Sonuç |
+|---|---|
+| Paragraf bütünlüğü | Her paragraf tam olarak 1 sayfada ✅ |
+| Sayfa sınırı | Hiçbir sayfa 40k karakteri aşmaz ✅ |
+| Birleşim = orijinal | Sayfalar birleştirilince orijinal metin ✅ |
+| Kısa metin (< 40k) | `1/1` sayfa bilgisi ✅ |
+| Dev tek paragraf | Sentence-boundary fallback ✅ |
+| Sayfa numarası clamp | Out-of-bounds → son sayfa / ilk sayfa ✅ |
+
+---
+

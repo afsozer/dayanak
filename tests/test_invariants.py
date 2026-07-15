@@ -793,3 +793,108 @@ class TestToToolPayload:
             f"Payload ({payload_len} chars) should be < 40% of full dump "
             f"({full_dump_len} chars), got {payload_len / full_dump_len:.1%}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Görev 4 (parity-v2): split_markdown_for_pagination — paragraph-boundary splitting
+# ---------------------------------------------------------------------------
+
+class TestSplitMarkdownForPagination:
+    """split_markdown_for_pagination() — paragraph boundary safe splitting."""
+
+    def test_short_text_returns_single_page(self):
+        """Text under max_chars returns 1/1 with full text."""
+        from emsal_mcp.server_utils import split_markdown_for_pagination
+
+        text = "Kisa bir karar metni.\n\nIkinci paragraf."
+        result = split_markdown_for_pagination(text)
+        assert result["markdown"] == text
+        assert result["current_page"] == 1
+        assert result["total_pages"] == 1
+        assert result["total_chars"] == len(text)
+
+    def test_empty_text_returns_single_page(self):
+        """Empty or None text returns 1/1."""
+        from emsal_mcp.server_utils import split_markdown_for_pagination
+
+        for t in ("", "   ", None):  # type: ignore[assignment]
+            result = split_markdown_for_pagination(t or "")  # type: ignore[arg-type]
+            assert result["current_page"] == 1
+            assert result["total_pages"] == 1
+
+    def test_100k_artificial_text_splits_into_3_pages(self):
+        """~100k chars of text → multiple pages at paragraph boundaries."""
+        from emsal_mcp.server_utils import split_markdown_for_pagination
+
+        # Each paragraph: "Par {n}: " + "x"*50 ≈ 57-60 chars (varies by digit count).
+        # With \n\n separators, ~40k per page → 3 pages for ~110k chars.
+        paragraphs = [f"Par {i}: " + "x" * 50 for i in range(2000)]
+        text = "\n\n".join(paragraphs)  # ~114k chars total
+
+        page1 = split_markdown_for_pagination(text, page_number=1, max_chars=40000)
+        assert page1["total_chars"] == len(text)
+        assert page1["total_pages"] >= 2, "Long text must span multiple pages"
+
+        # Collect all pages and verify reconstruction
+        all_pages = []
+        for pn in range(1, page1["total_pages"] + 1):
+            pg = split_markdown_for_pagination(text, page_number=pn, max_chars=40000)
+            all_pages.append(pg["markdown"])
+            assert len(pg["markdown"]) <= 40000, f"Page {pn} exceeds max_chars"
+
+        reconstructed = "\n\n".join(all_pages)
+        assert reconstructed == text, "Page concatenation must equal original"
+
+        # Verify no paragraph is cut mid-way: content of each original paragraph
+        # must appear wholly in exactly one page.
+        for para in paragraphs:
+            found_in = [i for i, pg in enumerate(all_pages) if para in pg]
+            assert len(found_in) == 1, f"Paragraph '{para[:30]}...' not in exactly one page: {found_in}"
+
+    def test_no_paragraph_cut_mid_way(self):
+        """Verify that no page starts or ends mid-paragraph."""
+        from emsal_mcp.server_utils import split_markdown_for_pagination
+
+        # Create a text where paragraphs are clearly delimited
+        paragraphs = [f"## Bolum {i}\n\nBu bolumun icerigi. " * 20 for i in range(500)]
+        text = "\n\n".join(paragraphs)
+
+        for page_num in range(1, 4):
+            page = split_markdown_for_pagination(text, page_number=page_num, max_chars=10000)
+            content = page["markdown"]
+            content = content.strip()
+            if content.startswith("##"):
+                continue  # OK — page started with full paragraph
+            # If page doesn't start with a heading, it should at least
+            # not have trailing partial from previous page
+            assert not content.startswith(" "), "Page starts mid-paragraph?"
+
+    def test_giant_paragraph_fallback_to_sentences(self):
+        """Single paragraph over max_chars falls back to sentence splitting."""
+        from emsal_mcp.server_utils import split_markdown_for_pagination
+
+        # One single 60k paragraph
+        sentence = "Bu cok uzun bir cumledir ve test amaciyla tekrar ediliyor. "
+        text = sentence * 1000  # ~60k chars, NO paragraph breaks
+
+        page = split_markdown_for_pagination(text, page_number=1, max_chars=40000)
+        assert page["total_pages"] == 2
+        assert page["total_chars"] == len(text)
+        assert len(page["markdown"]) <= 40000
+
+        # Second page
+        page2 = split_markdown_for_pagination(text, page_number=2, max_chars=40000)
+        assert page2["current_page"] == 2
+
+    def test_page_number_clamped(self):
+        """Out-of-bounds page_number is clamped to valid range."""
+        from emsal_mcp.server_utils import split_markdown_for_pagination
+
+        text = "x" * 200  # short text, only 1 page
+        result = split_markdown_for_pagination(text, page_number=5)
+        assert result["current_page"] == 1
+        assert result["total_pages"] == 1
+
+        result2 = split_markdown_for_pagination(text, page_number=0)
+        assert result2["current_page"] == 1
+

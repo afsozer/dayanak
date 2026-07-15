@@ -613,3 +613,128 @@ def get_error_codes() -> dict[str, Any]:
         "total": len(KNOWN_ERROR_CODES),
         "catalog": catalog,
     }
+
+
+# ── Long text pagination (Yargı-MCP parity Görev 4) ──────────────────────────
+
+_MAX_PAGE_CHARS = 40_000
+
+
+def split_markdown_for_pagination(
+    text: str,
+    page_number: int = 1,
+    max_chars: int = _MAX_PAGE_CHARS,
+) -> dict[str, Any]:
+    """Split long markdown into pages at paragraph boundaries.
+
+    Never cuts mid-paragraph.  Pages are built by accumulating paragraphs
+    (``\\n\\n+`` separators) until adding the next one would exceed
+    ``max_chars``.
+
+    When a single paragraph exceeds ``max_chars``, it is further split at
+    sentence boundaries (``. ! ?`` followed by whitespace) as a fallback;
+    if that still produces overlong chunks, a word-boundary split is used.
+
+    Args:
+        text: The full markdown/plain-text body.
+        page_number: 1-indexed page to return.
+        max_chars: Maximum characters per page (default 40_000).
+
+    Returns:
+        Dict with ``markdown`` (the requested page), ``current_page``,
+        ``total_pages``, and ``total_chars``.
+    """
+    if not text or not text.strip():
+        return {
+            "markdown": text or "",
+            "current_page": 1,
+            "total_pages": 1,
+            "total_chars": len(text or ""),
+        }
+
+    total_chars = len(text)
+
+    # Short enough → single page.
+    if total_chars <= max_chars:
+        return {
+            "markdown": text,
+            "current_page": 1,
+            "total_pages": 1,
+            "total_chars": total_chars,
+        }
+
+    # Phase 1: split at paragraph boundaries.
+    raw_paragraphs = _split_paragraphs(text)
+
+    # Phase 2: flatten any single paragraph that is still too long.
+    paragraphs: list[str] = []
+    for p in raw_paragraphs:
+        if len(p) <= max_chars:
+            paragraphs.append(p)
+        else:
+            # One giant paragraph — split at sentence boundaries.
+            sentences = _split_sentences(p)
+            for s in sentences:
+                if len(s) <= max_chars:
+                    paragraphs.append(s)
+                else:
+                    # Single sentence still too long → forced word-boundary split.
+                    paragraphs.extend(_split_forced(s, max_chars))
+
+    # Phase 3: build pages from paragraphs.
+    pages: list[str] = []
+    current = ""
+    for para in paragraphs:
+        gap = 2 if current else 0  # "\n\n" separator
+        if len(current) + gap + len(para) <= max_chars:
+            current = (current + "\n\n" + para) if current else para
+        else:
+            if current:
+                pages.append(current)
+            current = para
+    if current:
+        pages.append(current)
+
+    total_pages = len(pages)
+    page = max(1, min(page_number, total_pages))
+
+    return {
+        "markdown": pages[page - 1],
+        "current_page": page,
+        "total_pages": total_pages,
+        "total_chars": total_chars,
+    }
+
+
+def _split_paragraphs(text: str) -> list[str]:
+    """Split text at double-newline boundaries (paragraphs)."""
+    import re
+    parts = re.split(r"\n\n+", text)
+    return [p for p in parts if p] or [text]
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text at sentence boundaries (``. ! ?`` + whitespace)."""
+    import re
+    # Split after .!? followed by whitespace, keeping the punctuation on the left.
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [p for p in parts if p] or [text]
+
+
+def _split_forced(text: str, max_chars: int) -> list[str]:
+    """Brute-force split at word boundaries.  Last-resort fallback."""
+    words = text.split()
+    if not words:
+        return [text]
+    chunks: list[str] = []
+    current = ""
+    for w in words:
+        gap = 1 if current else 0
+        if len(current) + gap + len(w) > max_chars and current:
+            chunks.append(current)
+            current = w
+        else:
+            current = (current + " " + w) if current else w
+    if current:
+        chunks.append(current)
+    return chunks or [text]
