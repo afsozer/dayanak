@@ -269,6 +269,51 @@ class Document(SearchResult):
         parts = [self.court, self.chamber, self.decision_date, self.esas_no, self.karar_no]
         return " | ".join([p for p in parts if p]) or f"{self.source}:{self.document_id}"
 
+    def to_tool_payload(self, include_raw: bool = False) -> dict[str, Any]:
+        """Return a deduplicated dict for MCP tool output.
+
+        The full ``model_dump(mode="json")`` includes up to 4 copies of the
+        same decision text (metadata.content as base64 HTML, raw.data.content,
+        full_text, markdown), which costs ~15k tokens per document.  Hosted
+        yargı-mcp returns a single Markdown field.
+
+        This method trims the payload to the hosted-equivalent shape:
+
+        - Single text field: ``markdown`` (if present) or ``full_text``
+          promoted to ``markdown`` — never both.
+        - ``raw`` is stripped entirely (unless ``include_raw=True``).
+        - ``metadata.content`` (base64 HTML blob) is removed from the
+          metadata dict; other metadata keys are preserved.
+        - Pagination fields (``current_page``, ``total_pages``, ``total_chars``)
+          are not set here — they are added by the caller (server.py) when
+          the document exceeds 40 000 chars.
+
+        Cache and store_document continue to work with the full ``Document`` /
+        ``model_dump()`` — this method is only for tool-output shaping.
+        """
+        # Start with the full dump so we get all enrichment fields
+        payload: dict[str, Any] = self.model_dump(mode="json")
+
+        # Deduplicate text: single "markdown" field, never both markdown+full_text
+        text_value = self.markdown or self.full_text
+        payload["markdown"] = text_value
+
+        # Remove raw unless explicitly requested (debug use)
+        if not include_raw:
+            payload.pop("raw", None)
+
+        # Strip base64 content blob from metadata — it's a huge duplicate of
+        # the text we already serve.  Other metadata keys (documentId, birimAdi,
+        # esasNo, kararNo, tarih, alternate_url, etc.) are preserved.
+        if isinstance(payload.get("metadata"), dict):
+            payload["metadata"].pop("content", None)
+
+        # full_text is now redundant with markdown; remove it from the payload
+        # (the model still has full_text — this is output-only shaping)
+        payload.pop("full_text", None)
+
+        return payload
+
     def provenance(self) -> SourceProvenance:
         return SourceProvenance(
             source=self.source,

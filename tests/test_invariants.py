@@ -610,3 +610,186 @@ class TestBuildErrorShape:
         assert "retryable" not in result
         assert "warnings" not in result
         assert "recommended_next_steps" not in result
+
+
+# ---------------------------------------------------------------------------
+# Görev 1 (parity-v2): to_tool_payload deduplication
+# ---------------------------------------------------------------------------
+
+class TestToToolPayload:
+    """to_tool_payload() invariants — single text field, no raw, no metadata.content."""
+
+    def test_single_text_field_markdown_exists(self):
+        """When markdown exists, it becomes the single text field; full_text removed."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        doc = Document(
+            source="bedesten",
+            document_id="test-1",
+            title="Test",
+            markdown="# Karar\nBu bir testtir.",
+            full_text="düz metin",
+            content_status=ContentStatus.HTML_MARKDOWN,
+            metadata={"kararNo": "2024/123"},
+        )
+        payload = doc.to_tool_payload()
+        assert payload["markdown"] == "# Karar\nBu bir testtir."
+        assert "full_text" not in payload
+
+    def test_full_text_promoted_when_markdown_none(self):
+        """When markdown is None, full_text is promoted to markdown key."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        doc = Document(
+            source="bedesten",
+            document_id="test-2",
+            title="Test",
+            markdown=None,
+            full_text="sadece full_text var",
+            content_status=ContentStatus.FULL_TEXT,
+        )
+        payload = doc.to_tool_payload()
+        assert payload["markdown"] == "sadece full_text var"
+        assert "full_text" not in payload
+
+    def test_both_missing_yields_none_markdown(self):
+        """When both markdown and full_text are None/empty, markdown is None."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        doc = Document(
+            source="bedesten",
+            document_id="test-3",
+            title="Test",
+            markdown=None,
+            full_text=None,
+            content_status=ContentStatus.METADATA_ONLY,
+        )
+        payload = doc.to_tool_payload()
+        assert payload["markdown"] is None
+        assert "full_text" not in payload
+
+    def test_raw_stripped_by_default(self):
+        """raw key must be absent from default payload."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        doc = Document(
+            source="bedesten",
+            document_id="test-4",
+            title="Test",
+            markdown="metin",
+            raw={"data": {"content": "base64blob", "kararNo": "2024/1"}},
+            content_status=ContentStatus.HTML_MARKDOWN,
+        )
+        payload = doc.to_tool_payload()
+        assert "raw" not in payload
+
+    def test_raw_included_when_include_raw_true(self):
+        """raw key is present when include_raw=True."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        doc = Document(
+            source="bedesten",
+            document_id="test-5",
+            title="Test",
+            markdown="metin",
+            raw={"data": {"content": "base64blob"}},
+            content_status=ContentStatus.HTML_MARKDOWN,
+        )
+        payload = doc.to_tool_payload(include_raw=True)
+        assert "raw" in payload
+        assert payload["raw"] == {"data": {"content": "base64blob"}}
+
+    def test_metadata_content_stripped(self):
+        """metadata.content (base64 HTML) must be removed from metadata dict."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        doc = Document(
+            source="bedesten",
+            document_id="test-6",
+            title="Test",
+            markdown="karar metni",
+            content_status=ContentStatus.HTML_MARKDOWN,
+            metadata={
+                "content": "BASE64_ENCODED_HTML_BLOB_VERY_LONG",
+                "kararNo": "2024/456",
+                "esasNo": "2024/123",
+                "alternate_url": "https://emsal.uyap.gov.tr/...",
+            },
+        )
+        payload = doc.to_tool_payload()
+        md = payload.get("metadata", {})
+        assert "content" not in md, "metadata.content (base64) must be stripped"
+        assert md["kararNo"] == "2024/456"
+        assert md["esasNo"] == "2024/123"
+        assert "alternate_url" in md
+
+    def test_metadata_empty_or_missing_handled(self):
+        """Empty metadata or missing metadata → no crash."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        # Test with empty metadata dict
+        doc = Document(
+            source="bedesten",
+            document_id="test-7",
+            title="Test",
+            markdown="metin",
+            content_status=ContentStatus.HTML_MARKDOWN,
+            metadata={},
+        )
+        payload = doc.to_tool_payload()
+        assert "metadata" in payload
+        assert payload["metadata"] == {}
+
+        # Test with default metadata (not passed)
+        doc2 = Document(
+            source="bedesten",
+            document_id="test-7b",
+            title="Test",
+            markdown="metin",
+            content_status=ContentStatus.HTML_MARKDOWN,
+        )
+        payload2 = doc2.to_tool_payload()
+        assert "metadata" in payload2
+
+    def test_quote_usable_and_draft_usable_preserved(self):
+        """to_tool_payload preserves quote_usable/draft_usable properties."""
+        from emsal_mcp.models import ContentStatus, Document
+
+        doc = Document(
+            source="bedesten",
+            document_id="test-8",
+            title="Test",
+            markdown="uzun karar metni " * 20,
+            content_status=ContentStatus.HTML_MARKDOWN,
+        )
+        payload = doc.to_tool_payload()
+        # quote_usable/draft_usable are computed properties, not serialized by default
+        # But the payload should still have content_status and markdown so consumers can compute them
+        assert payload["content_status"] == "html_markdown"
+        assert payload["markdown"] is not None
+
+    def test_payload_size_smaller_than_full_dump(self):
+        """Deduplicated payload should be significantly smaller than full model_dump."""
+        from emsal_mcp.models import ContentStatus, Document
+        import json
+
+        big_base64 = "VGhpcyBpcyBhIHZlcnkgbG9uZyBiYXNlNjQgc3RyaW5nIHRoYXQgd291bGQgbm9ybWFsbHkgY29udGFpbiBIVE1MIGNvbnRlbnQK" * 100
+        doc = Document(
+            source="bedesten",
+            document_id="test-9",
+            title="Test Kararı",
+            markdown="# Karar\n\n" + ("Bu bir test kararıdır. " * 200),
+            full_text="Bu bir test kararıdır. " * 200,
+            content_status=ContentStatus.HTML_MARKDOWN,
+            raw={"data": {"content": big_base64, "mimeType": "text/html"}},
+            metadata={"content": big_base64, "kararNo": "2024/1", "esasNo": "2024/100"},
+        )
+
+        full_dump_len = len(json.dumps(doc.model_dump(mode="json"), ensure_ascii=False))
+        payload_len = len(json.dumps(doc.to_tool_payload(), ensure_ascii=False))
+
+        # The deduplicated payload should be less than 40% of the full dump
+        assert payload_len < full_dump_len * 0.40, (
+            f"Payload ({payload_len} chars) should be < 40% of full dump "
+            f"({full_dump_len} chars), got {payload_len / full_dump_len:.1%}"
+        )

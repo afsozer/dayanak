@@ -92,18 +92,17 @@ relied on the v0.1 capability shape. New code should use the snake_case keys.
 
 ## Document
 
-Extends SearchResult:
+Extends SearchResult.  The MCP tool output is deduplicated via
+``to_tool_payload()`` — the canonical shape below reflects that:
 
 ```json
 {
   "source": "bedesten",
   "document_id": "abc-123",
   "title": "Yargıtay Kararı",
-  "full_text": "...",
-  "markdown": "...",
+  "markdown": "... (tek metin alanı — full_text buraya birleştirilir) ...",
   "mime_type": "text/html",
   "content_hash": "sha256...",
-  "raw": null,
   "retrieved_at": "2026-05-29T00:30:00+00:00",
   "safety_state": "unknown",
   "content_status": "html_markdown",
@@ -118,6 +117,14 @@ Extends SearchResult:
   "metadata": {}
 }
 ```
+
+> **Görev 1 (parity-v2):** ``raw``, ``full_text`` (ayrı alan), ve
+> ``metadata.content`` (base64 HTML) artık varsayılan çıktıda **yoktur**.
+> ``include_raw=True`` ile ham yanıt istenebilir.
+> Tek metin alanı ``markdown``'dır; ``full_text`` yalnızca ``markdown``
+> boşsa ``markdown`` adıyla sunulur — ikisi birden asla verilmez.
+> Önbellek (cache) tam ``Document`` ile çalışmaya devam eder; budama
+> yalnızca araç çıktısı içindir.
 
 ### Usability rules
 

@@ -675,15 +675,20 @@ def main() -> None:
 
     @_tool
     @validate_tool_input(document_id=validate_non_empty)
-    async def get_document(source: str, document_id: str) -> dict:
+    async def get_document(source: str, document_id: str, include_raw: bool = False) -> dict:
         """Fetch a single document by ID from the given source.
 
         Args:
             source: Source identifier.
             document_id: Document ID (must not be empty).
+            include_raw: If True, include the raw upstream response in the
+                         output (debugging).  Default: False (deduplicated
+                         output with single markdown text field).
 
         Returns:
-            Document dict with all metadata and content fields.
+            Document dict with deduplicated metadata and content fields.
+            Text is served as a single ``markdown`` field; ``full_text``,
+            ``raw``, and ``metadata.content`` are omitted by default.
         """
         try:
             doc = await get_source(source).get_document(document_id)
@@ -707,11 +712,12 @@ def main() -> None:
         if _cached and _cached.esas_no:
             from .models import merge_search_metadata
             merge_search_metadata(doc, _cached)
+        # Cache stores the FULL Document (json dump) — trimming is output-only
         cache.set(f"doc:{source}:{document_id}", doc.model_dump(mode="json"))
         cache.store_document(doc)
         cache.log("get", {"source": source, "document_id": document_id})
         cache.close()
-        return doc.model_dump(mode="json")
+        return doc.to_tool_payload(include_raw=include_raw)
 
     @_tool
     def source_capabilities() -> list[dict]:

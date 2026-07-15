@@ -95,8 +95,15 @@ tool errors.
 **Input**:
 - `source: str` — source_id
 - `document_id: str`
+- `include_raw: bool = False` — if True, include raw upstream response (debug)
 
-**Output**: `dict` — a `Document` dump.
+**Output**: `dict` — a deduplicated `Document` dump.
+
+- Text is served as a single ``markdown`` field (``full_text`` omitted).
+- ``raw`` and ``metadata.content`` (base64 HTML) are stripped by default.
+- ``content_status``, ``source_url``, ``esas_no``, ``karar_no``, ``decision_date``,
+  ``metadata_confidence``, and other metadata fields are preserved.
+- Cache stores the full ``Document``; trimming is output-only.
 
 **Errors**: same as `search_decisions`.
 
