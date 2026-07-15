@@ -73,7 +73,8 @@ class _MevzuatClient(MevzuatClient):
 
 class _AymClient(AymClient):
     _known_limitations: list[str] = [
-        "Search relies on HTML scraping of the AYM information bank.",
+        "AYM KBB React SPA'ya geçti (2025); direkt HTML scraping ve search API çalışmıyor. "
+        "Canlı arama için yargi-mcp-pro aym_ictihat_ara kullanın.",
     ]
 
 

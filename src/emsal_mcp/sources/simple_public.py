@@ -24,74 +24,179 @@ def _decode_url_id(document_id: str) -> str:
 
 
 class AymClient(SourceClient):
+    """Anayasa Mahkemesi (AYM) source adapter — bireysel başvuru + norm denetimi.
+
+    The AYM decision information banks (kararlarbilgibankasi for individual
+    applications, normkararlarbilgibankasi for norm review) migrated from
+    server-rendered HTML to a React SPA (KBB — Karar Bilgi Bankası) in 2025.
+    Direct HTML scraping no longer works; the backend API at
+    ``/kbb/core/public/search`` returns HTTP 405 (method not allowed) or the
+    SPA shell.  Search is therefore unsupported until the new API endpoints
+    are documented.
+
+    ``get_document`` tries the old ``/BB/{id}`` and ``/ND/{id}`` URL patterns
+    (which now return the SPA shell) and falls back gracefully.
+
+    Decision type filter via ``decision_type``:
+        ``"norm_denetimi"`` → ``normkararlarbilgibankasi`` (ND)
+        ``"bireysel_basvuru"`` → ``kararlarbilgibankasi`` (BB, default)
+
+    For live AYM searches, use yargi-mcp-pro ``aym_ictihat_ara`` tool.
+    """
+
     source_id = "aym"
     name = "Anayasa Mahkemesi"
-    base = "https://kararlarbilgibankasi.anayasa.gov.tr"
+
+    _BB_BASE = "https://kararlarbilgibankasi.anayasa.gov.tr"
+    _ND_BASE = "https://normkararlarbilgibankasi.anayasa.gov.tr"
+
+    def _resolve_base(self, filters: dict) -> str:
+        dt = str(filters.get("decision_type", "")).lower()
+        if dt in ("norm_denetimi", "norm"):
+            return self._ND_BASE
+        return self._BB_BASE  # default: bireysel başvuru
 
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
+        """AYM search — currently limited to metadata-only fallback.
+
+        The old HTML scraping endpoint (``/Ara?KelimeAra[]=...``) was retired
+        when AYM migrated to the KBB React SPA.  The new API
+        (``/kbb/core/public/search``) requires authentication or client-side
+        rendering and is not directly callable from server-side code.
+        """
+        base = self._resolve_base(filters)
         params = f"KelimeAra[]={quote(query)}"
         if filters.get("start_date"):
             params += f"&KararTarihiBaslangic={quote(_ymd_to_dmy(filters['start_date']))}"
         if filters.get("end_date"):
             params += f"&KararTarihiBitis={quote(_ymd_to_dmy(filters['end_date']))}"
-        async with client() as c:
-            r = await c.get(f"{self.base}/Ara?{params}")
-            check_http_response(r, self.source_id)
-            html = r.text
-        results: list[SearchResult] = []
-        pattern = re.compile(
-            r'href="(?:https?://kararlarbilgibankasi\.anayasa\.gov\.tr)?/BB/(\d+/\d+)"'
-            r'[\s\S]*?<titles[^>]*>([\s\S]*?)<a[\s\S]*?'
-            r'<div class="kararbilgileri">\s*([\s\S]*?)</div>\s*'
-            r'<div class="basvurukonualani">\s*([\s\S]*?)</div>',
-            re.I,
-        )
-        for appno, title_html, info_html, summary_html in pattern.findall(html):
-            info = html_to_text(info_html)
-            results.append(SearchResult(
-                source=self.source_id, document_id=f"BB/{appno}",
-                title=html_to_text(title_html) or f"AYM {appno}",
-                summary=html_to_text(summary_html).replace("BAŞVURU KONUSU:", "").strip()[:1000],
-                court="Anayasa Mahkemesi", decision_date=_first_date(info),
-                esas_no=appno, source_url=f"{self.base}/BB/{appno}",
-                content_status=ContentStatus.METADATA_ONLY, metadata={"info": info},
-            ))
-            if len(results) >= limit:
-                break
-        if results:
-            return results
-        # Fallback: metadata_only result if no structured data found
+
+        # Try old /Ara endpoint first (legacy, may still work in some envs)
+        try:
+            async with client() as c:
+                r = await c.get(f"{base}/Ara?{params}")
+                if r.status_code == 200 and len(r.text) > 3000:
+                    # Legacy HTML response — try scraping
+                    html = r.text
+                    results: list[SearchResult] = []
+                    pattern = re.compile(
+                        r'href="(?:https?://[^/]+)?/(BB|ND)/(\d+/\d+)"'
+                        r'[\s\S]*?<titles[^>]*>([\s\S]*?)<a[\s\S]*?'
+                        r'<div class="kararbilgileri">\s*([\s\S]*?)</div>\s*'
+                        r'<div class="basvurukonualani">\s*([\s\S]*?)</div>',
+                        re.I,
+                    )
+                    for dtype, appno, title_html, info_html, summary_html in pattern.findall(html):
+                        info = html_to_text(info_html)
+                        prefix = "BB" if dtype == "BB" else "ND"
+                        results.append(SearchResult(
+                            source=self.source_id, document_id=f"{prefix}/{appno}",
+                            title=html_to_text(title_html) or f"AYM {prefix} {appno}",
+                            summary=html_to_text(summary_html).replace("BAŞVURU KONUSU:", "").strip()[:1000],
+                            court="Anayasa Mahkemesi",
+                            decision_date=_first_date(info),
+                            esas_no=appno,
+                            source_url=f"{base}/{prefix}/{appno}",
+                            content_status=ContentStatus.METADATA_ONLY,
+                            metadata={"info": info, "decision_type": "bireysel_basvuru" if prefix == "BB" else "norm_denetimi"},
+                        ))
+                        if len(results) >= limit:
+                            break
+                    if results:
+                        return results
+        except Exception:
+            pass
+
+        # Fallback: SPA — no structured search available
         return [SearchResult(
             source=self.source_id, document_id=f"search:{quote(query)}",
             title=f"AYM arama: {query}",
-            summary=html_to_text(html)[:1000],
-            source_url=f"{self.base}/Ara?{params}",
+            summary="AYM KBB React SPA — direkt arama API'si mevcut değil. yargi-mcp-pro aym_ictihat_ara kullanın.",
+            source_url=f"{base}/kbb/",
             content_status=ContentStatus.METADATA_ONLY,
         )]
 
     async def get_document(self, document_id: str, **kwargs) -> Document:
-        url = document_id if document_id.startswith("http") else f"{self.base}/BB/{document_id}"
-        async with client() as c:
-            r = await c.get(url)
-            check_http_response(r, self.source_id)
-            html = r.text
-        text = html_to_text(html)
+        """Fetch AYM decision document.
+
+        Supports old-style IDs (``BB/2021/30620``, ``ND/2023/123``) and
+        new UUID-style IDs (``a1798dda-...``).  Due to the KBB SPA migration,
+        most document URLs now return the SPA shell rather than decision text.
+        """
+        from urllib.parse import urlparse
+        import base64 as _b64
+
+        # Determine base and path
+        did = document_id
+        base = self._BB_BASE
+        dt_label = "bireysel_basvuru"
+
+        if did.startswith("http"):
+            url = did
+            parsed = urlparse(url)
+            base = f"{parsed.scheme}://{parsed.netloc}"
+            if "norm" in parsed.netloc:
+                dt_label = "norm_denetimi"
+        elif did.startswith("ND/") or did.startswith("ND:"):
+            did = did[3:] if did.startswith("ND/") else did[3:]
+            url = f"{self._ND_BASE}/ND/{did}"
+            base = self._ND_BASE
+            dt_label = "norm_denetimi"
+        elif did.startswith("BB/") or did.startswith("BB:"):
+            did = did[3:] if did.startswith("BB/") else did[3:]
+            url = f"{self._BB_BASE}/BB/{did}"
+        elif len(did) > 30 and "-" in did:  # UUID format
+            url = f"{base}/kbb/?id={did}"
+        else:
+            url = f"{base}/BB/{did}"
+
         warnings: list[str] = []
-        # Fallback to metadata_only if parsed content is too short
-        status = ContentStatus.HTML_MARKDOWN
-        if len(text.strip()) < 50:
-            warnings.append("AYM parsed content too short; falling back to metadata_only.")
-            status = ContentStatus.METADATA_ONLY
-        doc = Document(
-            source=self.source_id, document_id=document_id,
-            title=f"AYM {document_id}", markdown=text, full_text=text if status == ContentStatus.HTML_MARKDOWN else None,
-            source_url=url, content_status=status, content_hash=sha(text) if text and status == ContentStatus.HTML_MARKDOWN else None,
-        )
-        return finalize_document(doc, warnings)
+        try:
+            async with client() as c:
+                r = await c.get(url)
+                check_http_response(r, self.source_id)
+                html = r.text
+
+            # Detect SPA shell (tiny response, no article text)
+            if len(html) < 3000:
+                warnings.append(
+                    "AYM KBB React SPA döndü; karar metni bu kanaldan alınamıyor. "
+                    "yargi-mcp-pro ictihat_getir ile almayı deneyin."
+                )
+                return finalize_document(Document(
+                    source=self.source_id, document_id=document_id,
+                    title=f"AYM {did}", court="Anayasa Mahkemesi",
+                    source_url=url, content_status=ContentStatus.METADATA_ONLY,
+                ), warnings)
+
+            text = html_to_text(html)
+            status = ContentStatus.HTML_MARKDOWN
+            if len(text.strip()) < 50:
+                warnings.append("AYM parsed content too short; falling back to metadata_only.")
+                status = ContentStatus.METADATA_ONLY
+
+            doc = Document(
+                source=self.source_id, document_id=document_id,
+                title=f"AYM {did}", markdown=text,
+                full_text=text if status == ContentStatus.HTML_MARKDOWN else None,
+                source_url=url, content_status=status,
+                content_hash=sha(text) if text and status == ContentStatus.HTML_MARKDOWN else None,
+                metadata={"decision_type": dt_label},
+            )
+            return finalize_document(doc, warnings)
+        except Exception:
+            return Document(
+                source=self.source_id, document_id=document_id,
+                title=f"AYM {did} (erişilemedi)", court="Anayasa Mahkemesi",
+                content_status=ContentStatus.UNAVAILABLE,
+                metadata={"decision_type": dt_label, "error": "fetch_or_parse_failure"},
+            )
 
     async def smoke(self, online: bool = False) -> SourceSmokeResult:
         result = await super().smoke(online=online)
-        result.min_content_length_ok = True
+        result.warnings.append(
+            "AYM KBB React SPA; search API requires yargi-mcp-pro or browser automation."
+        )
         return result
 
 

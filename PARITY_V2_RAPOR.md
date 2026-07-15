@@ -305,3 +305,42 @@ KVKK (mevzuat_id 104383) içinde `"açık rıza" AND sağlık`:
 
 ---
 
+## Görev 7 — AYM adaptörünü olgunlaştır
+
+**Durum:** ⚠️ Kısmen tamamlandı (SPA migrasyonu nedeniyle sınırlı)
+
+**Tarih:** 2026-07-15
+
+### Upstream gözlem (şema tahmini yasak — durma koşulu 4)
+
+AYM 2025'te KBB (Karar Bilgi Bankası) React SPA'ya geçti:
+- Eski `/Ara?KelimeAra[]=...` → **404** (endpoint kaldırılmış)
+- Yeni `/kbb/core/public/search` → **405** (POST) / **SPA HTML** (GET)
+- Belge URL'leri (`/BB/...`, `/ND/...`) → **SPA shell** (2047 byte, karar metni yok)
+- API base: `core/public/` (göreceli yol, SPA içinden çağrılıyor)
+- Belge ID'leri UUID formatına geçmiş (`a1798dda-...`)
+
+### Değişen dosyalar
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/emsal_mcp/sources/simple_public.py` | `AymClient` yeniden yazıldı: iki banka desteği (BB/ND), `decision_type` filtresi (`norm_denetimi`/`bireysel_basvuru`), `_resolve_base()` yardımcısı, SPA shell tespiti, eski HTML scraping fallback, UUID ID desteği, graceful degradation. |
+| `src/emsal_mcp/sources/registry.py` | `_AymClient` kısıtlamaları güncellendi. |
+
+### Test çıktısı özeti
+
+```
+pytest -x -q (tam suite)
+1702 passed, 1 warning
+```
+
+Regresyon yok.
+
+### Bilinen kısıtlamalar
+
+- **Arama API'si mevcut değil:** AYM KBB React SPA; `/kbb/core/public/search` HTTP 405. Canlı AYM araması için hosted `yargi-mcp-pro_aym_ictihat_ara` kullanılmalı.
+- **Belge metni direkt alınamıyor:** Eski `/BB/` ve `/ND/` URL'leri SPA shell döndürüyor. Belge metni için `yargi-mcp-pro_ictihat_getir` kullanılmalı.
+- **HTML scraping (legacy):** Eski `/Ara` endpoint'i hâlâ çalışıyorsa (intranet/legacy ortamlarda) mevcut scraping kodu korunur.
+
+---
+
