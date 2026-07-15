@@ -503,9 +503,10 @@ def main() -> None:
           filter, not a search.
 
         Args:
-            source: Optional source identifier (e.g. 'bedesten', 'mevzuat').
-                Defaults to 'bedesten' (combined Yargıtay + Danıştay sweep when
-                court_types is omitted).
+            source: Optional source identifier. Available sources:
+                - ``'bedesten'`` (default) — combined Yargıtay + Danıştay sweep
+                - ``'aihm'`` — AİHM/ECHR via HUDOC (EXPERIMENTAL; search API
+                  currently unavailable — returns empty; get_document works)
             query: Search query string (optional when filtering by docket no /
                 chamber / date). For best results, craft a short 2–5 term
                 keyword query using the operators above.

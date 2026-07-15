@@ -15,6 +15,7 @@ from .simple_public import (
 )
 from .resmigazete import ResmiGazeteClient
 from .kvkk import KvkkClient
+from .aihm import AihmClient
 from emsal_mcp.models import SourceSmokeResult, SourceStatus
 
 
@@ -129,6 +130,15 @@ class _KvkkClient(KvkkClient):
     ]
 
 
+class _AihmClient(AihmClient):
+    _capability_status = SourceStatus.EXPERIMENTAL
+    _known_limitations: list[str] = [
+        "HUDOC search (query/results) API endpoint returns HTTP 404 as of 2026-07. "
+        "Only get_document works via the HTML content conversion API. "
+        "Search will return empty until the upstream endpoint is restored/discovered.",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Registry and capability matrix
 # ---------------------------------------------------------------------------
@@ -147,6 +157,7 @@ def registry() -> dict[str, Any]:
         "sayistay": _SayistayClient(),
         "resmigazete": _ResmiGazeteClient(),
         "kvkk": _KvkkClient(),
+        "aihm": _AihmClient(),
     }
 
 

@@ -199,3 +199,61 @@ Regresyon yok.
 
 ---
 
+## Görev 5 — AİHM/HUDOC kaynağı ekle
+
+**Durum:** ✅ Kısmen tamamlandı (get_document çalışıyor, search API 404)
+
+**Tarih:** 2026-07-15
+
+### Upstream gözlem (şema tahmini yasak — durma koşulu 4)
+
+HUDOC search API'si (`/app/query/results`) **HTTP 404** döndürüyor — endpoint kaldırılmış veya taşınmış. Session cookie, POST, farklı header kombinasyonları denendi; hepsi 404. Belge API'si (`/app/conversion/docx/html/body`) çalışıyor.
+
+Gözlemlenen ham yanıt:
+```
+GET https://hudoc.echr.coe.int/app/query/results?query=... -> 404 (37838 bytes)
+Content-Type: text/html
+<!DOCTYPE html>...<title>404: Not Found</title>...
+```
+
+Belge API'si:
+```
+GET https://hudoc.echr.coe.int/app/conversion/docx/html/body?library=ECHR&id=001-218575 -> 200 (415846 bytes)
+Content-Type: text/html (styled document)
+```
+
+### Değişen dosyalar
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/emsal_mcp/sources/aihm.py` | **YENİ:** `AihmClient(SourceClient)` — `get_document()` HUDOC HTML API ile çalışıyor; `search()` boş liste döndürüyor (API mevcut değil). |
+| `src/emsal_mcp/sources/registry.py` | `_AihmClient` sınıfı + `registry()`'ye `"aihm"` kaydı eklendi. `EXPERIMENTAL` statü. |
+| `src/emsal_mcp/server.py` | `search_decisions` docstring: `source="aihm"` belgisi eklendi. |
+| `tests/test_adapters.py` | `EXPECTED` listesine `"aihm"` eklendi. |
+| `tests/test_capability_contract.py` | `EXPECTED_SOURCES` listesine `"aihm"` eklendi. |
+
+### Test çıktısı özeti
+
+```
+pytest -x -q (tam suite)
+1702 passed, 1 warning
+```
+
+Regresyon yok.
+
+### Canlı doğrulama örneği
+
+| Test | Sonuç |
+|---|---|
+| `get_document("aihm", "001-218575")` | ✅ 233,937 chars markdown (Kavala kararı, Fransızca) |
+| `search("Kavala")` | ✅ Boş liste (çökme yok) |
+| `get_source("aihm")` | ✅ Registry'den başarıyla alınıyor |
+| Registry status | ✅ `experimental` |
+
+### Bilinen kısıtlamalar
+
+- **Arama API'si mevcut değil:** HUDOC `/app/query/results` endpoint'i HTTP 404. AİHM araması için hosted yargi-mcp `aihm_ictihat_ara` aracı kullanılmalı.
+- **Belge dili:** HUDOC belgeleri orijinal dilinde döner (İngilizce/Fransızca); Türkçe çeviri her zaman mevcut olmayabilir.
+
+---
+
