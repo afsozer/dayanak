@@ -257,3 +257,51 @@ Regresyon yok.
 
 ---
 
+## Görev 6 — Tek mevzuat içinde boolean arama (`scope='article'` güçlendirme)
+
+**Durum:** ✅ Tamamlandı
+
+**Tarih:** 2026-07-15
+
+### Değişen dosyalar
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/emsal_mcp/legislation.py` | `_BooleanEvaluator` sınıfı (recursive-descent parser): `AND/OR/NOT/"phrase"/()` + örtük AND + Türkçe casefold (İ→i, I→ı, ASCII I belirsizliği için çift fold) + kök eşleşme (prefix). `evaluate_boolean_query()` ve `_build_snippet()` fonksiyonları. `search_legislation_articles` güncellendi: boolean evaluator kullanıyor, `match_count` sıralı, `snippet` bold highlight. Whitespace normalizasyonu (`\r\n` → space). |
+
+### Değişiklik detayı
+
+**Boolean evaluator özellikleri:**
+- `AND` / `OR` / `NOT` (BÜYÜK harf zorunlu)
+- `"tam ifade"` (çift tırnak)
+- `()` gruplama
+- Bitişik kelimeler → örtük AND
+- Türkçe büyük/küçük harf duyarsız: `İ→i`, `I→ı`, ASCII-I belirsizliği için çift fold
+- Kelime kökten ileri eşleşme: `tazminat` → `tazminatı` eşleşir
+- Whitespace normalizasyonu: `açık\r\nrıza` → `açık rıza` olarak eşleşir
+
+**Araç çıktısı (madde başına):**
+- `number` (madde_no)
+- `match_count` (eşleşen terim sayısı — relevance sıralama)
+- `snippet` (`**bold**` highlight ile ~120 karakterlik pasaj)
+
+### Test çıktısı özeti
+
+```
+pytest -x -q (tam suite)
+1702 passed, 1 warning
+```
+
+### Canlı doğrulama örneği
+
+KVKK (mevzuat_id 104383) içinde `"açık rıza" AND sağlık`:
+
+| Metrik | Değer |
+|---|---|
+| Eşleşen madde | Madde 6 |
+| `match_count` | 2 |
+| snippet | `…**sağlık** hizmetlerinin planlanması…` ✅ |
+| İlk sonuç | ✅ m.6 |
+
+---
+

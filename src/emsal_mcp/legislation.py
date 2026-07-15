@@ -77,6 +77,246 @@ _SINGLE_MADDE_GEREKCE_RE = re.compile(
 # Helpers
 # ---------------------------------------------------------------------------
 
+# Turkish case-folding: İ→i, I→ı (standard lower-case handles the rest).
+# BUT: when Turkish text is typed with ASCII, "I" is ambiguous — it could
+# represent either İ (dotted) or I (dotless).  We provide both folds.
+_TR_CASEFOLD_DOTLESS = str.maketrans("İI", "iı")
+_TR_CASEFOLD_DOTTED = str.maketrans("İI", "ii")  # both map to i
+
+
+def _tr_fold(s: str) -> str:
+    """Turkish-aware case fold (default: İ→i, I→ı)."""
+    return s.translate(_TR_CASEFOLD_DOTLESS).lower()
+
+
+def _tr_folds(s: str) -> tuple[str, str]:
+    """Both possible Turkish folds: (İ→i,I→ı) and (İ→i,I→i)."""
+    return (
+        s.translate(_TR_CASEFOLD_DOTLESS).lower(),
+        s.translate(_TR_CASEFOLD_DOTTED).lower(),
+    )
+
+
+def _stem_match(query_word: str, text_word: str) -> bool:
+    """Forward (prefix) stem match: query_word is a prefix of text_word."""
+    return text_word.startswith(query_word)
+
+
+# ── Boolean query parser / evaluator ────────────────────────────────────────
+# Grammar (uppercase operators only):
+#   query      = expr
+#   expr       = or_expr
+#   or_expr    = and_expr ("OR" and_expr)*
+#   and_expr   = not_expr ("AND"? not_expr)*       # adjacent = implicit AND
+#   not_expr   = "NOT"? atom
+#   atom       = "(" expr ")" | phrase | word
+#   phrase     = '"' [^"]+ '"'
+#   word       = \S+   (any non-whitespace, consumed as a stem)
+
+
+def _tokenize(query: str) -> list[str]:
+    """Tokenize a boolean query string into operators, phrases, words, parens."""
+    tokens: list[str] = []
+    i = 0
+    n = len(query)
+    while i < n:
+        ch = query[i]
+        if ch in "()":
+            tokens.append(ch)
+            i += 1
+        elif ch == '"':
+            j = query.index('"', i + 1) if '"' in query[i + 1:] else n
+            phrase = query[i + 1:j]
+            tokens.append(f'"{phrase}"')
+            i = j + 1
+        elif ch.isspace():
+            i += 1
+        else:
+            j = i
+            while j < n and not query[j].isspace() and query[j] not in '()"':
+                j += 1
+            tokens.append(query[i:j])
+            i = j
+    return tokens
+
+
+class _BooleanEvaluator:
+    """Recursive-descent boolean evaluator for Turkish legislation text.
+
+    Operands (words) are matched as stems (prefix) against text words;
+    ``"phrases"`` are matched as substring (exact phrase).  All matching
+    is Turkish case-insensitive (via ``_tr_fold``).
+
+    Operators MUST be uppercase: ``AND``, ``OR``, ``NOT``.
+    Parentheses ``()`` group sub-expressions.
+    Adjacent operands without an explicit operator are implicitly AND-ed.
+    """
+
+    def __init__(self, query: str):
+        self.tokens = _tokenize(query)
+        self.pos = 0
+        self._stem_cache: dict[str, str] = {}
+        self._phrase_cache: dict[str, str] = {}
+
+    def _fold_stem(self, w: str) -> str:
+        if w not in self._stem_cache:
+            self._stem_cache[w] = _tr_fold(w)
+        return self._stem_cache[w]
+
+    def _fold_phrase(self, p: str) -> str:
+        if p not in self._phrase_cache:
+            self._phrase_cache[p] = _tr_fold(p)
+        return self._phrase_cache[p]
+
+    def _peek(self) -> str | None:
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else None
+
+    def _consume(self) -> str:
+        t = self.tokens[self.pos]
+        self.pos += 1
+        return t
+
+    def _consume_if(self, *vals: str) -> bool:
+        t = self._peek()
+        if t is not None and t.upper() in {v.upper() for v in vals}:
+            self.pos += 1
+            return True
+        return False
+
+    def evaluate(self, text: str) -> tuple[bool, list[str]]:
+        """Evaluate the query against *text*.
+
+        Returns ``(matches, terms)`` where *terms* is the list of
+        individual word/phrase terms that matched (for snippet building).
+        """
+        # Normalize whitespace: collapse \r\n and multiple spaces into
+        # single spaces so phrases like "açık rıza" match across line breaks.
+        import re
+        normalized = re.sub(r"\s+", " ", text.strip())
+        # Try both Turkish fold variants
+        folded_dotless = _tr_fold(normalized)
+        self.pos = 0
+        matched, terms = self._parse_expr(folded_dotless)
+        if not matched:
+            folded_dotted = normalized.translate(_TR_CASEFOLD_DOTTED).lower()
+            self.pos = 0
+            matched, terms = self._parse_expr(folded_dotted)
+        return matched, list(set(terms))
+
+    def _parse_expr(self, text: str) -> tuple[bool, list[str]]:
+        return self._parse_or(text)
+
+    def _parse_or(self, text: str) -> tuple[bool, list[str]]:
+        left, terms = self._parse_and(text)
+        while self._consume_if("OR"):
+            right, rterms = self._parse_and(text)
+            left = left or right
+            terms.extend(rterms)
+        return left, terms
+
+    def _parse_and(self, text: str) -> tuple[bool, list[str]]:
+        left, terms = self._parse_not(text)
+        while True:
+            nxt = self._peek()
+            if nxt is None or nxt == ")" or (isinstance(nxt, str) and nxt.upper() == "OR"):
+                break
+            # Explicit AND
+            self._consume_if("AND")
+            # But don't parse if next token would start a new expr
+            nxt2 = self._peek()
+            if nxt2 is None or nxt2 == ")" or (isinstance(nxt2, str) and nxt2.upper() in ("OR", "AND")):
+                break
+            right, rterms = self._parse_not(text)
+            left = left and right
+            terms.extend(rterms)
+        return left, terms
+
+    def _parse_not(self, text: str) -> tuple[bool, list[str]]:
+        negate = self._consume_if("NOT")
+        matched, terms = self._parse_atom(text)
+        if negate:
+            return (not matched), terms
+        return matched, terms
+
+    def _parse_atom(self, text: str) -> tuple[bool, list[str]]:
+        t = self._peek()
+        if t is None:
+            return True, []
+        if t == "(":
+            self._consume()
+            result, terms = self._parse_expr(text)
+            if self._peek() == ")":
+                self._consume()
+            return result, terms
+        elif t.startswith('"'):
+            raw = self._consume()
+            phrase = raw[1:-1]
+            folded = self._fold_phrase(phrase)
+            matched = folded in text
+            return matched, [phrase] if matched else []
+        else:
+            w = self._consume()
+            if not w:
+                return True, []
+            stem = self._fold_stem(w)
+            words = text.split()
+            for tw in words:
+                if _stem_match(stem, tw):
+                    return True, [w]
+            return False, []
+
+
+def evaluate_boolean_query(query: str, text: str) -> tuple[bool, int, list[str]]:
+    """Evaluate a boolean query against *text*.
+
+    Returns ``(matches, match_count, matched_terms)``.
+    """
+    if not query or not query.strip():
+        return True, 0, []
+    evaluator = _BooleanEvaluator(query)
+    matched, terms = evaluator.evaluate(text)
+    return matched, len(terms) if matched else 0, terms
+
+
+def _build_snippet(text: str, terms: list[str], context: int = 60) -> str:
+    """Build a snippet from *text* with matched terms in **bold**."""
+    if not terms or not text:
+        return text[:200]
+    folded_text = _tr_fold(text)
+    positions: list[int] = []
+    for term in terms:
+        stem = _tr_fold(term)
+        idx = 0
+        while True:
+            idx = folded_text.find(stem, idx)
+            if idx == -1:
+                break
+            if idx == 0 or not folded_text[idx - 1].isalpha():
+                positions.append(idx)
+            idx += len(stem)
+    if not positions:
+        return text[:300]
+    positions.sort()
+    regions: list[tuple[int, int]] = []
+    for pos in positions:
+        start = max(0, pos - context)
+        end = min(len(text), pos + len(terms[0]) + context)
+        if regions and start <= regions[-1][1] + 10:
+            regions[-1] = (regions[-1][0], max(regions[-1][1], end))
+        else:
+            regions.append((start, end))
+    parts: list[str] = []
+    for start, end in regions[:3]:
+        chunk = text[start:end]
+        for term in terms:
+            chunk = re.compile(re.escape(term), re.IGNORECASE).sub(
+                lambda m: f"**{m.group()}**", chunk
+            )
+        prefix = "\u2026" if start > 0 else ""
+        suffix = "\u2026" if end < len(text) else ""
+        parts.append(f"{prefix}{chunk}{suffix}")
+    return " ".join(parts)
+
 def _classify_type(title: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
     """Classify a legislation document into a type category."""
     combined = title
@@ -423,17 +663,34 @@ def search_legislation_articles(
     source: str | None = None,
     sources_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Search articles within a legislation document.
+    """Search articles within a legislation document using boolean operators.
+
+    Query language (uppercase operators only):
+
+        - ``word`` — stem match (prefix: ``tazminat`` matches ``tazminatı``)
+        - ``"exact phrase"`` — substring phrase match
+        - ``AND`` / ``OR`` / ``NOT`` — boolean operators
+        - ``( ... )`` — grouping
+        - Adjacent words → implicit AND
+        - Turkish case-insensitive: ``İ→i``, ``I→ı``, rest standard fold
+
+    Examples:
+        ``"açık rıza" AND sağlık``
+        ``(ihracat OR ithalat) AND NOT istisna``
+        ``vergi beyan`` → implicit AND
 
     Args:
         document_id: Mevzuat document ID.
         article_number: Optional specific article number to retrieve.
-        article_query: Optional keyword/phrase to search in article text.
+        article_query: Optional boolean query to search in article text.
         source: Source ID (default: "mevzuat").
         sources_override: Dict mapping source_id -> fake client for tests.
 
     Returns:
-        Dict with ok, matching_articles, total_articles_found, etc.
+        Dict with ok, matching_articles (sorted by match_count desc),
+        total_articles_found, etc.  Each matching article carries
+        ``number`` (madde_no), ``match_count``, and ``snippet`` with
+        ``**bold**`` highlights.
     """
     warnings: list[str] = []
     doc, error = _fetch_doc(document_id, source, sources_override)
@@ -481,13 +738,25 @@ def search_legislation_articles(
     for art in all_articles:
         if article_number and art["number"] != article_number:
             continue
-        if article_query and article_query.lower() not in art["text"].lower():
-            continue
+        if article_query:
+            matched, match_count, terms = evaluate_boolean_query(
+                article_query, art["text"]
+            )
+            if not matched:
+                continue
+        else:
+            match_count = 0
+            terms = []
+        snippet = _build_snippet(art["text"], terms) if terms else art["text"][:300]
         matching.append({
             "number": art["number"],
             "text": art["text"],
-            "preview": art["text"][:300],
+            "match_count": match_count,
+            "snippet": snippet,
         })
+
+    # Sort by match_count descending for relevance
+    matching.sort(key=lambda a: a["match_count"], reverse=True)
 
     return {
         "ok": len(matching) > 0,
