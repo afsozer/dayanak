@@ -653,18 +653,47 @@ class TestMevzuatMocked:
 
 
 class TestAymMocked:
-    def test_search_fallback_empty(self):
+    @staticmethod
+    def _mock_kbb_client(search_json):
+        warmup_resp = _mock_httpx_response(text="<html>spa shell</html>")
+        search_resp = _mock_httpx_response(json_data=search_json)
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=MagicMock(
+            get=AsyncMock(return_value=warmup_resp),
+            post=AsyncMock(return_value=search_resp),
+        ))
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return cm
+
+    def test_search_kbb_api(self):
         from emsal_mcp.sources.simple_public import AymClient
         ac = AymClient()
-        mock_resp = _mock_httpx_response(text="<html>No structured results here</html>")
         with patch("emsal_mcp.sources.simple_public.client") as mc:
-            cm = AsyncMock()
-            cm.__aenter__ = AsyncMock(return_value=MagicMock(get=AsyncMock(return_value=mock_resp)))
-            cm.__aexit__ = AsyncMock(return_value=False)
-            mc.return_value = cm
+            mc.return_value = self._mock_kbb_client({
+                "total": 1,
+                "page": 1,
+                "data": [{
+                    "kararTipi": "BireyselBasvuru",
+                    "id": "5307d3dc-741e-7c58-decb-296e6f8835ca",
+                    "basvuruNo": "2019/2890",
+                    "kararTarihi": "2023-10-25",
+                    "basvuruAdi": "ALİ KÖMÜRCÜ VE DİĞERLERİ",
+                    "kararKonusu": "<p>mülkiyet hakkı</p>",
+                }],
+            })
+            sp = asyncio.run(ac.search_page("mülkiyet"))
+        assert sp.total == 1
+        assert len(sp.results) == 1
+        assert sp.results[0].document_id == "5307d3dc-741e-7c58-decb-296e6f8835ca"
+        assert sp.results[0].content_status == ContentStatus.METADATA_ONLY
+
+    def test_search_kbb_empty(self):
+        from emsal_mcp.sources.simple_public import AymClient
+        ac = AymClient()
+        with patch("emsal_mcp.sources.simple_public.client") as mc:
+            mc.return_value = self._mock_kbb_client({"total": 0, "page": 1, "data": []})
             results = asyncio.run(ac.search("nonexistent"))
-        assert len(results) == 1
-        assert results[0].content_status == ContentStatus.METADATA_ONLY
+        assert results == []
 
     def test_smoke(self):
         from emsal_mcp.sources.simple_public import AymClient

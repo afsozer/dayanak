@@ -73,8 +73,9 @@ class _MevzuatClient(MevzuatClient):
 
 class _AymClient(AymClient):
     _known_limitations: list[str] = [
-        "AYM KBB React SPA'ya geçti (2025); direkt HTML scraping ve search API çalışmıyor. "
-        "Canlı arama için yargi-mcp-pro aym_ictihat_ara kullanın.",
+        "KBB JSON API kullanılır (F5 WAF: tarayıcı UA + cookie warm-up gerekli). "
+        "Karar tam metni UDF dosyasından çıkarılır; dosya listesi ucu ara sıra "
+        "HTTP 500 döndürür (bir kez otomatik yeniden denenir).",
     ]
 
 
@@ -134,9 +135,9 @@ class _KvkkClient(KvkkClient):
 class _AihmClient(AihmClient):
     _capability_status = SourceStatus.EXPERIMENTAL
     _known_limitations: list[str] = [
-        "HUDOC search (query/results) API endpoint returns HTTP 404 as of 2026-07. "
-        "Only get_document works via the HTML content conversion API. "
-        "Search will return empty until the upstream endpoint is restored/discovered.",
+        "HUDOC belgeleri orijinal dilinde döner (ENG/FRE); Türkçe çeviri her "
+        "kararda bulunmaz. Sorgu contentsitename:ECHR ile başlamalıdır "
+        "(adaptör bunu otomatik ekler).",
     ]
 
 

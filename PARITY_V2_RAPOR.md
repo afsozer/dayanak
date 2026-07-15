@@ -344,3 +344,52 @@ Regresyon yok.
 
 ---
 
+## Görev 5b + 7b — G5/G7 açıklarının kapatılması (Claude, denetleyici tarafından)
+
+**Durum:** ✅ Tamamlandı — AİHM araması ve AYM arama+tam metin artık canlı çalışıyor
+
+**Tarih:** 2026-07-15
+
+### Upstream keşif (canlı doğrulanmış)
+
+**HUDOC (G5):** `/app/query/results` 404 değilmiş — DeepSeek'in 404'ü hatalı sorgu biçimindendi.
+Çalışan istek: `GET /app/query/results?query=contentsitename:ECHR AND (respondent:"TUR") AND docname:"Kavala"&select=itemid,docname,appno,conclusion,importance,kpdate,languageisocode,doctype&sort=&start=0&length=10`
+→ `{"resultcount":31,"results":[{"columns":{...}}]}`. Sorgu `contentsitename:ECHR` ile başlamak ZORUNDA.
+
+**AYM KBB (G7):** SPA'nın arka ucu halka açık JSON API:
+- Arama: `POST https://kararlarbilgibankasi.anayasa.gov.tr/api/core/public/search`
+  Body: `{"page":0,"size":10,"query":"...","kararTipi":"BireyselBasvuru|NormDenetimi|SiyasiParti|YuceDivan","sort":"kararTarihi","order":"desc"}` (page 0-tabanlı; tek host TÜM karar tiplerini servis eder — normkararlarbilgibankasi host'una gerek yok).
+- Dosyalar: `GET /api/core/public/kararlar/{uuid}/dosyalar?kararTipi=X` → `data[0].url` (`/files/{folder}/{filename}.udf`)
+- İndirme: `GET /api/core/public/files/download-attachment/{folder}/{filename}` → UDF (PK zip)
+- ⚠️ F5 WAF: tarayıcı User-Agent + aynı oturumda `/kbb/` GET (cookie warm-up) + katı UTF-8 JSON body şart (geçersiz bayt dizisi → HTML "Request Rejected"). DeepSeek'in 405'i yanlış path (`/kbb/core/...` yerine `/api/core/...`) idi.
+- ⚠️ `dosyalar` ucu ara sıra HTTP 500 döndürüyor → adaptörde 1 kez otomatik retry.
+
+### Değişen dosyalar
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/emsal_mcp/sources/aihm.py` | `search()`/`search_page()` gerçek HUDOC API ile implement edildi: ulke (vars. TUR/HEPSI), madde, ihlal, ihlal_yok, basvuru_no, dava_adi, dil, tarih aralığı, sort_by filtreleri; `resultcount` → SearchPage.total. |
+| `src/emsal_mcp/sources/simple_public.py` | `AymClient` KBB JSON API ile yeniden yazıldı: arama (total dahil), `decision_type` filtresi, `get_document` UDF→markdown tam metin (emsal_mcp.udf ile), legacy `BB/YYYY/N`-`ND/YYYY/N` ID çözümleme, WAF başlıkları + cookie warm-up, geniş except'ler hata sınıfını metadata'ya yazacak şekilde düzeltildi. |
+| `src/emsal_mcp/sources/registry.py` | aym/aihm known_limitations güncel duruma çekildi. |
+| `tests/test_parity_v2b.py` | YENİ: 12 offline test (KBB body/parse/WAF başlıkları, HUDOC query builder/fixture parse). |
+| `tests/test_adapters.py` | Eski AYM fallback testi yeni API akışına göre yeniden yazıldı (2 test). |
+| `README.md` | Test dosyası sayacı 62→63 (drift testi). |
+
+### Test çıktısı özeti
+
+```
+pytest -q (tam suite)
+1714 passed, 1 warning
+```
+
+### Canlı doğrulama örnekleri
+
+| Test | Sonuç |
+|---|---|
+| AYM `search_page("mülkiyet hakkı kamulaştırma")` | total=1279, ilk sonuç 2019/2890 ALİ KÖMÜRCÜ ✅ |
+| AYM `decision_type="norm_denetimi"` | total=1132, yalnız NormDenetimi ✅ |
+| AYM `get_document(uuid)` | **full_text, 85.200 karakter** (UDF'den) ✅ |
+| AYM `get_document("BB/2019/2890")` (legacy) | UUID'ye çözümlendi, full_text 85.200 kr ✅ |
+| HUDOC `dava_adi="Kavala"` | total=31, ENG/FRE satırları ✅ |
+| HUDOC `madde="10", ihlal="10"` + keywords | total=34 ✅ |
+| HUDOC `get_document("001-250895")` | html_markdown ✅ |
