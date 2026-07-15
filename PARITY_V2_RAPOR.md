@@ -108,3 +108,52 @@ sp = await ci.search_page("+tahliye +taahhüt +kira", limit=5, page=1)
 
 ---
 
+## Görev 3 — Yanıltıcı `metadata_only` mesajını düzelt
+
+**Durum:** ✅ Tamamlandı
+
+**Tarih:** 2026-07-15
+
+### Değişen dosyalar
+
+| Dosya | Değişiklik |
+|---|---|
+| `src/emsal_mcp/models.py` | `build_content_status_fields` fonksiyonunda `METADATA_ONLY` branch'i: Bedesten kaynaklı sonuçlar için yeni yönlendirme mesajı, diğer kaynaklar için eski uyarı korundu. |
+
+### Değişiklik detayı
+
+**Önce:**
+```
+METADATA_ONLY → "Bu kayıtta tam metin yok; dilekçede kullanmadan önce resmi kaynaktan doğrulayın."
+```
+
+**Sonra:**
+```
+METADATA_ONLY + source="bedesten" → "Arama sonucu özet niteliğindedir; tam metin için get_document(...) çağırın."
+METADATA_ONLY + diğer kaynaklar → (eski mesaj korunur)
+PDF_LINK_ONLY → (eski PDF mesajı korunur)
+FULL_TEXT / HTML_MARKDOWN → (mesaj yok, korunur)
+```
+
+`content_status` alanı `metadata_only` olarak kalır (yalan söylenmez); yalnızca `recommended_next_step` yönlendirmesi düzeltildi.
+
+### Test çıktısı özeti
+
+```
+pytest -x -q (tam suite)
+1696 passed, 1 warning
+```
+
+Regresyon yok.
+
+### Canlı doğrulama örneği
+
+| Test | Mesaj |
+|---|---|
+| Bedesten METADATA_ONLY | `Arama sonucu özet niteliğindedir; tam metin için get_document(source='bedesten', document_id='1060612000') çağırın.` ✅ |
+| KVKK METADATA_ONLY | `Bu kayıtta tam metin yok; dilekçede kullanmadan önce resmi kaynaktan doğrulayın.` (eski) ✅ |
+| PDF_LINK_ONLY | `Bu kayıt PDF bağlantısı içerir; ...` (eski) ✅ |
+| FULL_TEXT | `None` (mesaj yok) ✅ |
+
+---
+

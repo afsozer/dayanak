@@ -370,7 +370,19 @@ def build_content_status_fields(item: Any) -> dict[str, Any]:
     if status == ContentStatus.PDF_LINK_ONLY or (pdf_url and not full_text_available):
         next_step = "Bu kayıt PDF bağlantısı içerir; alıntı için PDF metni ayrıca doğrulanmalıdır."
     elif status == ContentStatus.METADATA_ONLY:
-        next_step = "Bu kayıtta tam metin yok; dilekçede kullanmadan önce resmi kaynaktan doğrulayın."
+        # Yargı-MCP parity Görev 3: Bedesten arama sonuçlarında metadata_only
+        # olması tam metnin olmadığı anlamına gelmez — get_document ile metin
+        # alınabilir.  Eski uyarı LLM'i kaynağı kullanmamaya itiyordu; artık
+        # yönlendirme get_document çağrısına işaret ediyor.
+        source = getattr(item, "source", "") or ""
+        doc_id = getattr(item, "document_id", "") or ""
+        if source == "bedesten":
+            next_step = (
+                "Arama sonucu özet niteliğindedir; tam metin için "
+                f"get_document(source='{source}', document_id='{doc_id}') çağırın."
+            )
+        else:
+            next_step = "Bu kayıtta tam metin yok; dilekçede kullanmadan önce resmi kaynaktan doğrulayın."
     elif status == ContentStatus.UNAVAILABLE:
         next_step = "Bu kaynak için okunabilir içerik alınamadı."
     return {
