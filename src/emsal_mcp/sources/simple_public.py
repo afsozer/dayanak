@@ -5,7 +5,7 @@ import re
 from urllib.parse import quote
 
 from .base import SourceClient, check_http_response, client, html_to_text, metadata_doc, sha
-from emsal_mcp.models import ContentStatus, Document, SearchResult, SourceSmokeResult, finalize_document
+from emsal_mcp.models import ContentStatus, Document, SearchPage, SearchResult, SourceSmokeResult, finalize_document
 
 
 def _clean(value) -> str:
@@ -356,6 +356,10 @@ class GibClient(SourceClient):
     }
 
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
+        sp = await self.search_page(query=query, limit=limit, page=filters.get("page", 1), **filters)
+        return sp.results
+
+    async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters) -> SearchPage:
         q = self._query_norm.get(query.lower().strip(), query)
         payload = {"status": 2, "deleted": False, "ktype": 99, "title": q, "kanunNo": q, "description": q}
         if filters.get("start_date"):
@@ -366,29 +370,26 @@ class GibClient(SourceClient):
             payload["ozelgeEndDate"] = filters["end_date"] + (
                 "T23:59:59.999Z" if "T" not in filters["end_date"] else ""
             )
+        upstream_page = max(0, int(page) - 1)  # 1-based → 0-based
         async with client() as c:
             r = await c.post(
                 f"{self.base}/gibportal/mevzuat/ozelge/list"
-                f"?page={int(filters.get('page', 1)) - 1}&size={limit}"
+                f"?page={upstream_page}&size={limit}"
                 f"&sortFieldName=ozelgeTarih&sortType=DESC",
                 json=payload,
             )
             check_http_response(r, self.source_id)
             data = r.json()
-        # M-60: schema validation
         _ = self._check_response_schema(data, self._search_response_keys, "search")
-        items = (
-            data.get("resultContainer", {}).get("content")
-            or data.get("content")
-            or data.get("data", {}).get("content")
-            or []
-        )
+        result_container = data.get("resultContainer", {})
+        total: int | None = result_container.get("totalElements")
+        total_pages: int | None = result_container.get("totalPages")
+        items = result_container.get("content") or data.get("content") or data.get("data", {}).get("content") or []
         out: list[SearchResult] = []
         for i in items[:limit]:
             if not i.get("id"):
                 continue
             title = i.get("title") or i.get("baslik") or "GİB özelge"
-            # Normalize: strip HTML from title if present
             title = html_to_text(title) if "<" in title else title
             out.append(SearchResult(
                 source=self.source_id,
@@ -403,7 +404,7 @@ class GibClient(SourceClient):
                 source_url=i.get("siteLink"),
                 content_status=ContentStatus.METADATA_ONLY, metadata=i,
             ))
-        return out
+        return SearchPage(results=out, total=total, page=page, page_size=limit, total_pages=total_pages)
 
     async def get_document(self, document_id: str, **kwargs) -> Document:
         payload = {"status": 2, "deleted": False, "ktype": 99, "id": int(document_id)}
@@ -450,6 +451,142 @@ class GibClient(SourceClient):
     async def smoke(self, online: bool = False) -> SourceSmokeResult:
         result = await super().smoke(online=online)
         result.min_content_length_ok = True
+        return result
+
+
+class BtkClient(SourceClient):
+    """BTK (Bilgi Teknolojileri ve İletişim Kurumu) Kurul Kararları.
+
+    Server-rendered HTML page at https://www.btk.gov.tr/kurul-kararlari.
+    Each page has ~11 decision cards with Karar No, Konu, Tarih, PDF link.
+    No server-side keyword search — local filter when query is provided.
+    """
+
+    source_id = "btk"
+    name = "BTK Kurul Kararları"
+    base = "https://www.btk.gov.tr"
+
+    _total_count: int | None = None
+
+    async def _fetch_page(self, query: str | None = None, page: int = 1) -> tuple[list[SearchResult], int | None]:
+        url = f"{self.base}/kurul-kararlari?page={page}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        async with client() as c:
+            r = await c.get(url, headers=headers)
+            check_http_response(r, self.source_id)
+            html = r.text
+
+        # BTK page has no total count — only pagination controls
+        total: int | None = None
+
+        # Parse decision cards
+        out: list[SearchResult] = []
+        for card_m in re.finditer(
+            r'<h3[^>]*class="[^"]*"[^>]*>([\s\S]*?)</h3>([\s\S]*?)</div></div></div>',
+            html, re.I
+        ):
+            title_html = card_m.group(1)
+            body = card_m.group(2)
+            title = html_to_text(re.sub(r'<[^>]+>', '', title_html)).strip()
+            if not title or title in ("Mevzuat", "Bilgi Teknolojileri ve İletişim Kurumu"):
+                continue
+
+            # Extract Karar tarihi ve no
+            kn_m = re.search(r'Karar tarihi ve no</span><span[^>]*>(.+?)</span>', body)
+            if not kn_m:
+                continue
+            kn_raw = html_to_text(kn_m.group(1)).strip()
+            date_part = kn_raw.split(" - ")[0].strip() if " - " in kn_raw else ""
+            karar_no = kn_raw.split(" - ")[1].strip() if " - " in kn_raw else kn_raw
+
+            # Yayım Tarihi
+            yt_m = re.search(r'Yayım Tarihi</span><span[^>]*>(.+?)</span>', body)
+            yayim_tarihi = html_to_text(yt_m.group(1)).strip() if yt_m else ""
+
+            # PDF link
+            pdf_m = re.search(r'href="([^"]+\.pdf)"', body)
+            pdf_url = pdf_m.group(1) if pdf_m else ""
+
+            doc_id = _url_id(pdf_url) if pdf_url else f"btk:{karar_no}"
+            decision_date = date_part.replace(".", "-").strip()
+
+            # Decoded card text for local query filter
+            card_text = f"{title} {karar_no} {date_part}"
+            if query:
+                decoded_card = html_to_text(card_text).lower()
+                if query.lower() not in decoded_card:
+                    continue
+
+            meta = {"kararNo": karar_no, "kararTarihi": date_part, "yayimTarihi": yayim_tarihi}
+            if pdf_url:
+                meta["pdfUrl"] = pdf_url
+            out.append(SearchResult(
+                source=self.source_id, document_id=doc_id,
+                title=title or f"BTK Kararı {karar_no}",
+                summary=f"Karar No: {karar_no}, Tarih: {date_part}",
+                court="Bilgi Teknolojileri ve İletişim Kurumu",
+                decision_date=decision_date,
+                karar_no=karar_no,
+                source_url=pdf_url or url,
+                content_status=ContentStatus.PDF_LINK_ONLY if pdf_url else ContentStatus.METADATA_ONLY,
+                metadata=meta,
+            ))
+        return out, total
+
+    async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
+        sp = await self.search_page(query=query, limit=limit, page=filters.get("page", 1), **filters)
+        return sp.results
+
+    async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters) -> SearchPage:
+        results, total = await self._fetch_page(query=query, page=page)
+        page_size = limit
+        total_pages: int | None = None
+        if total is not None and total > 0:
+            total_pages = max(1, (total + page_size - 1) // page_size)
+        return SearchPage(results=results[:limit], total=total, page=page, page_size=page_size, total_pages=total_pages)
+
+    async def get_document(self, document_id: str, **kwargs) -> Document:
+        """BTK karar metni — PDF indir -> metin çıkar."""
+        url = _decode_url_id(document_id) if document_id.startswith("url:") else document_id
+        if not url.startswith("http"):
+            url = f"{self.base}{url}" if url.startswith("/") else f"{self.base}/{url}"
+
+        try:
+            from .pdf_extractor import extract_pdf_text_from_bytes
+            async with client() as c:
+                r = await c.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                check_http_response(r, self.source_id)
+                pdf_bytes = r.content
+
+            result = extract_pdf_text_from_bytes(pdf_bytes) if pdf_bytes else {}
+            text = (result.get("text") or "") if isinstance(result, dict) else ""
+
+            if text.strip():
+                doc = Document(
+                    source=self.source_id, document_id=document_id,
+                    title=f"BTK Kararı", markdown=text, full_text=text,
+                    source_url=url, content_status=ContentStatus.HTML_MARKDOWN,
+                    content_hash=sha(text),
+                )
+                return finalize_document(doc)
+            else:
+                return Document(
+                    source=self.source_id, document_id=document_id,
+                    title="BTK Kararı (PDF)", source_url=url,
+                    content_status=ContentStatus.PDF_LINK_ONLY,
+                    metadata={"pdfUrl": url},
+                )
+        except Exception:
+            return Document(
+                source=self.source_id, document_id=document_id,
+                title="BTK Kararı (erişilemedi)",
+                content_status=ContentStatus.UNAVAILABLE,
+                metadata={"error": "fetch_or_parse_failure"},
+            )
+
+    async def smoke(self, online: bool = False) -> SourceSmokeResult:
+        result = await super().smoke(online=online)
+        result.warnings.append("BTK HTML card scraping; may break on site redesign.")
         return result
 
 
@@ -596,21 +733,37 @@ class RekabetClient(SourceClient):
     base = "https://www.rekabet.gov.tr"
 
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
+        sp = await self.search_page(query=query, limit=limit, page=filters.get("page", 1), **filters)
+        return sp.results
+
+    async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters) -> SearchPage:
         try:
             async with client() as c:
                 r = await c.get(f"{self.base}/tr/Kararlar?PdfText={quote(query)}")
                 check_http_response(r, self.source_id)
                 html = r.text
         except Exception:
-            return [SearchResult(
-                source=self.source_id, document_id="unavailable:rekabet",
-                title="Rekabet Kurumu araması kullanılamıyor",
-                summary="HTML scraping başarısız oldu.",
-                court="Rekabet Kurumu",
-                content_status=ContentStatus.UNAVAILABLE,
-                metadata={"error": "parser_failure"},
-            )][:1]
-        out = []
+            return SearchPage(results=[
+                SearchResult(
+                    source=self.source_id, document_id="unavailable:rekabet",
+                    title="Rekabet Kurumu araması kullanılamıyor",
+                    summary="HTML scraping başarısız oldu.",
+                    court="Rekabet Kurumu",
+                    content_status=ContentStatus.UNAVAILABLE,
+                    metadata={"error": "parser_failure"},
+                )
+            ], total=None, page=page, page_size=limit)
+
+        # Extract total from HTML
+        total: int | None = None
+        tm = re.search(r'Toplam\s*:\s*(\d+)', html, re.I)
+        if tm:
+            total = int(tm.group(1))
+        total_pages: int | None = None
+        if total is not None and total > 0:
+            total_pages = max(1, (total + limit - 1) // limit)
+
+        out: list[SearchResult] = []
         for table in re.findall(r"<table[^>]*equalDivide[\s\S]*?</table>", html, re.I):
             kid = (re.search(r"kararId=([^\"'\s&]+)", table, re.I) or [None, None])[1]
             if not kid:
@@ -632,7 +785,7 @@ class RekabetClient(SourceClient):
             ))
             if len(out) >= limit:
                 break
-        return out
+        return SearchPage(results=out, total=total, page=page, page_size=limit, total_pages=total_pages)
 
     async def get_document(self, document_id: str, **kwargs) -> Document:
         url = f"{self.base}/Karar?kararId={quote(document_id)}"
@@ -644,6 +797,23 @@ class RekabetClient(SourceClient):
             text = html_to_text(html)
             pdf = (re.search(r'href=["\']([^"\']+\.pdf[^"\']*)', html, re.I) or [None, None])[1]
             warnings: list[str] = []
+
+            # If PDF link exists, attempt PDF text extraction
+            if pdf and len(text.strip()) < 200:
+                pdf_url = pdf if pdf.startswith("http") else f"{self.base}/{pdf.lstrip('/')}"
+                try:
+                    async with client() as c:
+                        r2 = await c.get(pdf_url)
+                        r2_bytes = r2.content
+                    from .pdf_extractor import extract_pdf_text_from_bytes
+                    pdf_result = extract_pdf_text_from_bytes(r2_bytes) if r2_bytes else {}
+                    pdf_text = (pdf_result.get("text") or "") if isinstance(pdf_result, dict) else ""
+                    if pdf_text.strip():
+                        text = pdf_text
+                        warnings.append("PDF metni başarıyla çıkarıldı.")
+                except Exception:
+                    warnings.append("PDF çıkarımı başarısız; HTML metin kullanıldı.")
+
             status = ContentStatus.HTML_MARKDOWN
             if len(text.strip()) < 50:
                 warnings.append("Rekabet parsed content too short; falling back to metadata_only.")
@@ -657,7 +827,7 @@ class RekabetClient(SourceClient):
                 full_text=text if status == ContentStatus.HTML_MARKDOWN else None,
                 content_status=status if text else ContentStatus.PDF_LINK_ONLY,
                 content_hash=sha(text) if text and status == ContentStatus.HTML_MARKDOWN else None,
-                raw=html, metadata={"pdfUrl": pdf},
+                raw=html, metadata={"pdfUrl": pdf} if pdf else {},
             )
             return finalize_document(doc, warnings)
         except Exception:

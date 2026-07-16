@@ -507,6 +507,8 @@ def main() -> None:
                 - ``'bedesten'`` (default) — combined Yargıtay + Danıştay sweep
                 - ``'aihm'`` — AİHM/ECHR via HUDOC (EXPERIMENTAL; search API
                   currently unavailable — returns empty; get_document works)
+                - ``'btk'`` — BTK Kurul Kararları (PARTIAL; HTML card scraping
+                  with PDF download for full text)
             query: Search query string (optional when filtering by docket no /
                 chamber / date). For best results, craft a short 2–5 term
                 keyword query using the operators above.

@@ -344,6 +344,66 @@ Regresyon yok.
 
 ---
 
+## Görev 8 — Kurum kaynakları (8a GİB, 8b BTK, 8c Rekabet)
+
+**Durum:** 8a ✅, 8b ✅, 8c ✅ (8d: Beklemede)
+
+**Tarih:** 2026-07-16
+
+### 8a — GİB özelge (mevcut adaptörü olgunlaştır)
+
+**Değişen dosya:** `simple_public.py` — `GibClient`
+
+**Yapılanlar:**
+- `search_page()` override eklendi: `resultContainer.totalElements` (7736) ve `resultContainer.totalPages` alanlarını okur
+- `search()` → `search_page()`'e yönlendirildi (backward compat)
+- Upstream page parametresi 0-tabanlı (adaptör 1-tabanlı alıp `-1` yapıyor) doğrulandı
+
+**Canlı doğrulama:** `search_page("KDV", limit=3)` → total=7736, total_pages=2579, 3 sonuç ✅
+
+### 8b — BTK kurul kararları (YENİ adaptör)
+
+**Değişen dosya:** `simple_public.py` — YENİ `BtkClient`, `registry.py`, `server.py` docstring, test dosyaları
+
+**Upstream gözlem:**
+- `GET https://www.btk.gov.tr/kurul-kararlari?page=N` → ~540 KB sunucu-render HTML
+- Her sayfada ~11 karar kartı (`<h3>` başlık + `Karar tarihi ve no` + `Yayım Tarihi` + PDF linki)
+- Sayfalama `?page=N` (1-tabanlı) ile çalışıyor
+- Toplam sonuç sayısı HTML'de yok (sadece sayfa/sayfa bilgisi)
+- Sunucu tarafı keyword araması yok; adaptör lokal `query` filtresi uygular
+
+**Yapılanlar:**
+- `BtkClient(SourceClient)`: `search()`, `search_page()` (total=None), `get_document()` (PDF indir → `extract_pdf_text_from_bytes`)
+- `document_id` → PDF url'si `_url_id()` ile base64-kodlu
+- `content_status`: `PDF_LINK_ONLY` (PDF henüz indirilmemişse) / `HTML_MARKDOWN` (PDF metni çıkarıldıysa)
+- Registry: `PARTIAL` statü
+- Local query filtresi: HTML entity decode edilmiş kart metni üzerinde
+
+**Canlı doğrulama:** `search_page("")` → 11 kart; `search("Türk Telekom")` → 1 sonuç ✅
+
+### 8c — Rekabet Kurumu (mevcut scraper'ı sağlamlaştır)
+
+**Değişen dosya:** `simple_public.py` — `RekabetClient`
+
+**Yapılanlar:**
+- `search_page()` override: sayfadaki `Toplam : N` metninden total yakalanır (N=10283); `total_pages` hesaplanır
+- `search()` → `search_page()`'e yönlendirildi (backward compat)
+- `get_document()`: PDF linki varsa → `extract_pdf_text_from_bytes` ile PDF metni çıkarımı; başarısızsa eski HTML davranışı korunur
+- Hata durumunda hata sınıfı `metadata["error"]`'a yazılır
+
+**Canlı doğrulama:** `search_page("hakim durumun kötüye kullanılması")` → total=10283 ✅
+
+### Toplam test
+
+```
+pytest -x -q (tam suite)
+1714 passed, 1 warning
+```
+
+Regresyon yok. 12 yeni test (btk source kaydı + capability kontratı).
+
+---
+
 ## Görev 5b + 7b — G5/G7 açıklarının kapatılması (Claude, denetleyici tarafından)
 
 **Durum:** ✅ Tamamlandı — AİHM araması ve AYM arama+tam metin artık canlı çalışıyor

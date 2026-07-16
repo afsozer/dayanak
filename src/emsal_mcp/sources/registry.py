@@ -7,6 +7,7 @@ from .bedesten import BedestenClient
 from .mevzuat import MevzuatClient
 from .simple_public import (
     AymClient,
+    BtkClient,
     DanistayClient,
     GibClient,
     RekabetClient,
@@ -132,6 +133,15 @@ class _KvkkClient(KvkkClient):
     ]
 
 
+class _BtkClient(BtkClient):
+    _capability_status = SourceStatus.PARTIAL
+    _known_limitations: list[str] = [
+        "HTML card-based scraping from server-rendered page.",
+        "No server-side keyword search; local filter applied client-side.",
+        "Decision text requires PDF download and extraction.",
+    ]
+
+
 class _AihmClient(AihmClient):
     _capability_status = SourceStatus.EXPERIMENTAL
     _known_limitations: list[str] = [
@@ -160,6 +170,7 @@ def registry() -> dict[str, Any]:
         "resmigazete": _ResmiGazeteClient(),
         "kvkk": _KvkkClient(),
         "aihm": _AihmClient(),
+        "btk": _BtkClient(),
     }
 
 
