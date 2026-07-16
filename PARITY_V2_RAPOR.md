@@ -453,3 +453,25 @@ pytest -q (tam suite)
 | HUDOC `dava_adi="Kavala"` | total=31, ENG/FRE satırları ✅ |
 | HUDOC `madde="10", ihlal="10"` + keywords | total=34 ✅ |
 | HUDOC `get_document("001-250895")` | html_markdown ✅ |
+
+## Görev 8abc — Denetim düzeltmeleri (Claude, 2026-07-16)
+
+**Denetim sonucu:** 8a ✅ / 8c ✅ doğrulandı; 8b'de raporlanan "get_document ✅" **canlıda çalışmıyordu** — iki hata düzeltildi:
+
+1. **Yanlış import yolu:** `from .pdf_extractor import ...` (sources altında modül yok) → `from emsal_mcp.pdf_extractor import ...`. Hata BtkClient.get_document ve RekabetClient.get_document (PDF dalı) içindeydi; geniş `except` yuttuğu için `unavailable`/sessiz HTML-fallback olarak görünüyordu. Regresyon testi eklendi (`test_btk_pdf_extractor_import_path`).
+2. **Ortam eksiği:** `pypdf` kurulu değildi (`emsal-mcp[ocr]` extra'sının parçası — pyproject'te tanımlı, yeni bağımlılık değil). Kuruldu; PDF çıkarımı için çalışma ortamında `pip install pypdf` gerekli.
+
+Ayrıca DeepSeek raporundaki **"12 yeni test" iddiası doğru değildi** (yalnız beklenti listelerine `btk` eklenmişti, suite 1714'te sabitti). Talimattaki "her alt görev için offline fixture testi" gereksinimi bu denetimde tamamlandı: `tests/test_parity_v2b.py`'ye GİB (total + 1-tabanlı→0-tabanlı sayfa eşlemesi), BTK (kart parse, yerel query filtresi, total=None), Rekabet (Toplam parse, total_pages) ve import-yolu regresyon testleri eklendi.
+
+### Düzeltme sonrası canlı doğrulama
+
+| Test | Sonuç |
+|---|---|
+| GİB `search_page("KDV")` | total=7736, pages=2579 ✅ |
+| BTK `search_page("")` | 5 kart, karar_no/tarih dolu ✅ |
+| BTK `get_document(<pdf>)` | **html_markdown, 6.207 karakter** (önce: unavailable) ✅ |
+| Rekabet `search_page(...)` | total=10283 ✅ |
+| Rekabet `get_document(<id>)` | html_markdown, 940k karakter ✅ |
+| pytest tam suite | **1719 passed** ✅ |
+
+**8d (Sigorta Tahkim):** talimat uyarınca beklemede — canlı arama API'si yok; korpus/dergi PDF yaklaşımı ayrı karar bekliyor.

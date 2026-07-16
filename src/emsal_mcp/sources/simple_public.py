@@ -552,7 +552,7 @@ class BtkClient(SourceClient):
             url = f"{self.base}{url}" if url.startswith("/") else f"{self.base}/{url}"
 
         try:
-            from .pdf_extractor import extract_pdf_text_from_bytes
+            from emsal_mcp.pdf_extractor import extract_pdf_text_from_bytes
             async with client() as c:
                 r = await c.get(url, headers={"User-Agent": "Mozilla/5.0"})
                 check_http_response(r, self.source_id)
@@ -576,12 +576,12 @@ class BtkClient(SourceClient):
                     content_status=ContentStatus.PDF_LINK_ONLY,
                     metadata={"pdfUrl": url},
                 )
-        except Exception:
+        except Exception as exc:
             return Document(
                 source=self.source_id, document_id=document_id,
                 title="BTK Kararı (erişilemedi)",
                 content_status=ContentStatus.UNAVAILABLE,
-                metadata={"error": "fetch_or_parse_failure"},
+                metadata={"error": f"{type(exc).__name__}: {exc}"},
             )
 
     async def smoke(self, online: bool = False) -> SourceSmokeResult:
@@ -805,14 +805,14 @@ class RekabetClient(SourceClient):
                     async with client() as c:
                         r2 = await c.get(pdf_url)
                         r2_bytes = r2.content
-                    from .pdf_extractor import extract_pdf_text_from_bytes
+                    from emsal_mcp.pdf_extractor import extract_pdf_text_from_bytes
                     pdf_result = extract_pdf_text_from_bytes(r2_bytes) if r2_bytes else {}
                     pdf_text = (pdf_result.get("text") or "") if isinstance(pdf_result, dict) else ""
                     if pdf_text.strip():
                         text = pdf_text
                         warnings.append("PDF metni başarıyla çıkarıldı.")
-                except Exception:
-                    warnings.append("PDF çıkarımı başarısız; HTML metin kullanıldı.")
+                except Exception as exc:
+                    warnings.append(f"PDF çıkarımı başarısız ({type(exc).__name__}); HTML metin kullanıldı.")
 
             status = ContentStatus.HTML_MARKDOWN
             if len(text.strip()) < 50:
