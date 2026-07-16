@@ -124,7 +124,7 @@ _LEGACY_ABSORBED: set[str] = {
     "read_udf", "write_udf", "extract_pdf_text",
     "source_capabilities", "list_birim_codes", "get_legislation_types",
     "convert_udf_to_docx_tool", "convert_udf_to_pdf_tool",
-    "convert_docx_to_udf_experimental_tool",
+    "convert_docx_to_udf",
     "export_bundle",
     "get_export_capabilities",
     "legislation_source_status",
@@ -171,7 +171,7 @@ _LEGACY_CATEGORIES: dict[str, str] = {
     "extract_pdf_text": "udf_admin",
     "convert_udf_to_docx_tool": "udf_admin",
     "convert_udf_to_pdf_tool": "udf_admin",
-    "convert_docx_to_udf_experimental_tool": "udf_admin",
+    "convert_docx_to_udf": "udf_admin",
     # Absorbed by list_sources
     "source_capabilities": "discovery",
     "list_birim_codes": "discovery",

@@ -166,20 +166,20 @@ class TestExportToFormat:
         else:
             assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
 
-    def test_udf_without_experimental(self, tmp_path):
+    def test_udf_no_flag_needed(self, tmp_path):
+        """UDF export works out of the box via the native converter."""
         draft = _make_draft_file(tmp_path)
         result = export_to_format(draft, format="udf")
-        assert result["ok"] is False
-        assert result["errorCode"] == "EXPERIMENTAL_REQUIRED"
+        assert result["ok"] is True
+        assert result["out_path"].endswith(".udf")
 
-    def test_udf_no_toolkit(self, tmp_path):
+    def test_udf_honors_out_path(self, tmp_path):
         draft = _make_draft_file(tmp_path)
-        result = export_to_format(draft, format="udf", experimental=True)
-        # In CI, no LibreOffice → structured error
-        if result.get("ok"):
-            assert "udf" in result.get("out_path", "").lower() or "ok" in result
-        else:
-            assert result["errorCode"] in ("TOOLKIT_UNAVAILABLE", "CONVERSION_FAILED")
+        out = tmp_path / "custom.udf"
+        result = export_to_format(draft, format="udf", out_path=out)
+        assert result["ok"] is True
+        assert result["out_path"] == str(out)
+        assert out.exists()
 
     def test_invalid_format(self, tmp_path):
         draft = _make_draft_file(tmp_path)
@@ -237,10 +237,11 @@ class TestExportCapabilities:
         # availability depends on environment
         assert isinstance(pdf["available"], bool)
 
-    def test_udf_requires_toolkit(self):
+    def test_udf_always_available(self):
         result = get_export_capabilities()
         udf = next(f for f in result["formats"] if f["format"] == "udf")
-        assert udf["requires_toolkit"] is True
+        assert udf["requires_toolkit"] is False
+        assert udf["available"] is True
 
 
 # ── CLI / MCP import tests ──────────────────────────────────────────────────

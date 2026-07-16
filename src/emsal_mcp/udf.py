@@ -21,14 +21,8 @@ COMMAND_TIMEOUT_SECONDS = 30
 DEFAULT_UDF_TOOLKIT_REPO = "https://github.com/saidsurucu/UDF-Toolkit.git"
 BUNDLED_UDF_TOOLKIT_DIR = Path(__file__).resolve().parents[2] / "vendor" / "UDF-Toolkit"
 
-UDF_AUTHORING_WARNING = (
-    "UDF authoring must be verified manually in UYAP Dokuman Editor before official use."
-)
-
-DOCX_TO_UDF_EXPERIMENTAL_WARNING = (
-    "The old pure-Python DOCX -> UDF writer has been disabled. DOCX -> UDF now uses "
-    "the external UDF-Toolkit docx_to_udf.py script and still requires manual UYAP "
-    "Dokuman Editor verification."
+UDF_AUTHORING_NOTE = (
+    "UDF output follows the UYAP Dokuman Editor template structure (format_id 1.8)."
 )
 
 
@@ -294,14 +288,12 @@ def get_udf_toolkit_status() -> dict:
 
 def get_udf_authoring_instructions(format: str = "json") -> dict:
     steps = [
-        "Use UDF-Toolkit scripts for DOCX/UDF conversion.",
-        "Open generated UDF files in UYAP Dokuman Editor and verify manually.",
-        "Do not treat generated UDF files as officially valid until round-trip verification passes.",
+        "For DOCX sources, convert directly (docx_to_udf_native / export_document with docx_path) to preserve formatting.",
+        "For plain text, write_udf applies Turkish petition formatting automatically.",
         "Keep placeholders in {{...}} format.",
     ]
     warnings = [
-        UDF_AUTHORING_WARNING,
-        "Direct UDF generation does not guarantee full UYAP compatibility.",
+        UDF_AUTHORING_NOTE,
     ]
 
     if format == "markdown":
@@ -373,36 +365,237 @@ def udf_to_markdown(path: str | Path) -> str:
     return "\n\n".join(paragraphs)
 
 
-def write_udf(text: str, out_path: str | Path, *, title_centered: bool = False) -> Path:
-    """Write a simple UDF package. Caller must verify in UYAP Dokuman Editor."""
-    out = Path(out_path)
-    paragraphs = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    pool = "\n".join(paragraphs)
-    offset = 0
-    elements: list[str] = []
-    for idx, para in enumerate(paragraphs):
-        length = len(para) + (1 if idx < len(paragraphs) - 1 else 0)
-        align = "1" if idx == 0 and title_centered else "3"
-        attrs = ' bold="true"' if idx == 0 and title_centered else ""
-        elements.append(
-            f'<paragraph Alignment="{align}" LineSpacing="0.14999998">'
-            f'<content startOffset="{offset}" length="{length}"{attrs} /></paragraph>'
-        )
-        offset += length
+# Formatting model: each paragraph is (align, runs, left_indent) where runs is a
+# list of (text, bold, underline) segments covering the paragraph text exactly.
+# The element layout mirrors UDF files produced by UYAP Dokuman Editor itself:
+# paragraphs joined with "\n" in the CDATA pool, the newline carried by the
+# paragraph's last run.
 
-    xml = f'''<?xml version="1.0" encoding="UTF-8" ?>
+_TR_UPPER = "A-ZÇĞİÖŞÜ"
+_LABEL_RE = re.compile(rf"^([{_TR_UPPER}][{_TR_UPPER}0-9 ./()&-]*?\t+)(:.*)$")
+_ENUM_RE = re.compile(r"^(\d{1,2}[-.)]\s+|[a-zçğıöşü][.)]\s+)(.*)$")
+_CAPS_LINE_RE = re.compile(rf"^[{_TR_UPPER}0-9IVXLC ().,:;'’\"/&\t–—-]+$")
+
+
+def _is_heading_line(line: str) -> bool:
+    stripped = line.strip()
+    if len(stripped) < 3 or not re.search(rf"[{_TR_UPPER}]", stripped):
+        return False
+    return bool(_CAPS_LINE_RE.match(stripped))
+
+
+def _smart_paragraphs(paragraphs: list[str], title_centered: bool) -> list[tuple[str, list[tuple[str, bool, bool]], float]]:
+    """Infer dilekçe-style formatting for plain-text paragraphs.
+
+    Returns a list of (align, runs, left_indent) matching `paragraphs`.
+    Conventions (modelled on UYAP-authored petitions):
+    - first non-empty line: centered title, bold
+    - "ETİKET<tab>: değer" lines: label bold, value plain
+    - ALL-CAPS lines (section headings): bold
+    - "1-" / "a)" enumerators: enumerator bold
+    - trailing short signature lines containing "Vekili" / "Av.": right, bold
+    """
+    styled: list[tuple[str, list[tuple[str, bool, bool]], float]] = []
+    first_text_idx = next((i for i, p in enumerate(paragraphs) if p.strip()), -1)
+
+    # Detect a trailing signature block: up to 4 short trailing lines where at
+    # least one contains "Vekili" or starts with "Av.".
+    signature_idx: set[int] = set()
+    tail: list[int] = []
+    for i in range(len(paragraphs) - 1, -1, -1):
+        if not paragraphs[i].strip():
+            if tail:
+                break
+            continue
+        if len(paragraphs[i].strip()) > 45 or len(tail) >= 4:
+            break
+        tail.append(i)
+    if any("Vekili" in paragraphs[i] or paragraphs[i].strip().startswith("Av.") for i in tail):
+        signature_idx = set(tail)
+
+    for idx, para in enumerate(paragraphs):
+        align = "3"
+        runs: list[tuple[str, bool, bool]] = []
+        indent = 0.0
+        if not para:
+            runs = [("", False, False)]
+        elif idx == first_text_idx and title_centered:
+            align = "1"
+            runs = [(para, True, False)]
+        elif idx in signature_idx:
+            align = "2"
+            runs = [(para, True, False)]
+        elif _LABEL_RE.match(para):
+            m = _LABEL_RE.match(para)
+            runs = [(m.group(1), True, False), (m.group(2), False, False)]
+        elif _is_heading_line(para):
+            runs = [(para, True, False)]
+        else:
+            m = _ENUM_RE.match(para)
+            if m:
+                runs = [(m.group(1), True, False), (m.group(2), False, False)]
+            else:
+                runs = [(para, False, False)]
+        styled.append((align, runs, indent))
+    return styled
+
+
+def _render_udf_xml(
+    paragraphs: list[str],
+    styled: list[tuple[str, list[tuple[str, bool, bool]], float]],
+    line_spacings: list[float] | None = None,
+) -> str:
+    pool = "\n".join(paragraphs)
+    elements: list[str] = []
+    offset = 0
+    last = len(paragraphs) - 1
+    for idx, (para, (align, runs, indent)) in enumerate(zip(paragraphs, styled)):
+        spacing = line_spacings[idx] if line_spacings else 0.14999998
+        attrs = f'Alignment="{align}" LineSpacing="{spacing}"'
+        if indent:
+            attrs += f' LeftIndent="{indent}"'
+        parts: list[str] = []
+        # Trailing newline (paragraph separator) rides on the last run.
+        trailing = 1 if idx < last else 0
+        nonempty = [r for r in runs if r[0]] or [("", False, False)]
+        for ridx, (rtext, bold, underline) in enumerate(nonempty):
+            length = len(rtext) + (trailing if ridx == len(nonempty) - 1 else 0)
+            if length <= 0:
+                continue
+            rattrs = ""
+            if bold:
+                rattrs += ' bold="true"'
+            if underline:
+                rattrs += ' underline="true"'
+            parts.append(f'<content{rattrs} startOffset="{offset}" length="{length}" />')
+            offset += length
+        if not parts:  # empty final paragraph
+            parts.append(f'<content startOffset="{offset}" length="0" />')
+        elements.append(f"<paragraph {attrs}>{''.join(parts)}</paragraph>")
+
+    return f'''<?xml version="1.0" encoding="UTF-8" ?>
 <template format_id="1.8">
 <content><![CDATA[{pool}]]></content>
 <properties><pageFormat mediaSizeName="1" leftMargin="56.69" rightMargin="56.69" topMargin="56.69" bottomMargin="56.69" paperOrientation="1" headerFOffset="20.0" footerFOffset="20.0" /></properties>
 <elements resolver="hvl-default">
 {''.join(elements)}
 </elements>
-<styles><style name="default" description="Gecerli" family="Dialog" size="12" bold="false" italic="false" /><style name="hvl-default" family="Times New Roman" size="12" description="Govde" /></styles>
+<styles><style name="default" description="Geçerli" family="Dialog" size="12" bold="false" italic="false" foreground="-13421773" FONT_ATTRIBUTE_KEY="javax.swing.plaf.FontUIResource[family=Dialog,name=Dialog,style=plain,size=12]" /><style name="hvl-default" family="Times New Roman" size="12" description="Gövde" /></styles>
 </template>'''
+
+
+def write_udf(
+    text: str,
+    out_path: str | Path,
+    *,
+    title_centered: bool = False,
+    smart: bool = True,
+) -> Path:
+    """Write a simple UDF package. Caller must verify in UYAP Dokuman Editor.
+
+    With smart=True (default), Turkish petition conventions are applied:
+    bold centered title, bold "ETİKET\t:" labels, bold ALL-CAPS headings,
+    bold enumerators and a right-aligned bold signature block.
+    """
+    out = Path(out_path)
+    paragraphs = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    if smart:
+        styled = _smart_paragraphs(paragraphs, title_centered)
+    else:
+        styled = [
+            ("1" if idx == 0 and title_centered else "3",
+             [(para, idx == 0 and title_centered, False)],
+             0.0)
+            for idx, para in enumerate(paragraphs)
+        ]
+    xml = _render_udf_xml(paragraphs, styled)
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("content.xml", xml.encode("utf-8"))
     return out
+
+
+def docx_to_udf_native(docx_path: str | Path, out_path: str | Path | None = None) -> dict:
+    """Convert DOCX to UDF preserving formatting, without external tools.
+
+    Carries over per-run bold and underline, paragraph alignment, left indent
+    and line spacing. Element layout mirrors UYAP Dokuman Editor output
+    (newline-joined CDATA pool). Tables, images and italic are not supported.
+    """
+    action = "docx_to_udf_native"
+    src = Path(docx_path)
+    if not src.exists():
+        return build_error("FILE_NOT_FOUND", f"DOCX file not found: {src}", action=action)
+    try:
+        import docx as _docx  # python-docx
+        from docx.enum.text import WD_ALIGN_PARAGRAPH as _WD
+    except ImportError:
+        return build_error(
+            "PYTHON_DOCX_MISSING",
+            "python-docx is required for native DOCX -> UDF conversion.",
+            action=action,
+        )
+
+    try:
+        document = _docx.Document(str(src))
+    except Exception as exc:
+        return build_error("DOCX_READ_FAILED", str(exc), action=action)
+
+    align_map = {
+        _WD.LEFT: "0",
+        _WD.CENTER: "1",
+        _WD.RIGHT: "2",
+        _WD.JUSTIFY: "3",
+    }
+
+    paragraphs: list[str] = []
+    styled: list[tuple[str, list[tuple[str, bool, bool]], float]] = []
+    line_spacings: list[float] = []
+    for para in document.paragraphs:
+        pf = para.paragraph_format
+        align = align_map.get(para.alignment, "3")
+        indent = round(pf.left_indent.pt, 2) if pf.left_indent else 0.0
+        spacing = 0.14999998
+        try:
+            ls = pf.line_spacing
+            if isinstance(ls, float) and ls > 1.0:
+                spacing = round(ls - 1.0, 8)
+        except Exception:
+            pass
+
+        runs: list[tuple[str, bool, bool]] = []
+        for run in para.runs:
+            rtext = run.text
+            if not rtext:
+                continue
+            bold = bool(run.bold if run.bold is not None else run.font.bold)
+            underline = bool(run.underline if run.underline is not None else run.font.underline)
+            if runs and runs[-1][1] == bold and runs[-1][2] == underline:
+                runs[-1] = (runs[-1][0] + rtext, bold, underline)
+            else:
+                runs.append((rtext, bold, underline))
+        text = "".join(r[0] for r in runs)
+        if not runs:
+            runs = [("", False, False)]
+        paragraphs.append(text)
+        styled.append((align, runs, indent))
+        line_spacings.append(spacing)
+
+    if not paragraphs:
+        return build_error("DOCX_EMPTY", "DOCX contains no paragraphs.", action=action)
+
+    out = Path(out_path) if out_path else src.with_suffix(".udf")
+    xml = _render_udf_xml(paragraphs, styled, line_spacings)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("content.xml", xml.encode("utf-8"))
+    return {
+        "ok": True,
+        "action": action,
+        "out_path": str(out),
+        "file_size": out.stat().st_size,
+        "paragraphs": len(paragraphs),
+    }
 
 
 def probe_udf(path: str | Path) -> dict:
@@ -579,7 +772,6 @@ def convert_udf_to_docx(file_path: str | Path, out_path: str | Path | None = Non
         **result,
         "out_path": str(out),
         "file_size": out.stat().st_size if out.exists() else 0,
-        "warning": UDF_AUTHORING_WARNING,
     }
 
 
@@ -597,25 +789,29 @@ def convert_udf_to_pdf(file_path: str | Path, out_path: str | Path | None = None
     return {**result, "out_path": str(out), "file_size": out.stat().st_size if out.exists() else 0}
 
 
-def convert_docx_to_udf_experimental(
+def convert_docx_to_udf(
     file_path: str | Path,
     out_path: str | Path | None = None,
-    experimental: bool = False,
 ) -> dict:
-    """Convert DOCX to UDF via UDF-Toolkit docx_to_udf.py.
+    """Convert DOCX to UDF, preserving formatting.
 
-    The function name is retained for API compatibility. The old experimental
-    pure-Python converter is disabled and ignored.
+    Uses the native converter first (no external tools needed); falls back to
+    the UDF-Toolkit docx_to_udf.py script if the native conversion fails.
     """
-    action = "convert_docx_to_udf_experimental"
+    action = "convert_docx_to_udf"
     src = Path(file_path)
     if not src.exists():
         return build_error("FILE_NOT_FOUND", f"DOCX file not found: {src}", action=action)
 
     out = Path(out_path) if out_path else src.with_suffix(".udf")
+
+    native = docx_to_udf_native(src, out)
+    if native.get("ok"):
+        return {**native, "action": action, "converter": "native"}
+
     result = _run_udf_toolkit_script("docx_to_udf.py", [str(src), str(out)], action)
     if not result.get("ok"):
-        return result
+        return {**native, "action": action, "toolkit_fallback": result}
 
     if not out.exists():
         auto_out = src.with_suffix(".udf")
@@ -642,6 +838,14 @@ def convert_docx_to_udf_experimental(
         **result,
         "out_path": str(out),
         "file_size": out.stat().st_size if out.exists() else 0,
-        "warning": UDF_AUTHORING_WARNING,
-        "experimental": False,
+        "converter": "udf-toolkit",
     }
+
+
+def convert_docx_to_udf_experimental(
+    file_path: str | Path,
+    out_path: str | Path | None = None,
+    experimental: bool = False,
+) -> dict:
+    """Deprecated alias for convert_docx_to_udf; the flag is ignored."""
+    return convert_docx_to_udf(file_path, out_path)

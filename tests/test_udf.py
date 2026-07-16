@@ -9,10 +9,10 @@ pytestmark = [pytest.mark.integration]
 
 import emsal_mcp.udf as udf_mod
 from emsal_mcp.udf import (
-    UDF_AUTHORING_WARNING,
+    UDF_AUTHORING_NOTE,
     UDF_TOOLKIT_VERSION,
     UdfError,
-    convert_docx_to_udf_experimental,
+    convert_docx_to_udf,
     convert_udf_to_docx,
     convert_udf_to_pdf,
     get_udf_authoring_instructions,
@@ -191,7 +191,7 @@ class TestAuthoringInstructions:
         assert isinstance(result["steps"], list)
         assert len(result["steps"]) > 0
         assert "warnings" in result
-        assert UDF_AUTHORING_WARNING in result["warnings"]
+        assert UDF_AUTHORING_NOTE in result["warnings"]
         assert result["version"] == UDF_TOOLKIT_VERSION
         assert "toolkit_status" in result
 
@@ -203,16 +203,16 @@ class TestAuthoringInstructions:
         assert "## Steps" in result["instructions"]
         assert "## Warnings" in result["instructions"]
         assert "warnings" in result
-        assert UDF_AUTHORING_WARNING in result["warnings"]
+        assert UDF_AUTHORING_NOTE in result["warnings"]
         assert result["version"] == UDF_TOOLKIT_VERSION
 
     def test_default_format_is_json(self):
         result = get_udf_authoring_instructions()
         assert result["format"] == "json"
 
-    def test_json_contains_all_warnings(self):
+    def test_json_contains_note(self):
         result = get_udf_authoring_instructions(format="json")
-        assert len(result["warnings"]) >= 2
+        assert len(result["warnings"]) >= 1
 
 
 # ── Safe wrapper: convert_udf_to_docx ────────────────────────────────────────
@@ -278,27 +278,36 @@ class TestConvertUdfToPdf:
         assert "action" in result
 
 
-# ── Safe wrapper: convert_docx_to_udf_experimental ───────────────────────────
+# ── convert_docx_to_udf (native-first, toolkit fallback) ─────────────────────
 
 
-class TestConvertDocxToUdfExperimental:
-    def test_no_longer_requires_experimental_flag_but_requires_toolkit(self, tmp_path):
+class TestConvertDocxToUdf:
+    def test_invalid_docx_returns_native_error(self, tmp_path):
+        """A non-DOCX fails the native converter; error surfaces when fallback also fails."""
         path = tmp_path / "test.docx"
         path.write_bytes(b"fake docx")
-        result = convert_docx_to_udf_experimental(path, experimental=False)
+        result = convert_docx_to_udf(path)
         assert result["ok"] is False
-        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
+        assert result["errorCode"] == "DOCX_READ_FAILED"
 
-    def test_invalid_docx_is_delegated_to_toolkit(self, tmp_path):
-        """A non-DOCX is no longer parsed locally; UDF-Toolkit owns validation."""
-        path = tmp_path / "test.docx"
-        path.write_bytes(b"fake docx")
-        result = convert_docx_to_udf_experimental(path, experimental=True)
-        assert result["ok"] is False
-        assert result["errorCode"] == "TOOLKIT_UNAVAILABLE"
+    def test_native_converts_real_docx(self, tmp_path):
+        """A real DOCX converts natively — no toolkit involved."""
+        import docx as docx_lib
 
-    def test_converts_with_toolkit_script(self, tmp_path, monkeypatch):
-        """DOCX -> UDF is delegated to UDF-Toolkit docx_to_udf.py."""
+        doc = docx_lib.Document()
+        doc.add_paragraph("BAŞLIK")
+        doc.add_paragraph("Gövde metni.")
+        src = tmp_path / "in.docx"
+        doc.save(str(src))
+        out = tmp_path / "out.udf"
+        result = convert_docx_to_udf(src, out)
+        assert result["ok"] is True
+        assert result["converter"] == "native"
+        assert out.exists()
+        assert "BAŞLIK" in read_udf(out)
+
+    def test_falls_back_to_toolkit_script(self, tmp_path, monkeypatch):
+        """When native conversion fails, UDF-Toolkit docx_to_udf.py is tried."""
         toolkit_dir = tmp_path / "toolkit"
         toolkit_dir.mkdir()
         for script in ("udf_to_docx.py", "udf_to_pdf.py"):
@@ -315,37 +324,34 @@ class TestConvertDocxToUdfExperimental:
         docx = tmp_path / "in.docx"
         docx.write_bytes(b"fake docx")
         out = tmp_path / "out.udf"
-        result = convert_docx_to_udf_experimental(docx, out)
+        result = convert_docx_to_udf(docx, out)
         assert result["ok"] is True
         assert out.exists()
-        assert result["experimental"] is False
+        assert result["converter"] == "udf-toolkit"
 
-    def test_file_not_found_when_toolkit_available(self, tmp_path, monkeypatch):
-        """When toolkit is available but file doesn't exist, returns file_not_found."""
+    def test_file_not_found(self, tmp_path, monkeypatch):
         toolkit_dir = tmp_path / "tk"
         toolkit_dir.mkdir()
         monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
         with patch("emsal_mcp.udf.shutil.which", return_value="/usr/bin/soffice"):
-            result = convert_docx_to_udf_experimental(
-                tmp_path / "missing.docx", experimental=True,
-            )
+            result = convert_docx_to_udf(tmp_path / "missing.docx")
             assert result["ok"] is False
             assert result["errorCode"] == "FILE_NOT_FOUND"
 
     def test_returns_structured_dict(self, tmp_path):
         path = tmp_path / "test.docx"
         path.write_bytes(b"fake docx content")
-        result = convert_docx_to_udf_experimental(path, experimental=True)
+        result = convert_docx_to_udf(path)
         assert isinstance(result, dict)
         assert "ok" in result
         assert "action" in result
 
-    def test_experimental_warning_always_present(self, tmp_path):
-        """When experimental=True and toolkit unavailable, warning still included."""
+    def test_deprecated_alias_still_works(self, tmp_path):
+        from emsal_mcp.udf import convert_docx_to_udf_experimental
+
         path = tmp_path / "test.docx"
         path.write_bytes(b"content")
         result = convert_docx_to_udf_experimental(path, experimental=True)
-        # The toolkit_unavailable result includes toolkit_status; check overall shape
         assert "action" in result
 
 

@@ -644,16 +644,27 @@ def udf_to_pdf_cmd(
     _print(convert_udf_to_pdf(path, out_path), json_out)
 
 
-@udf_app.command("docx-to-udf-experimental")
+@udf_app.command("docx-to-udf")
 def udf_docx_to_udf_cmd(
     path: Path = typer.Argument(..., help="DOCX file to convert"),
     out_path: Optional[Path] = typer.Option(None, help="Output UDF path"),
-    experimental: bool = typer.Option(False, "--experimental", help="Must be True to proceed"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Convert DOCX to UDF (experimental, requires toolkit)."""
-    from .udf import convert_docx_to_udf_experimental
-    _print(convert_docx_to_udf_experimental(path, out_path, experimental=experimental), json_out)
+    """Convert DOCX to UDF, preserving formatting (no external tools needed)."""
+    from .udf import convert_docx_to_udf
+    _print(convert_docx_to_udf(path, out_path), json_out)
+
+
+@udf_app.command("docx-to-udf-experimental", hidden=True)
+def udf_docx_to_udf_legacy_cmd(
+    path: Path = typer.Argument(..., help="DOCX file to convert"),
+    out_path: Optional[Path] = typer.Option(None, help="Output UDF path"),
+    experimental: bool = typer.Option(False, "--experimental", help="Deprecated, ignored"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Deprecated alias for docx-to-udf."""
+    from .udf import convert_docx_to_udf
+    _print(convert_docx_to_udf(path, out_path), json_out)
 
 
 # ── Research subcommands ─────────────────────────────────────────────────
@@ -1448,7 +1459,7 @@ def export_format_cmd(
     format: str = typer.Option("docx", help="Export format: docx, txt, pdf, udf"),
     out_path: Optional[Path] = typer.Option(None, help="Output file path"),
     pack_dir: Optional[Path] = typer.Option(None, help="Pack directory for footnotes"),
-    experimental: bool = typer.Option(False, "--experimental", help="Required for UDF format"),
+    experimental: bool = typer.Option(False, "--experimental", help="Deprecated, ignored", hidden=True),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Unified export dispatcher: docx, txt, pdf, udf."""
@@ -1458,7 +1469,6 @@ def export_format_cmd(
         format=format,
         out_path=str(out_path) if out_path else None,
         pack_dir=str(pack_dir) if pack_dir else None,
-        experimental=experimental,
     )
     _print(result, json_out)
 

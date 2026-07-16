@@ -799,7 +799,7 @@ def export_to_format(
     format: str = "docx",
     out_path: str | Path | None = None,
     pack_dir: str | Path | None = None,
-    experimental: bool = False,
+    experimental: bool = False,  # deprecated, ignored (kept for API compatibility)
 ) -> dict[str, Any]:
     """Unified export dispatcher supporting multiple formats.
 
@@ -807,7 +807,7 @@ def export_to_format(
         - ``docx``: validated DOCX export (always available via python-docx)
         - ``txt``: plain-text export (always available, stdlib only)
         - ``pdf``: PDF export via LibreOffice (requires toolkit)
-        - ``udf``: UYAP UDF format (requires toolkit + experimental=True)
+        - ``udf``: UYAP UDF format (always available, preserves formatting)
 
     When the toolkit is absent for formats that require it, returns a
     structured error dict (``TOOLKIT_UNAVAILABLE``) — never raises.
@@ -887,43 +887,20 @@ def export_to_format(
         )
 
     if format == "udf":
-        if not experimental:
-            return build_error(
-                "EXPERIMENTAL_REQUIRED",
-                "UDF export requires experimental=True. "
-                "This is a deneysel (experimental) format.",
-                warning=(
-                    "UDF yazımı deneysel kabul edilmeli; resmi kullanım öncesi "
-                    "UYAP Doküman Editörü'nde manuel round-trip doğrulama yapılmalıdır."
-                ),
-            )
-        toolkit = _check_toolkit_available()
-        if not toolkit["available"]:
-            return build_error(
-                "TOOLKIT_UNAVAILABLE",
-                "UDF export requires LibreOffice toolkit.",
-                recommended_next_steps=[
-                    "Install LibreOffice and ensure soffice is on PATH.",
-                    "Set EMSAL_UDF_TOOLKIT_DIR environment variable.",
-                ],
-                toolkit_status=toolkit,
-            )
-        # Export via DOCX → UDF pipeline
+        # Export via DOCX → UDF pipeline (native converter, no toolkit needed)
         docx_result = prepare_docx_export(
             draft_path=str(draft_path),
-            out_path=str(out_path) if out_path else None,
+            out_path=None,
             pack_dir=str(pack_dir) if pack_dir else None,
         )
         if not docx_result.get("ok"):
             return docx_result
         docx_path = docx_result["out_path"]
         try:
-            from .udf import convert_docx_to_udf_experimental
+            from .udf import convert_docx_to_udf
 
-            return convert_docx_to_udf_experimental(
-                docx_path, out_path=str(Path(docx_path).with_suffix(".udf")),
-                experimental=True,
-            )
+            udf_out = str(out_path) if out_path else str(Path(docx_path).with_suffix(".udf"))
+            return convert_docx_to_udf(docx_path, out_path=udf_out)
         except Exception as e:
             return build_error("CONVERSION_FAILED", str(e))
 
@@ -965,9 +942,9 @@ def get_export_capabilities() -> dict[str, Any]:
         },
         {
             "format": "udf",
-            "available": toolkit_available,
-            "requires_toolkit": True,
-            "description": "UYAP UDF format (experimental). Requires experimental=True flag.",
+            "available": True,
+            "requires_toolkit": False,
+            "description": "UYAP UDF format. Preserves bold/alignment/indent formatting from DOCX sources.",
         },
     ]
 

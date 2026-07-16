@@ -430,7 +430,7 @@ def export_document(
     out_path: str | None = None,
     pack_dir: str | None = None,
     draft_json: dict[str, Any] | None = None,
-    experimental: bool = False,
+    experimental: bool = False,  # deprecated, ignored (kept for API compatibility)
     text: str = "",
     title_centered: bool = False,
     draft_dir: str | None = None,
@@ -442,7 +442,7 @@ def export_document(
     Formats:
         ``"capabilities"`` — report available formats.
         ``"docx"`` — validated DOCX with disclaimer and footnotes.
-        ``"udf"`` — UYAP UDF (requires toolkit, experimental=True).
+        ``"udf"`` — UYAP UDF (preserves formatting; prefer docx_path input).
         ``"pdf"`` — PDF via LibreOffice (requires toolkit).
         ``"plain"`` — plain-text (strips markdown).
         ``"bundle"`` — complete package with verification.
@@ -453,10 +453,11 @@ def export_document(
         out_path: Optional output path.
         pack_dir: Pack directory for footnotes.
         draft_json: Draft metadata dict.
-        experimental: Required for UDF format.
-        text: Text for UDF export.
+        experimental: Deprecated, ignored.
+        text: Text for UDF export (petition formatting applied automatically).
         title_centered: Center title in UDF.
-        draft_dir/docx_path/out_dir: For bundle export.
+        draft_dir/out_dir: For bundle export.
+        docx_path: DOCX input — preferred for UDF (preserves formatting); also bundle.
 
     Returns:
         Format-specific result dict or error.
@@ -482,13 +483,13 @@ def export_document(
         )
 
     if fmt == "udf":
-        if not experimental:
-            return build_error(
-                "EXPERIMENTAL_REQUIRED",
-                "UDF export requires experimental=True. Bu deneysel bir "
-                "ozelliktir; UYAP Dokuman Editoru ile manuel dogrulama gerekir.",
-                warnings=["UDF ciktisi UYAP'ta manuel kontrol edilmelidir."],
-            )
+        if docx_path:
+            from .udf import convert_docx_to_udf as _docx_to_udf
+
+            result = _docx_to_udf(docx_path, out_path=out_path)
+            if result.get("ok"):
+                return {**result, "path": result["out_path"]}
+            return result
         path_result = _write_udf(
             text, out_path or "output.udf", title_centered=title_centered,
         )

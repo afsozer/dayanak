@@ -175,7 +175,6 @@ KNOWN_ERROR_CODES: list[str] = sorted([
     "EMPTY_DB",
     "EMPTY_DOCUMENT",
     "EXCEPTION",
-    "EXPERIMENTAL_REQUIRED",
     "FETCH_FAILED",
     "FILE_NOT_FOUND",
     "FILE_READ_ERROR",
@@ -350,11 +349,6 @@ def get_error_codes() -> dict[str, Any]:
             "message_pattern": "str(e)",
             "modules": ["udf"],
             "action": "Unexpected error; check UDF toolkit installation.",
-        },
-        "EXPERIMENTAL_REQUIRED": {
-            "message_pattern": "Experimental flag required",
-            "modules": ["exporter", "udf"],
-            "action": "Pass --experimental flag to proceed.",
         },
         "FETCH_FAILED": {
             "message_pattern": "Belge alinamadi / Kaynak bulunamadi",

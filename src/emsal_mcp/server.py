@@ -123,7 +123,7 @@ def main() -> None:
     from .safety import build_input_pack as build_input_pack_impl, citation_check as citation_check_impl
     from .sources.registry import capabilities, get_source, smoke_all_sync
     from .udf import (
-        convert_docx_to_udf_experimental,
+        convert_docx_to_udf as convert_docx_to_udf_impl,
         convert_udf_to_docx,
         convert_udf_to_pdf,
         get_udf_authoring_instructions,
@@ -244,7 +244,7 @@ def main() -> None:
         "udf_authoring_instructions":  "extended",
         "convert_udf_to_docx_tool":   "extended",
         "convert_udf_to_pdf_tool":    "extended",
-        "convert_docx_to_udf_experimental_tool": "extended",
+        "convert_docx_to_udf":        "extended",
         "extract_pdf_text":           "extended",
         "pdf_toolkit_status":         "extended",
         "promote_pdf_to_full_text":   "extended",
@@ -344,7 +344,7 @@ def main() -> None:
         "udf_authoring_instructions":   "udf_admin",
         "convert_udf_to_docx_tool":     "udf_admin",
         "convert_udf_to_pdf_tool":      "udf_admin",
-        "convert_docx_to_udf_experimental_tool": "udf_admin",
+        "convert_docx_to_udf":          "udf_admin",
         "extract_pdf_text":             "udf_admin",
         "pdf_toolkit_status":           "udf_admin",
         "promote_pdf_to_full_text":     "udf_admin",
@@ -861,7 +861,8 @@ def main() -> None:
 
     @_tool
     def write_udf(text: str, out_path: str, title_centered: bool = False) -> dict:
-        return {"out_path": str(write_udf_impl(text, out_path, title_centered=title_centered)), "warning": "UYAP Doküman Editörü ile manuel doğrulama gerekir."}
+        """Write plain text as UDF; Turkish petition formatting is applied automatically."""
+        return {"out_path": str(write_udf_impl(text, out_path, title_centered=title_centered))}
 
     @_tool
     def udf_toolkit_status() -> dict:
@@ -896,14 +897,14 @@ def main() -> None:
         return convert_udf_to_pdf(file_path, out_path)
 
     @_tool
-    def convert_docx_to_udf_experimental_tool(
-        file_path: str, out_path: str | None = None, experimental: bool = False,
+    def convert_docx_to_udf(
+        file_path: str, out_path: str | None = None,
     ) -> dict:
-        """Convert DOCX to UDF (experimental, requires toolkit).
+        """Convert DOCX to UDF, preserving bold/alignment/indent formatting.
 
-        Must set experimental=True. Always returns UYAP manual round-trip warning.
+        Uses a native converter (no external tools required).
         """
-        return convert_docx_to_udf_experimental(file_path, out_path, experimental=experimental)
+        return convert_docx_to_udf_impl(file_path, out_path)
 
     # ── Cache v2 MCP tools ────────────────────────────────────────────
 
@@ -1288,7 +1289,6 @@ def main() -> None:
         format: str = "docx",
         out_path: str | None = None,
         pack_dir: str | None = None,
-        experimental: bool = False,
     ) -> dict:
         """Unified export dispatcher supporting multiple formats.
 
@@ -1296,7 +1296,7 @@ def main() -> None:
             - docx: validated DOCX export (always available)
             - txt: plain-text export (always available)
             - pdf: PDF via LibreOffice (requires toolkit)
-            - udf: UYAP UDF (requires toolkit + experimental=True)
+            - udf: UYAP UDF (always available, preserves formatting)
 
         Returns structured error dict if toolkit is unavailable or format
         is invalid.
@@ -1306,7 +1306,6 @@ def main() -> None:
             format: Export format (docx, txt, pdf, udf).
             out_path: Optional output file path.
             pack_dir: Optional pack directory for footnotes.
-            experimental: Required True for UDF format.
 
         Returns:
             Format-specific result dict or structured error.
@@ -1316,7 +1315,6 @@ def main() -> None:
             format=format,
             out_path=out_path,
             pack_dir=pack_dir,
-            experimental=experimental,
         )
 
     @_tool
@@ -2437,12 +2435,15 @@ def main() -> None:
                     or 'capabilities' (returns supported formats).
             draft_path: Path to draft.md (for docx/plain).
             draft_json: Draft metadata dict (for docx).
-            text: Text to write (for udf).
+            text: Text to write (for udf; plain text — petition formatting
+                  such as bold title/labels/headings is applied automatically).
             out_path: Output file path (for docx/udf/plain).
             out_dir: Output directory (for bundle).
             pack_dir: Pack directory (for bundle).
             draft_dir: Draft output directory (for bundle).
-            docx_path: Path to draft.docx (for pdf/bundle).
+            docx_path: Path to a .docx (for pdf/bundle; for udf this is the
+                  PREFERRED input — converts DOCX directly to UDF preserving
+                  bold, alignment, indent and line spacing).
             title_centered: Center the title in UDF output.
             title: Document title (for legacy export_bundle).
             body: Document body (for legacy export_bundle).
@@ -2451,6 +2452,15 @@ def main() -> None:
         if format == "capabilities":
             return get_export_capabilities_impl()
         elif format == "udf":
+            if docx_path:
+                # Preferred: convert DOCX directly, preserving bold/alignment/
+                # indent formatting (native converter, no external toolkit).
+                from .udf import docx_to_udf_native
+
+                result = docx_to_udf_native(docx_path, out_path=out_path)
+                if result.get("ok"):
+                    return {**result, "path": result["out_path"], "format": "udf"}
+                return result
             udf_path = write_udf_impl(
                 text=text or "",
                 out_path=out_path or "",
