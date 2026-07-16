@@ -133,9 +133,59 @@
 
 ---
 
-## Görev 8 — (BEKLEMEDE — kullanıcı önceliği netleşince) Kurum kaynaklarını olgunlaştır
+## Görev 8 — Kurum kaynakları (kullanıcı önceliği: GİB özelge, BTK, Rekabet, Sigorta Tahkim)
 
-GİB özelge, KVKK, KİK, Sayıştay, Rekabet, Uyuşmazlık, BDDK, SPK, KDK, BTK, Sigorta Tahkim, Reklam Kurulu. Hangi 2-3 kaynağın öncelikli olduğu kullanıcıdan onay bekliyor. **Bu görevi talimatsız başlatma.** Not: API'siz kaynaklarda (BDDK/Sigorta/Reklam) hedef canlı arama değil, PDF'leri korpusa crawl edip lokal FTS ile aramak olacak.
+**Kullanıcı 2026-07-16'da bu dört kaynağı öncelikli seçti.** Alt görevler bağımsız commit'lenir: `8a` GİB, `8b` BTK, `8c` Rekabet, `8d` Sigorta Tahkim. Uçlar Claude tarafından 2026-07-16'da canlı doğrulandı (aşağıdaki "Canlı doğrulanmış uç" notları). Bu notlardaki gövde/parametre biçimini AYNEN kullan; yine de her alt görevde ilk iş bir canlı istek atıp yanıt şemasını `PARITY_V2_RAPOR.md`'ye yazmak (şema tahmini yasak, durma koşulu 4).
+
+Ortak gereksinimler (dördü için):
+- `search_page()` override et → `total`/`total_pages` dön (Görev 2 sözleşmesi). `search()` mevcut `list[SearchResult]` sözleşmesini koru.
+- Geniş `except Exception` kullanacaksan hata sınıfını `metadata["error"]`'a yaz (Görev 5b/7b'de yerleşen kural).
+- Her alt görev için offline fixture testi (kaydedilmiş gerçek yanıt parçası) + tam suite yeşil.
+- PDF çıkarımı gereken yerlerde mevcut `src/emsal_mcp/pdf_extractor.py` kullan; yeni bağımlılık ekleme.
+
+### Görev 8a — GİB özelge (mevcut adaptörü olgunlaştır)
+
+`GibClient` (`src/emsal_mcp/sources/simple_public.py`) zaten çalışıyor. Eksik: toplam sayı ve doğrulama.
+
+**Canlı doğrulanmış uç:** `POST https://gib.gov.tr/api/gibportal/mevzuat/ozelge/list?page=0&size=10&sortFieldName=ozelgeTarih&sortType=DESC`, JSON gövde `{"status":2,"deleted":false,"ktype":99,"title":Q,"kanunNo":Q,"description":Q}`. Yanıt: `resultContainer.content[]` + **`resultContainer.totalElements`** (ör. 7736), `totalPages`, `number`, `size`. Belge id → `content[i].id` (int), tam metin `content[i].description` + başlık alanlarından kuruluyor (mevcut `get_document` doğru).
+
+**Yapılacaklar:** `search_page()` override → `totalElements`/`totalPages`. `page` parametresi 0-tabanlı upstream'e doğru geçiyor mu doğrula (adaptör 1-tabanlı alıp -1 yapıyor). `start_date`/`end_date` filtreleri hâlâ çalışıyor mu canlı test et.
+
+**Doğrulama:** Canlı `search_page("KDV")` → total ≈ 7736; `get_document(<id>)` özelge metni döndürüyor.
+
+### Görev 8b — BTK kurul kararları (YENİ adaptör)
+
+**Canlı doğrulanmış uç:** `GET https://www.btk.gov.tr/kurul-kararlari` (sunucu-render, ~540 KB, tarayıcı UA gerekli). Sayfalama: `?page=N` (1-tabanlı; `?page=2` farklı içerik döndürür — canlı teyit; `/kurul-kararlari/2` yolu 404). Sayfada ~13 karar kartı; her kartta `Karar Tarihi`, `Karar No`, `Konu`, `Yayım Tarihi` etiketli alanlar + S3 PDF linki (`https://www.btk.gov.tr/s3/web-btk-site/.../<uuid>.pdf`). Arama kutusu client-side; **server-side keyword araması YOK** → adaptör listeyi çeker, `query` verilmişse kart metni üzerinde yerel filtre uygular (Türkçe-duyarlı, mevcut yardımcıları kullan).
+
+**Yapılacaklar:**
+1. YENİ `BtkClient(SourceClient)` (`simple_public.py` içinde, GibClient komşuluğunda). `search`/`search_page`: kart listesini parse et (title=Konu, `karar_no`, `decision_date`, PDF url metadata'da), `content_status=PDF_LINK_ONLY`. `document_id` = PDF url'yi `_url_id()` ile kodla (mevcut yardımcı). `query` verilmişse kart metninde geçmeyenleri ele; `total` = o an filtrelenmiş liste boyutu (kaç sayfa çekildiyse notu warning'e).
+2. `get_document`: PDF'i indir → `pdf_extractor` ile metne çevir → `HTML_MARKDOWN`/`FULL_TEXT`. İndirme/çıkarım başarısızsa `PDF_LINK_ONLY` + url.
+3. `registry.py`'ye `"btk": _BtkClient()` ekle (`PARTIAL`), capability/adapter contract testlerine `"btk"` ekle.
+4. `server.py` `search_decisions` docstring'ine `source="btk"` notu.
+
+**Doğrulama:** Canlı `search("numara taşınabilirliği", source=btk)` en az 1 kart döndürüyor; `get_document(<pdf id>)` PDF metni veriyor. Sayfa yapısı değişirse (kart bulunamazsa) yapılandırılmış `UNAVAILABLE` + net mesaj (çökme yok).
+
+### Görev 8c — Rekabet Kurumu (mevcut scraper'ı sağlamlaştır)
+
+`RekabetClient` mevcut ve canlı çalışıyor (2026-07-16: `GET /tr/Kararlar?PdfText=<q>` → sayfada ~20 `kararId`).
+
+**Yapılacaklar:**
+1. `search_page()`: sayfadaki toplam sonuç sayısını yakala (sayfa altındaki sonuç/sayfa metninden veya `kararId` sayımından; gerçek `total` HTML'de varsa onu kullan, yoksa `total=None` + warning — uydurma). `karar_turu`/tarih filtreleri Yargı PRO'da var; HTML formu destekliyorsa ekle, desteklemiyorsa rapora "desteklenmiyor" yaz.
+2. `get_document`: karar detay sayfasındaki PDF linkini indir → `pdf_extractor` ile tam metin (şu an yalnız HTML+pdf link veriyor; PDF çıkarımı ekle). PDF yoksa mevcut HTML davranışı kalsın.
+3. Scraper CSS/tablo yapısına bağımlı — kırılırsa `UNAVAILABLE` (mevcut davranış korunur).
+
+**Doğrulama:** Canlı `search("hakim durumun kötüye kullanılması", source=rekabet)` sonuç veriyor; `get_document(<kararId>)` PDF tam metni döndürüyor.
+
+### Görev 8d — Sigorta Tahkim (canlı arama API'si YOK — korpus/dergi yaklaşımı)
+
+**Canlı gözlem (2026-07-16):** `sigortatahkim.org.tr` yalnız minimal açılış sayfası; `hakem-kararlari`/`yayinlar` yolları 404. **Aranabilir karar veritabanı YOK.** Kararlar periyodik "Sigorta Tahkim Hakem Karar Dergisi" PDF sayıları olarak yayımlanıyor (Yargı PRO da bu yüzden dış arama/OCR kullanıyor). Bu, Görev 8'in "API'siz kaynak" durumudur — hedef canlı arama değil, dergi PDF'lerini [[emsal-corpus-state]] korpusuna alıp lokal FTS ile aramak.
+
+**Yapılacaklar (bu alt görev keşif-ağırlıklı — önce DUR ve rapora yaz):**
+1. Dergi PDF sayılarının nerede barındırıldığını bul (TSB/sigortatahkim yayın sayfası, arşiv linkleri). Bulunan gerçek URL kalıbını `PARITY_V2_RAPOR.md`'ye yaz. **Bulunamıyorsa burada DUR** (durma koşulu 4) — uydurma URL kalıbı yazma.
+2. URL kalıbı netse: dergi PDF'lerini indirip `pdf_extractor` ile metne çeviren, korpusa ekleyen bir crawl adımı ([[deepseek-crawl-workflow]] modeli: durma koşulu + sayfa limiti şart). Adaptörün `search`'ü lokal korpusta arar (`search_local_corpus` altyapısı), `get_document` korpustan/PDF'ten metin verir.
+3. Canlı arama API'si icat etme; adaptör capability'sinde açıkça "korpus tabanlı, canlı arama yok" belirt.
+
+**Doğrulama:** En az 1 dergi sayısı korpusa alınıp içinden bir hakem kararı lokal aramayla bulunabiliyor. Korpus boşsa adaptör yapılandırılmış "veri yok" döndürüyor (çökme yok).
 
 ---
 
