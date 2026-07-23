@@ -90,20 +90,32 @@ def crawl_full_text(
     rl_429 = 0
 
     async def _retry_429(factory: Any, attempts: int = 6) -> Any:
-        """Retry a request on HTTP 429. The client's response hook records the
-        server Retry-After as a cooldown, so the next call's acquire() waits it
-        out — we just re-issue. Prevents dropping documents/pages on rate limit
-        (the cause of ~25 skipped pages in the first overnight run)."""
+        """Retry a request on HTTP 429 and transient 5xx (e.g. UYAP's Solr
+        ``IOException``). On 429 the client's response hook records the server
+        Retry-After as a cooldown, so the next call's acquire() waits it out —
+        we just re-issue. On 5xx we back off a few seconds. This keeps a long
+        crawl alive through rate-limit storms and brief upstream outages instead
+        of dying on the first bad page (a single failed *search* ends the run)."""
         nonlocal rl_429
         for i in range(attempts):
             try:
                 return await factory()
             except httpx.HTTPStatusError as exc:
                 code = exc.response.status_code if exc.response is not None else None
-                if code == 429 and i < attempts - 1:
+                if i >= attempts - 1:
+                    raise
+                if code == 429:
                     rl_429 += 1
                     continue
+                if code is not None and 500 <= code < 600:
+                    await asyncio.sleep(min(5.0 * (i + 1), 30.0))
+                    continue
                 raise
+            except httpx.TransportError:
+                # Connection reset / timeout — transient; back off and retry.
+                if i >= attempts - 1:
+                    raise
+                await asyncio.sleep(min(3.0 * (i + 1), 20.0))
 
     async def _run() -> None:
         nonlocal stored, scanned, skipped_unavailable, skipped_metadata, pages_scanned, page
@@ -115,7 +127,7 @@ def crawl_full_text(
                     phrase, limit=page_size, page=page,
                     item_type=item_type, sort_direction=sort_direction,
                     start_date=start_date, end_date=end_date,
-                ))
+                ), attempts=30)
             except Exception as exc:
                 warnings.append(f"search page {page} failed: {exc}")
                 stopped_reason = "search_error"
