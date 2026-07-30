@@ -365,16 +365,49 @@ def udf_to_markdown(path: str | Path) -> str:
     return "\n\n".join(paragraphs)
 
 
-# Formatting model: each paragraph is (align, runs, left_indent) where runs is a
-# list of (text, bold, underline) segments covering the paragraph text exactly.
+# Formatting model: each paragraph is a dict with keys:
+#   align:    UDF Alignment code ("0" left, "1" center, "2" right, "3" justify)
+#   runs:     list of (text, bold, italic, underline) covering the text exactly
+#   indent:   LeftIndent in points (0.0 = none)
+#   spacing:  UDF LineSpacing (line spacing minus 1.0)
+#   numbered: None, or (list_id, level) for UYAP numbered list paragraphs
 # The element layout mirrors UDF files produced by UYAP Dokuman Editor itself:
 # paragraphs joined with "\n" in the CDATA pool, the newline carried by the
 # paragraph's last run.
+
+DEFAULT_LINE_SPACING = 0.14999998
 
 _TR_UPPER = "A-ZÇĞİÖŞÜ"
 _LABEL_RE = re.compile(rf"^([{_TR_UPPER}][{_TR_UPPER}0-9 ./()&-]*?\t+)(:.*)$")
 _ENUM_RE = re.compile(r"^(\d{1,2}[-.)]\s+|[a-zçğıöşü][.)]\s+)(.*)$")
 _CAPS_LINE_RE = re.compile(rf"^[{_TR_UPPER}0-9IVXLC ().,:;'’\"/&\t–—-]+$")
+# Caption labels up to 9 chars ("DOSYA NO", "VEKİLLERİ", ...) followed by a
+# single tab and colon; UYAP's wide default tab stops need a second tab for
+# the colons to line up. Longer labels ("SONUÇ VE TALEP") already reach the
+# stop with one tab.
+_SHORT_LABEL_TAB_RE = re.compile(rf"^[{_TR_UPPER}][{_TR_UPPER}0-9 ./()&-]{{0,8}}\t:")
+
+# Blank spacer paragraphs are inserted where the DOCX relied on space-after /
+# space-before (UDF has no such concept). 5pt catches the petition body
+# rhythm (5-6pt after paragraphs, 8-12pt around headings) while leaving the
+# caption block (3pt), numbered request lists (4pt) and EK lists (2pt) tight.
+SPACER_GAP_PT = 5.0
+
+
+def _para_style(
+    align: str = "3",
+    runs: list[tuple[str, bool, bool, bool]] | None = None,
+    indent: float = 0.0,
+    spacing: float = DEFAULT_LINE_SPACING,
+    numbered: tuple[int, int] | None = None,
+) -> dict:
+    return {
+        "align": align,
+        "runs": runs if runs is not None else [("", False, False, False)],
+        "indent": indent,
+        "spacing": spacing,
+        "numbered": numbered,
+    }
 
 
 def _is_heading_line(line: str) -> bool:
@@ -384,10 +417,10 @@ def _is_heading_line(line: str) -> bool:
     return bool(_CAPS_LINE_RE.match(stripped))
 
 
-def _smart_paragraphs(paragraphs: list[str], title_centered: bool) -> list[tuple[str, list[tuple[str, bool, bool]], float]]:
+def _smart_paragraphs(paragraphs: list[str], title_centered: bool) -> list[dict]:
     """Infer dilekçe-style formatting for plain-text paragraphs.
 
-    Returns a list of (align, runs, left_indent) matching `paragraphs`.
+    Returns a list of paragraph-style dicts matching `paragraphs`.
     Conventions (modelled on UYAP-authored petitions):
     - first non-empty line: centered title, bold
     - "ETİKET<tab>: değer" lines: label bold, value plain
@@ -395,7 +428,7 @@ def _smart_paragraphs(paragraphs: list[str], title_centered: bool) -> list[tuple
     - "1-" / "a)" enumerators: enumerator bold
     - trailing short signature lines containing "Vekili" / "Av.": right, bold
     """
-    styled: list[tuple[str, list[tuple[str, bool, bool]], float]] = []
+    styled: list[dict] = []
     first_text_idx = next((i for i, p in enumerate(paragraphs) if p.strip()), -1)
 
     # Detect a trailing signature block: up to 4 short trailing lines where at
@@ -415,56 +448,79 @@ def _smart_paragraphs(paragraphs: list[str], title_centered: bool) -> list[tuple
 
     for idx, para in enumerate(paragraphs):
         align = "3"
-        runs: list[tuple[str, bool, bool]] = []
-        indent = 0.0
+        runs: list[tuple[str, bool, bool, bool]] = []
         if not para:
-            runs = [("", False, False)]
+            runs = [("", False, False, False)]
         elif idx == first_text_idx and title_centered:
             align = "1"
-            runs = [(para, True, False)]
+            runs = [(para, True, False, False)]
         elif idx in signature_idx:
             align = "2"
-            runs = [(para, True, False)]
+            runs = [(para, True, False, False)]
         elif _LABEL_RE.match(para):
             m = _LABEL_RE.match(para)
-            runs = [(m.group(1), True, False), (m.group(2), False, False)]
+            runs = [(m.group(1), True, False, False), (m.group(2), False, False, False)]
         elif _is_heading_line(para):
-            runs = [(para, True, False)]
+            runs = [(para, True, False, False)]
         else:
             m = _ENUM_RE.match(para)
             if m:
-                runs = [(m.group(1), True, False), (m.group(2), False, False)]
+                runs = [(m.group(1), True, False, False), (m.group(2), False, False, False)]
             else:
-                runs = [(para, False, False)]
-        styled.append((align, runs, indent))
+                runs = [(para, False, False, False)]
+        styled.append(_para_style(align=align, runs=runs))
     return styled
+
+
+# Page-number footer as emitted by UYAP Dokuman Editor (bold Times New Roman
+# 12, "current/total" style). The footer paragraph references a 3-char "  \n"
+# tail appended to the CDATA pool.
+_FOOTER_XML_TMPL = (
+    '<footer pageNumber-spec="BSP32_2120" pageNumber-seperator="/" pageNumber-fontBold="true" '
+    'pageNumber-fontItalic="false" pageNumber-fontFace="Times New Roman" pageNumber-fontSize="12" '
+    'pageNumber-color="-16777216" color-boundary="-1" pageNumber-foreStr="" pageNumber-pageStartNumStr="">'
+    '<paragraph name="hvl-default" family="Times New Roman" size="12" description="Gövde">'
+    '<content name="hvl-default" family="Times New Roman" size="12" description="Gövde" '
+    'startOffset="{offset}" length="3" /></paragraph></footer>'
+)
 
 
 def _render_udf_xml(
     paragraphs: list[str],
-    styled: list[tuple[str, list[tuple[str, bool, bool]], float]],
-    line_spacings: list[float] | None = None,
+    styled: list[dict],
+    *,
+    page_number_footer: bool = False,
 ) -> str:
     pool = "\n".join(paragraphs)
     elements: list[str] = []
     offset = 0
     last = len(paragraphs) - 1
-    for idx, (para, (align, runs, indent)) in enumerate(zip(paragraphs, styled)):
-        spacing = line_spacings[idx] if line_spacings else 0.14999998
-        attrs = f'Alignment="{align}" LineSpacing="{spacing}"'
-        if indent:
-            attrs += f' LeftIndent="{indent}"'
+    for idx, (para, st) in enumerate(zip(paragraphs, styled)):
+        attrs = f'Alignment="{st["align"]}" LineSpacing="{st["spacing"]}"'
+        if st["numbered"]:
+            list_id, level = st["numbered"]
+            attrs += (
+                ' Numbered="true" NumberType="NUMBER_TYPE_NUMBER_DOT"'
+                f' ListLevel="{level}" ListId="{list_id}"'
+            )
+        if st["indent"]:
+            attrs += f' LeftIndent="{st["indent"]}"'
         parts: list[str] = []
-        # Trailing newline (paragraph separator) rides on the last run.
-        trailing = 1 if idx < last else 0
-        nonempty = [r for r in runs if r[0]] or [("", False, False)]
-        for ridx, (rtext, bold, underline) in enumerate(nonempty):
+        # Trailing newline (paragraph separator) rides on the last run. With a
+        # footer the last visible paragraph also carries one, since the pool
+        # continues with the footer text.
+        trailing = 1 if (idx < last or page_number_footer) else 0
+        runs = st["runs"]
+        nonempty = [r for r in runs if r[0]] or list(runs[-1:]) or [("", False, False, False)]
+        for ridx, (rtext, bold, italic, underline) in enumerate(nonempty):
             length = len(rtext) + (trailing if ridx == len(nonempty) - 1 else 0)
             if length <= 0:
                 continue
             rattrs = ""
             if bold:
                 rattrs += ' bold="true"'
+            if italic:
+                rattrs += ' italic="true"'
             if underline:
                 rattrs += ' underline="true"'
             parts.append(f'<content{rattrs} startOffset="{offset}" length="{length}" />')
@@ -472,6 +528,14 @@ def _render_udf_xml(
         if not parts:  # empty final paragraph
             parts.append(f'<content startOffset="{offset}" length="0" />')
         elements.append(f"<paragraph {attrs}>{''.join(parts)}</paragraph>")
+
+    if page_number_footer:
+        # Pool tail "\n\n  \n": paragraph separator (owned by the last run),
+        # one filler newline, then the "  \n" the footer paragraph points at —
+        # byte-for-byte what UYAP Dokuman Editor produces.
+        footer_offset = len(pool) + 2
+        pool += "\n\n  \n"
+        elements.append(_FOOTER_XML_TMPL.format(offset=footer_offset))
 
     return f'''<?xml version="1.0" encoding="UTF-8" ?>
 <template format_id="1.8">
@@ -503,9 +567,10 @@ def write_udf(
         styled = _smart_paragraphs(paragraphs, title_centered)
     else:
         styled = [
-            ("1" if idx == 0 and title_centered else "3",
-             [(para, idx == 0 and title_centered, False)],
-             0.0)
+            _para_style(
+                align="1" if idx == 0 and title_centered else "3",
+                runs=[(para, idx == 0 and title_centered, False, False)],
+            )
             for idx, para in enumerate(paragraphs)
         ]
     xml = _render_udf_xml(paragraphs, styled)
@@ -515,12 +580,80 @@ def write_udf(
     return out
 
 
-def docx_to_udf_native(docx_path: str | Path, out_path: str | Path | None = None) -> dict:
+def _docx_numbering(para) -> tuple[int, int] | None:
+    """Extract (list_id, level) from a DOCX paragraph's w:numPr, if any."""
+    from docx.oxml.ns import qn
+
+    pPr = para._p.pPr
+    if pPr is None:
+        return None
+    numPr = pPr.find(qn("w:numPr"))
+    if numPr is None:
+        return None
+
+    def _val(tag: str, default: int) -> int:
+        el = numPr.find(qn(tag))
+        try:
+            return int(el.get(qn("w:val"))) if el is not None else default
+        except (TypeError, ValueError):
+            return default
+
+    num_id = _val("w:numId", 0)
+    if num_id <= 0:  # numId 0 means "numbering removed"
+        return None
+    return (num_id, _val("w:ilvl", 0) + 1)
+
+
+def _iter_docx_runs(para):
+    """Yield a paragraph's runs including those inside w:hyperlink elements.
+
+    python-docx's paragraph.runs skips hyperlink content entirely, which
+    silently drops link text (e.g. "link: https://..." in EK lists).
+    """
+    if hasattr(para, "iter_inner_content"):
+        for item in para.iter_inner_content():
+            if hasattr(item, "runs"):  # Hyperlink
+                yield from item.runs
+            else:
+                yield item
+    else:  # older python-docx without iter_inner_content
+        yield from para.runs
+
+
+def _double_short_label_tab(
+    runs: list[tuple[str, bool, bool, bool]], text: str
+) -> tuple[list[tuple[str, bool, bool, bool]], str]:
+    """Turn "ETİKET\\t:" into "ETİKET\\t\\t:" for short caption labels."""
+    if text.count("\t") != 1 or not _SHORT_LABEL_TAB_RE.match(text):
+        return runs, text
+    new_runs = [
+        (rtext.replace("\t", "\t\t", 1) if "\t" in rtext else rtext, b, i, u)
+        for rtext, b, i, u in runs
+    ]
+    return new_runs, text.replace("\t", "\t\t", 1)
+
+
+def docx_to_udf_native(
+    docx_path: str | Path,
+    out_path: str | Path | None = None,
+    *,
+    spacer_paragraphs: bool = True,
+    label_double_tab: bool = True,
+    page_number_footer: bool = True,
+) -> dict:
     """Convert DOCX to UDF preserving formatting, without external tools.
 
-    Carries over per-run bold and underline, paragraph alignment, left indent
-    and line spacing. Element layout mirrors UYAP Dokuman Editor output
-    (newline-joined CDATA pool). Tables, images and italic are not supported.
+    Carries over per-run bold, italic and underline, paragraph alignment,
+    left indent, line spacing and numbered lists (w:numPr -> UYAP Numbered
+    paragraphs). Element layout mirrors UYAP Dokuman Editor output
+    (newline-joined CDATA pool). Tables and images are not supported.
+
+    UDF has no space-after/space-before concept, so with spacer_paragraphs
+    (default) an empty paragraph is inserted wherever the DOCX vertical gap is
+    >= SPACER_GAP_PT — except around numbered list items and before
+    right-aligned (signature) paragraphs, which stay tight. label_double_tab
+    aligns caption label colons on UYAP's tab stops, and page_number_footer
+    adds the standard "page/total" footer.
     """
     action = "docx_to_udf_native"
     src = Path(docx_path)
@@ -549,43 +682,85 @@ def docx_to_udf_native(docx_path: str | Path, out_path: str | Path | None = None
     }
 
     paragraphs: list[str] = []
-    styled: list[tuple[str, list[tuple[str, bool, bool]], float]] = []
-    line_spacings: list[float] = []
+    styled: list[dict] = []
+    gaps_after: list[float] = []
+    gaps_before: list[float] = []
     for para in document.paragraphs:
         pf = para.paragraph_format
         align = align_map.get(para.alignment, "3")
+        numbered = _docx_numbering(para)
         indent = round(pf.left_indent.pt, 2) if pf.left_indent else 0.0
-        spacing = 0.14999998
+        if numbered and not indent:
+            indent = 25.0  # UYAP's default list indent
+        spacing = DEFAULT_LINE_SPACING
         try:
             ls = pf.line_spacing
             if isinstance(ls, float) and ls > 1.0:
                 spacing = round(ls - 1.0, 8)
         except Exception:
             pass
+        gaps_after.append(pf.space_after.pt if pf.space_after is not None else 0.0)
+        gaps_before.append(pf.space_before.pt if pf.space_before is not None else 0.0)
 
-        runs: list[tuple[str, bool, bool]] = []
-        for run in para.runs:
+        runs: list[tuple[str, bool, bool, bool]] = []
+        for run in _iter_docx_runs(para):
             rtext = run.text
             if not rtext:
                 continue
             bold = bool(run.bold if run.bold is not None else run.font.bold)
+            italic = bool(run.italic if run.italic is not None else run.font.italic)
             underline = bool(run.underline if run.underline is not None else run.font.underline)
-            if runs and runs[-1][1] == bold and runs[-1][2] == underline:
-                runs[-1] = (runs[-1][0] + rtext, bold, underline)
+            if runs and runs[-1][1:] == (bold, italic, underline):
+                runs[-1] = (runs[-1][0] + rtext, bold, italic, underline)
             else:
-                runs.append((rtext, bold, underline))
+                runs.append((rtext, bold, italic, underline))
         text = "".join(r[0] for r in runs)
         if not runs:
-            runs = [("", False, False)]
+            runs = [("", False, False, False)]
+        if label_double_tab:
+            runs, text = _double_short_label_tab(runs, text)
         paragraphs.append(text)
-        styled.append((align, runs, indent))
-        line_spacings.append(spacing)
+        styled.append(
+            _para_style(align=align, runs=runs, indent=indent, spacing=spacing, numbered=numbered)
+        )
 
     if not paragraphs:
         return build_error("DOCX_EMPTY", "DOCX contains no paragraphs.", action=action)
 
+    spacers_added = 0
+    if spacer_paragraphs:
+        merged_paragraphs: list[str] = []
+        merged_styled: list[dict] = []
+        for idx, (text, st) in enumerate(zip(paragraphs, styled)):
+            merged_paragraphs.append(text)
+            merged_styled.append(st)
+            if idx >= len(paragraphs) - 1:
+                continue
+            gap = gaps_after[idx] + gaps_before[idx + 1]
+            nxt = styled[idx + 1]
+            if (
+                gap >= SPACER_GAP_PT
+                and text.strip()
+                and paragraphs[idx + 1].strip()
+                and not st["numbered"]
+                and not nxt["numbered"]
+                and nxt["align"] != "2"  # keep signature blocks attached
+            ):
+                _, lb, li, lu = st["runs"][-1]
+                merged_paragraphs.append("")
+                merged_styled.append(
+                    _para_style(
+                        align=st["align"],
+                        runs=[("", lb, li, lu)],
+                        indent=st["indent"],
+                        spacing=st["spacing"],
+                    )
+                )
+                spacers_added += 1
+        paragraphs, styled = merged_paragraphs, merged_styled
+
     out = Path(out_path) if out_path else src.with_suffix(".udf")
-    xml = _render_udf_xml(paragraphs, styled, line_spacings)
+    xml = _render_udf_xml(paragraphs, styled, page_number_footer=page_number_footer)
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("content.xml", xml.encode("utf-8"))
@@ -595,6 +770,8 @@ def docx_to_udf_native(docx_path: str | Path, out_path: str | Path | None = None
         "out_path": str(out),
         "file_size": out.stat().st_size,
         "paragraphs": len(paragraphs),
+        "spacers_added": spacers_added,
+        "page_number_footer": page_number_footer,
     }
 
 

@@ -678,9 +678,15 @@ Convert UDF to PDF (requires toolkit).
 
 ---
 
-### `def udf_docx_to_udf_cmd(path: Path, out_path: Optional[Path], experimental: bool, json_out: bool) -> None`
+### `def udf_docx_to_udf_cmd(path: Path, out_path: Optional[Path], json_out: bool) -> None`
 
-Convert DOCX to UDF (experimental, requires toolkit).
+Convert DOCX to UDF, preserving formatting (no external tools needed).
+
+---
+
+### `def udf_docx_to_udf_legacy_cmd(path: Path, out_path: Optional[Path], experimental: bool, json_out: bool) -> None`
+
+Deprecated alias for docx-to-udf.
 
 ---
 
@@ -1122,13 +1128,17 @@ Build a local corpus from stable sources.
 
 ---
 
-### `def corpus_crawl(source: str, phrase: str, item_type: str, sort: str, max_docs: int, max_pages: int, page_size: int, start_page: int, json_out: bool) -> None`
+### `def corpus_crawl(source: str, phrase: str, item_type: str, sort: str, max_docs: int, max_pages: int, page_size: int, start_page: int, start_date: str, end_date: str, incremental: bool, stop_after_seen: int, json_out: bool) -> None`
 
 Yalnızca tam metni olan kararları yerel cache'e tarar (tüm daireler, sayfalı).
 
     Tam metni yayımlanmamış (404) ve yalnız-metadata kararları atlar; uydurmaz.
         Pacing otomatik (yerleşik rate limiter). Uzun taramayı `next_page` ile parça
         parça sürdürebilirsin.
+    
+        `--incremental` (sort=desc ile): cache'de olan kararların pahalı tam-metin
+        çekimini atlar ve önceki tarama bölgesine ulaşınca durur; `stored` yalnızca
+        gerçekten YENİ eklenen kararları sayar.
 
 ---
 
@@ -1139,6 +1149,21 @@ Report corpus size and composition.
 ---
 
 ## `concurrency`
+
+### `def run_sync(coro: Coroutine[Any, Any, T]) -> T`
+
+Run an async coroutine from synchronous code, event-loop safe.
+
+    When called from within an already-running event loop (e.g. inside the
+        MCP server's asyncio loop), ``asyncio.run()`` raises
+        ``RuntimeError: This event loop is already running``.
+    
+        This helper detects the situation and uses a background thread with its
+        own event loop to execute the coroutine, avoiding the conflict.
+        When no loop is running (CLI context), it simply delegates to
+        ``asyncio.run()``.
+
+---
 
 ### `def get_concurrency_status() -> dict[str, Any]`
 
@@ -1238,11 +1263,19 @@ Systematically crawl FULL-TEXT decisions into the local cache.
             max_pages: Safety cap on pages scanned.
             page_size: Results per search page (server max 100).
             start_page: Page to start from (for resuming).
+            incremental: When True (use with ``sort_direction='desc'``), skip the
+                expensive full-text fetch for decisions already in the cache and stop
+                once ``stop_after_seen`` consecutive already-cached decisions are seen
+                (i.e. the crawl has reached the region it covered last time). In this
+                mode ``stored`` counts ONLY genuinely new decisions.
+            stop_after_seen: Consecutive-already-cached threshold that ends an
+                incremental run. Ignored when ``incremental`` is False.
             cache: Optional Cache instance.
     
         Returns:
             Dict with ok, stored, scanned, skipped_unavailable, skipped_metadata,
-            pages_scanned, next_page, time_seconds, warnings.
+            skipped_cached, pages_scanned, next_page, stopped_reason, time_seconds,
+            warnings.
 
 ---
 
@@ -1721,7 +1754,7 @@ Unified export dispatcher supporting multiple formats.
             - ``docx``: validated DOCX export (always available via python-docx)
             - ``txt``: plain-text export (always available, stdlib only)
             - ``pdf``: PDF export via LibreOffice (requires toolkit)
-            - ``udf``: UYAP UDF format (requires toolkit + experimental=True)
+            - ``udf``: UYAP UDF format (always available, preserves formatting)
     
         When the toolkit is absent for formats that require it, returns a
         structured error dict (``TOOLKIT_UNAVAILABLE``) — never raises.
@@ -1744,18 +1777,27 @@ Report which export formats are currently available.
 
 ### `def search_local_corpus(query: str, mode: str, limit: int, filters: dict[str, Any] | None, provider: str | None, hybrid_weight: float, rerank: bool, include_dense: bool, source: str | None, court: str | None, chamber: str | None, date: str | None, esas_no: str | None, karar_no: str | None, document_id: str | None, content_status: str | None, draft_usable: bool | None, quote_usable: bool | None, sort: str) -> dict[str, Any]`
 
-Unified local corpus search.
+Unified local corpus search — DISCOVERY tool over the fetched corpus.
 
-    ⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY.
+    Searches the local corpus (~decisions already fetched this session or via
+        the corpus crawl) for a legal CONCEPT when the exact wording is unknown.
+        Each result carries ``related_quotes`` — matched passages from the text —
+        so you can spot relevant precedent without fetching every full text.
     
-        Re-ranks documents ALREADY fetched via ``search_decisions``. Cannot find
-        new decisions.  The local cache is small (not a crawler).
+        Roles are complementary:
+        - THIS tool = semantic/concept DISCOVERY over the local corpus.
+        - ``search_decisions`` = live CURRENT search + citation verification.
     
-        HARD RULE: call ``search_decisions`` (live, online) FIRST.
+        The corpus may lag (it is not a live mirror); always confirm any decision
+        you cite with ``search_decisions`` + ``get_document`` first.
     
         Args:
-            query: Search query string.
-            mode: "lexical", "semantic", "hybrid", or "rrf" (default "rrf").
+            query: 2–6 legal keywords, e.g. "kıdem tazminatı zamanaşımı" — not a
+                sentence.  All terms are required (AND) and match anywhere in the
+                text, so narrative filler only shrinks the result set.  Wrap words
+                in double quotes to require them adjacent: `"tahliye taahhüdü"`.
+            mode: "lexical" (default; FTS5/BM25, sub-second), "semantic",
+                "hybrid", or "rrf" (BM25+TF-IDF fusion; slow on a large corpus).
             limit: Max results.
             filters: Optional dict with source, court, chamber, content_status.
             provider: Optional embedding provider for semantic modes.
@@ -1767,11 +1809,12 @@ Unified local corpus search.
             sort: Sort order (lexical mode).
     
         Returns:
-            Dict with ok, results, total_matches, method, optional hint.
+            Dict with ok, results (each with related_quotes), total_matches,
+            method, optional hint, corpus_coverage.
 
 ---
 
-### `def search_legislation(query: str, scope: str, sources: list[str] | None, legislation_type: str | None, limit: int, document_id: str | None, article_number: str | None, article_query: str | None, source: str | None, sources_override: dict[str, Any] | None) -> dict[str, Any]`
+### `def search_legislation(query: str, scope: str, sources: list[str] | None, legislation_type: str | None, limit: int, document_id: str | None, article_number: str | None, article_query: str | None, source: str | None, sort_by: str | None, mevzuat_adi: str | None, mevzuat_no: str | None, mevzuat_tur_list: list[str] | None, sources_override: dict[str, Any] | None) -> dict[str, Any]`
 
 Search legislation at law or article scope.
 
@@ -1845,7 +1888,7 @@ Export documents in multiple formats.
     Formats:
             ``"capabilities"`` — report available formats.
             ``"docx"`` — validated DOCX with disclaimer and footnotes.
-            ``"udf"`` — UYAP UDF (requires toolkit, experimental=True).
+            ``"udf"`` — UYAP UDF (preserves formatting; prefer docx_path input).
             ``"pdf"`` — PDF via LibreOffice (requires toolkit).
             ``"plain"`` — plain-text (strips markdown).
             ``"bundle"`` — complete package with verification.
@@ -1856,10 +1899,11 @@ Export documents in multiple formats.
             out_path: Optional output path.
             pack_dir: Pack directory for footnotes.
             draft_json: Draft metadata dict.
-            experimental: Required for UDF format.
-            text: Text for UDF export.
+            experimental: Deprecated, ignored.
+            text: Text for UDF export (petition formatting applied automatically).
             title_centered: Center title in UDF.
-            draft_dir/docx_path/out_dir: For bundle export.
+            draft_dir/out_dir: For bundle export.
+            docx_path: DOCX input — preferred for UDF (preserves formatting); also bundle.
     
         Returns:
             Format-specific result dict or error.
@@ -1972,15 +2016,37 @@ Detect potential contradictions among cited authorities.
 
 ## `legislation`
 
-### `def search_legislation(query: str, sources: list[str] | None, legislation_type: str | None, limit: int, sources_override: dict[str, Any] | None) -> dict[str, Any]`
+### `def evaluate_boolean_query(query: str, text: str) -> tuple[bool, int, list[str]]`
+
+Evaluate a boolean query against *text*.
+
+    Returns ``(matches, match_count, matched_terms)``.
+
+---
+
+### `def search_legislation(query: str, sources: list[str] | None, legislation_type: str | None, limit: int, sort_by: str | None, mevzuat_adi: str | None, mevzuat_no: str | None, mevzuat_tur_list: list[str] | None, sources_override: dict[str, Any] | None) -> dict[str, Any]`
 
 Search legislation via the Mevzuat source.
 
     Args:
-            query: Search phrase.
+            query: Search phrase (body-text search). Use ``mevzuat_adi`` for
+                title-only search and ``mevzuat_no`` to look up a specific law by
+                its official number. Never guess ``mevzuat_no`` — if unsure, use
+                ``mevzuat_adi`` first.
             sources: Source IDs to search (default: ["mevzuat"]).
             legislation_type: Optional filter (e.g. "Kanun", "Yönetmelik").
             limit: Max results.
+            sort_by: Result ordering — "relevance" (default when query present),
+                "date" / "resmi_gazete_tarihi" (newest gazette first),
+                "kayit_tarihi" (newest registry entry first). When omitted, the
+                source infers relevance vs date from whether a phrase is present.
+            mevzuat_adi: Search ONLY in the legislation title (multi-word AND'd).
+                Best when you know the law's name (e.g. "kişisel veri" → KVKK).
+            mevzuat_no: Official legislation number (e.g. "6698" → KVKK, "5237" →
+                TCK). Never guess — confirm via mevzuat_adi first if unsure.
+            mevzuat_tur_list: Filter by one or more of the 12 types: KANUN, KHK,
+                TUZUK, YONETMELIK, CB_KARARNAME, CB_YONETMELIK, CB_KARAR,
+                CB_GENELGE, KKY, UY, TEBLIGLER, MULGA.
             sources_override: Dict mapping source_id -> fake client for tests.
     
         Returns:
@@ -2006,17 +2072,34 @@ Get a full legislation document from the Mevzuat source.
 
 ### `def search_legislation_articles(document_id: str, article_number: str | None, article_query: str | None, source: str | None, sources_override: dict[str, Any] | None) -> dict[str, Any]`
 
-Search articles within a legislation document.
+Search articles within a legislation document using boolean operators.
 
-    Args:
+    Query language (uppercase operators only):
+    
+            - ``word`` — stem match (prefix: ``tazminat`` matches ``tazminatı``)
+            - ``"exact phrase"`` — substring phrase match
+            - ``AND`` / ``OR`` / ``NOT`` — boolean operators
+            - ``( ... )`` — grouping
+            - Adjacent words → implicit AND
+            - Turkish case-insensitive: ``İ→i``, ``I→ı``, rest standard fold
+    
+        Examples:
+            ``"açık rıza" AND sağlık``
+            ``(ihracat OR ithalat) AND NOT istisna``
+            ``vergi beyan`` → implicit AND
+    
+        Args:
             document_id: Mevzuat document ID.
             article_number: Optional specific article number to retrieve.
-            article_query: Optional keyword/phrase to search in article text.
+            article_query: Optional boolean query to search in article text.
             source: Source ID (default: "mevzuat").
             sources_override: Dict mapping source_id -> fake client for tests.
     
         Returns:
-            Dict with ok, matching_articles, total_articles_found, etc.
+            Dict with ok, matching_articles (sorted by match_count desc),
+            total_articles_found, etc.  Each matching article carries
+            ``number`` (madde_no), ``match_count``, and ``snippet`` with
+            ``**bold**`` highlights.
 
 ---
 
@@ -2089,6 +2172,31 @@ Build local-yargi style content status helper fields.
     This is intentionally deterministic and citation-safe: it never upgrades a
         document to quote/draft usable; it only labels the existing content status
         and exposes next-step hints for agents.
+
+---
+
+### `def compact_result(data: dict[str, Any]) -> dict[str, Any]`
+
+Bir arama sonucunu LLM bağlamı için sadeleştirir.
+
+    Düşenler bilgi kaybı değildir: hepsi ya başka bir alanın tekrarı, ya
+        ondan türetilebilir, ya da her sonuçta birebir aynı olan sabit metin.
+        ``include_raw=True`` ham metadata bloğunu korur.
+
+---
+
+### `def compact_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]`
+
+``compact_result``ı sonuç listesine uygular.
+
+---
+
+### `def collect_next_steps(results: list[dict[str, Any]]) -> list[str]`
+
+Sonuçlardaki yönlendirmeleri yanıt seviyesinde tekilleştirir.
+
+    ``get_document(... document_id='123')`` gibi kayda özel kısımlar
+        şablonlaştırılır, böylece N sonuç için N ayrı cümle yerine bir cümle kalır.
 
 ---
 
@@ -3017,6 +3125,49 @@ Return the full error code catalog used in the project.
 
 ---
 
+### `def split_markdown_for_pagination(text: str, page_number: int, max_chars: int) -> dict[str, Any]`
+
+Split long markdown into pages at paragraph boundaries.
+
+    Never cuts mid-paragraph.  Pages are built by accumulating paragraphs
+        (``\n\n+`` separators) until adding the next one would exceed
+        ``max_chars``.
+    
+        When a single paragraph exceeds ``max_chars``, it is further split at
+        sentence boundaries (``. ! ?`` followed by whitespace) as a fallback;
+        if that still produces overlong chunks, a word-boundary split is used.
+    
+        Args:
+            text: The full markdown/plain-text body.
+            page_number: 1-indexed page to return.
+            max_chars: Maximum characters per page (default 40_000).
+    
+        Returns:
+            Dict with ``markdown`` (the requested page), ``current_page``,
+            ``total_pages``, and ``total_chars``.
+
+---
+
+## `snippet`
+
+### `def extract_query_terms(query: str) -> list[str]`
+
+Extract searchable term tokens from a (possibly Solr-rewritten) query.
+
+    Strips ``+``/``-`` prefixes, unwraps quoted phrases (kept as a single
+        multi-word term), drops boolean operators, and returns the bare lowercase
+        terms in encounter order.
+
+---
+
+### `def make_snippet(text: str, terms: Iterable[str], max_length: int) -> str`
+
+Return a snippet of *text* centred on the first matched term.
+
+    Falls back to the leading *max_length* chars when no term matches.
+
+---
+
 ## `structured_draft`
 
 ### `def generate_structured_draft(matter: str, issue: str, sections: list[dict[str, Any]] | None, out_path: str | Path | None) -> dict[str, Any]`
@@ -3149,6 +3300,28 @@ Convert a UDF file content to basic markdown paragraphs.
 
 Write a simple UDF package. Caller must verify in UYAP Dokuman Editor.
 
+    With smart=True (default), Turkish petition conventions are applied:
+        bold centered title, bold "ETİKET	:" labels, bold ALL-CAPS headings,
+        bold enumerators and a right-aligned bold signature block.
+
+---
+
+### `def docx_to_udf_native(docx_path: str | Path, out_path: str | Path | None) -> dict`
+
+Convert DOCX to UDF preserving formatting, without external tools.
+
+    Carries over per-run bold, italic and underline, paragraph alignment,
+        left indent, line spacing and numbered lists (w:numPr -> UYAP Numbered
+        paragraphs). Element layout mirrors UYAP Dokuman Editor output
+        (newline-joined CDATA pool). Tables and images are not supported.
+    
+        UDF has no space-after/space-before concept, so with spacer_paragraphs
+        (default) an empty paragraph is inserted wherever the DOCX vertical gap is
+        >= SPACER_GAP_PT — except around numbered list items and before
+        right-aligned (signature) paragraphs, which stay tight. label_double_tab
+        aligns caption label colons on UYAP's tab stops, and page_number_footer
+        adds the standard "page/total" footer.
+
 ---
 
 ### `def probe_udf(path: str | Path) -> dict`
@@ -3169,12 +3342,18 @@ Convert UDF to PDF via UDF-Toolkit udf_to_pdf.py.
 
 ---
 
+### `def convert_docx_to_udf(file_path: str | Path, out_path: str | Path | None) -> dict`
+
+Convert DOCX to UDF, preserving formatting.
+
+    Uses the native converter first (no external tools needed); falls back to
+        the UDF-Toolkit docx_to_udf.py script if the native conversion fails.
+
+---
+
 ### `def convert_docx_to_udf_experimental(file_path: str | Path, out_path: str | Path | None, experimental: bool) -> dict`
 
-Convert DOCX to UDF via UDF-Toolkit docx_to_udf.py.
-
-    The function name is retained for API compatibility. The old experimental
-        pure-Python converter is disabled and ignored.
+Deprecated alias for convert_docx_to_udf; the flag is ignored.
 
 ---
 
@@ -3212,6 +3391,6 @@ Verify ZIP bundle archive integrity.
 
 ## Coverage Summary
 
-- **Total public functions:** 294
-- **With docstrings:** 293
+- **Total public functions:** 305
+- **With docstrings:** 304
 - **Coverage:** 99.7%
