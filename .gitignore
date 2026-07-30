@@ -18,5 +18,15 @@ vendor/UDF-Toolkit/
 # DeepSeek crawl scratch/debug dosyaları
 check_*.py
 crawl_bg.*
+crawl_master.*
 crawl_ISTINAFHUKUK_*.json
 crawl_YARGITAYKARARI_*.json
+crawl_*.json.err
+crawl_logs/
+.crawl_pid.txt
+.crawl_master_pid.txt
+
+# Syncthing
+.stfolder/
+.stversions/
+.stignore
