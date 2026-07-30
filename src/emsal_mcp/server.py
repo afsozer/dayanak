@@ -429,6 +429,7 @@ def main() -> None:
         karar_no: str | None = None,
         sort_by: str | None = None,
         include_snippets: bool = False,
+        include_raw: bool = False,
     ) -> list[dict] | dict:
         """✅ PRIMARY, MANDATORY TOOL FOR ALL CASE-LAW / DECISION / MEVZUAT RESEARCH.
 
@@ -478,10 +479,22 @@ def main() -> None:
         (grouping)   Parentheses for sub-expressions.  (+işçi OR +memur) +tazminat
         * wildcard   Suffix wildcard (use sparingly).  tazmin*
 
-        SAFETY NET: If you submit a plain multi-word query with NO operators
-        (no +, -, ", AND, OR, NOT, parens), emsal-mcp transparently rewrites
-        it so every term is prefixed with `+` (all required).  This prevents
-        the OR-default from returning irrelevant noise.
+        ⚠️ THE INDEX IS NOT STEMMED.  Bedesten indexes surface forms, so each
+        inflected form is its own token: `+taahhüdü` ≈ 16 700 hits while
+        `+taahhüt` ≈ 43 800.  A required term only matches documents carrying
+        that exact form.  Prefer noun stems or quoted phrases over inflected
+        single words, and keep Turkish diacritics (`+taahhut` ≈ 10 hits).
+
+        TWO-PASS BEHAVIOUR: If you submit a plain multi-word query with NO
+        operators (no +, -, ", AND, OR, NOT, parens), emsal-mcp first tries it
+        with every term required (`+t1 +t2 ...`) for precision.  If that pass
+        cannot fill the requested `limit` — the normal outcome for 3+ inflected
+        terms on an unstemmed index — it automatically re-runs your ORIGINAL
+        query as OR and returns Solr's relevance ranking.  Nothing is lost: an
+        OR query is a superset of the AND query and Solr ranks documents
+        matching more terms higher, so real conjunction matches stay on top.
+        The fallback is reported in `warnings` and as `fallback_to_or` on each
+        result, so a starved AND pass never masquerades as "no such precedent".
 
         Worked examples (query string → what it does):
           +işçi +tazminat                    → docs with BOTH "işçi" AND "tazminat"
@@ -489,11 +502,12 @@ def main() -> None:
           (+işçi OR +memur) +tazminat -manevi → (işçi OR memur) AND tazminat, exclude "manevi"
           kıdem AND ihbar AND tazminat       → all three terms required
 
-        ⚠️ WRONG (these fall back to OR — avoid):
-          tahliye taahhüdü geçerlilik        → OR of 3 words = mostly irrelevant
-          boşanma tazminat*                  → OR, not "boşanma AND tazminat*"
-        (emsal-mcp auto-rewrites the bare-term case, but DO NOT rely on it —
-        be explicit with + or AND for precision.)
+        ⚠️ Multi-concept queries: quote each concept instead of listing bare
+        inflected words.  `+"tahliye taahhüdü" +"adli tatil"` expresses the
+        intent; `tahliye taahhüdü adli tatil` makes the engine (and the
+        fallback) guess.  If a `+`-joined query returns 0, that is a real
+        finding about the phrasing — retry with fewer/broader terms or with
+        the stem, not with more terms.
 
         Notes:
         - Overly broad queries (single common term like "karar") return noise; add
@@ -515,10 +529,15 @@ def main() -> None:
             limit: Max results (default 10, must be positive).
             page: Page number for pagination (default 1).
             court_types: Optional list of court item types for multi-court search
-                in a single call. Bedesten values: YARGITAYKARARI, DANISTAYKARARI,
-                YERELKARARI, ISTINAFKARARI, KYBKARAR. Defaults to
-                ["YARGITAYKARARI", "DANISTAYKARARI"] when source=bedesten and
-                omitted.
+                in a single call. Bedesten values (exact spelling — verified
+                live): YARGITAYKARARI (Yargıtay), DANISTAYKARAR (Danıştay, no
+                trailing I), YERELHUKUK (yerel hukuk mahkemeleri), ISTINAFHUKUK
+                (bölge adliye hukuk daireleri), KYB (kanun yararına bozma).
+                Defaults to ["YARGITAYKARARI", "DANISTAYKARAR"] when
+                source=bedesten and omitted. An unrecognised value is rejected
+                with INVALID_COURT_TYPE — Bedesten answers a bogus itemType
+                with a silent total=0 that is indistinguishable from "no such
+                precedent", so we never forward one.
             birimAdi: Optional chamber/unit code. Use the short enum codes:
                 Yargıtay: H1–H23 (hukuk daireleri), C1–C23 (ceza daireleri),
                 HGK (Hukuk Genel Kurulu), CGK (Ceza Genel Kurulu), BGK (Büyük
@@ -545,6 +564,10 @@ def main() -> None:
                 the query terms) to each.  Lets you triage relevance without
                 calling get_document per result.  Results already in the local
                 corpus get a snippet for free even when this is false.
+            include_raw: When true, keep the raw upstream ``metadata`` block.
+                Default false: fields duplicated by the flat keys
+                (``esas_no``, ``karar_no``, ``decision_date``, ``chamber``, ...)
+                are dropped to save context.  Nothing unique is lost.
 
         Returns:
             Dict with results, pagination metadata, and optional warnings.
@@ -585,8 +608,29 @@ def main() -> None:
         effective_source = source or "bedesten"
         # Default court_types when none given and the source is bedesten: a
         # combined Yargıtay + Danıştay sweep (mirrors yargı-mcp ictihat_ara).
-        if not court_types and effective_source == "bedesten":
-            court_types = ["YARGITAYKARARI", "DANISTAYKARARI"]
+        if effective_source == "bedesten":
+            from .sources.bedesten import (
+                DEFAULT_COURT_TYPES,
+                VALID_ITEM_TYPES,
+                normalize_item_types,
+            )
+            if not court_types:
+                court_types = list(DEFAULT_COURT_TYPES)
+            else:
+                # Reject unknown itemTypes up front: Bedesten does not error on
+                # one, it silently returns total=0 — which an agent reads as
+                # "no precedent exists".  Known-bad spellings are repaired.
+                court_types, unknown_types = normalize_item_types(court_types)
+                if unknown_types:
+                    return build_error(
+                        "INVALID_COURT_TYPE",
+                        f"Geçersiz court_types değeri: {', '.join(unknown_types)}. "
+                        f"Geçerli değerler: {', '.join(sorted(VALID_ITEM_TYPES))}.",
+                        recommended_next_steps=[
+                            "Danıştay için 'DANISTAYKARAR' (sonda I yok), istinaf için "
+                            "'ISTINAFHUKUK', yerel mahkeme için 'YERELHUKUK' kullanın.",
+                        ],
+                    )
         # M-93: validate birimAdi against 79-code enum
         if birimAdi:
             birim_err = _validate_birim_adi(birimAdi)
@@ -628,6 +672,9 @@ def main() -> None:
                     upstream_error_code=exc.fmc,
                     upstream_error_message=exc.fmte,
                 )
+            if isinstance(exc, ValueError):
+                # Raised by the source client when no usable court_types remain.
+                return build_error("INVALID_COURT_TYPE", str(exc))
             raise
         # Store search results in cache for later local search
         cache = Cache()
@@ -697,6 +744,12 @@ def main() -> None:
             "page": sp.page,
             "total_pages": sp.total_pages,
         }
+        if next_steps:
+            response["recommended_next_steps"] = next_steps
+        # Source-level notices (AND→OR fallback, dropped court_types, ...) —
+        # the caller must see how the search was actually executed.
+        if sp.warnings:
+            response["warnings"] = list(sp.warnings)
         if sp.total is None:
             response.setdefault("warnings", [])
             response["warnings"].append(
@@ -2224,29 +2277,35 @@ def main() -> None:
     @validate_tool_input(query=validate_non_empty)
     def search_local_corpus(
         query: str,
-        mode: str = "rrf",
+        mode: str = "lexical",
         limit: int = 20,
         filters: dict | None = None,
         provider: str | None = None,
     ) -> dict:
         """Concept DISCOVERY over the local corpus.
 
-        Searches the local corpus (~decisions already fetched this session or
+        Searches the local corpus (decisions already fetched this session or
         via the corpus crawl) for a legal CONCEPT when the exact wording is
-        unknown.  Write a focused natural-language phrase (no operators).
-        Each result carries ``related_quotes`` — matched passages — so you can
-        spot relevant precedent without fetching every full text.
+        unknown.  Each result carries ``related_quotes`` — matched passages —
+        so you can spot relevant precedent without fetching every full text.
 
-        Roles are complementary: THIS tool = semantic/concept DISCOVERY over
-        the local corpus; ``search_decisions`` = live CURRENT search + citation
-        verification.  The corpus may lag; always confirm any decision you
-        cite with ``search_decisions`` + ``get_document`` first.
+        Roles are complementary: THIS tool = DISCOVERY over the local corpus;
+        ``search_decisions`` = live CURRENT search + citation verification.
+        The corpus may lag; always confirm any decision you cite with
+        ``search_decisions`` + ``get_document`` first.
+
+        QUERY FORM: 2–6 legal keywords, NOT a sentence.  All terms are
+        required (AND) and match anywhere in the text, so narrative filler
+        only shrinks the result set.  Quote words to require them adjacent:
+        ``kıdem tazminatı zamanaşımı`` · ``"tahliye taahhüdü" geçerlilik``.
+        Unlike Bedesten this index folds diacritics (kamulastirma =
+        kamulaştırma).
 
         Args:
-            query: Natural-language legal concept (no Solr operators).
-            mode: Search method — 'rrf' (default, hybrid+RRF fusion),
-                  'lexical' (FTS5 full-text), 'semantic' (embedding vector),
-                  'hybrid' (weighted lexical+semantic).
+            query: 2–6 legal keywords; `"quoted spans"` match as phrases.
+            mode: 'lexical' (default; FTS5/BM25, sub-second), 'rrf'
+                  (BM25+TF-IDF fusion; SLOW — minutes on a large corpus),
+                  'semantic' (dense embeddings), 'hybrid'.
             limit: Max results.
             filters: Optional dict with source, court, chamber, content_status.
             provider: Embedding provider name for semantic modes (ignored for lexical).
@@ -2257,7 +2316,11 @@ def main() -> None:
                 results = cache.search_local(query=query, limit=limit, **(filters or {}))
             finally:
                 cache.close()
-            return _attach_corpus_hint({"results": results, "total_matches": len(results)})
+            return _attach_corpus_hint({
+                "results": results,
+                "total_matches": len(results),
+                "method": "bm25_fts5",
+            })
         elif mode == "semantic":
             if provider:
                 from .semantic import embedding_search as _emb

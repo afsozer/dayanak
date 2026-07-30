@@ -651,7 +651,7 @@ def _verify_export_bundle(
     docx_path = bundle_path / "draft.docx"
     if docx_path.exists():
         try:
-            with ZipFile(docx_path, "r") as _zf:
+            with ZipFile(docx_path, "r"):  # opening it is the validity check
                 checks["docx_zip_valid"] = {"ok": True}
         except Exception as e:
             checks["docx_zip_valid"] = build_error("CHECK_FAILED", str(e))

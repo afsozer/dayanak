@@ -587,3 +587,122 @@ class TestCacheMaintenance:
         cache2 = Cache(tmp_path / "test.sqlite3")
         assert cache2.schema_version == CACHE_SCHEMA_VERSION
         cache2.close()
+
+
+class TestFts5MatchExpr:
+    """The MATCH builder turns free text into a safe, AND-ed FTS5 expression."""
+
+    def test_terms_are_anded(self):
+        from emsal_mcp.cache import _fts5_match_expr
+        assert _fts5_match_expr("tahliye taahhüdü geçerlilik") == (
+            '"tahliye" AND "taahhüdü" AND "geçerlilik"'
+        )
+
+    def test_quoted_span_becomes_a_phrase(self):
+        from emsal_mcp.cache import _fts5_match_expr
+        assert _fts5_match_expr('"tahliye taahhüdü" geçerlilik') == (
+            '"tahliye taahhüdü" AND "geçerlilik"'
+        )
+
+    def test_operators_in_user_text_are_neutralised(self):
+        """A stray AND/OR/NOT/* must be data, not syntax — otherwise the query
+        shape changes or FTS5 raises."""
+        from emsal_mcp.cache import _fts5_match_expr
+        assert _fts5_match_expr("tazminat AND OR NOT *") == (
+            '"tazminat" AND "AND" AND "OR" AND "NOT"'
+        )
+
+    def test_punctuation_only_returns_none(self):
+        from emsal_mcp.cache import _fts5_match_expr
+        assert _fts5_match_expr("!!! ???") is None
+        assert _fts5_match_expr("") is None
+        assert _fts5_match_expr("   ") is None
+
+
+class TestSearchLocalUsesFts5:
+    """Regression: search_local used to run the MATCH, discard the rowids, and
+    let `full_text LIKE '%<whole query>%'` decide.  Multi-word queries could
+    then only match a contiguous substring, so a normal keyword query returned
+    nothing after a full-table scan."""
+
+    def _populate(self, cache):
+        docs = [
+            Document(
+                source="bedesten", document_id="b1", title="Yargıtay Kararı",
+                full_text=(
+                    "Davacı tahliye talebinde bulunmuştur. Kiracının verdiği "
+                    "taahhüdü geçerli sayılmıştır. Taahhüdün geçerlilik "
+                    "şartları tartışılmıştır."
+                ),
+                court="Yargıtay", content_status=ContentStatus.FULL_TEXT,
+            ),
+            Document(
+                source="bedesten", document_id="b2", title="Danıştay Kararı",
+                full_text="İmar planına karşı açılan iptal davası reddedilmiştir.",
+                court="Danıştay", content_status=ContentStatus.FULL_TEXT,
+            ),
+        ]
+        for doc in docs:
+            cache.store_document(doc)
+        # The FTS5 table is created by the semantic layer, not by Cache itself.
+        from emsal_mcp.semantic import _ensure_fts5
+        _ensure_fts5(cache.db)
+
+    def test_scattered_terms_match(self, tmp_path):
+        """The terms appear in the document but never adjacent — exactly the
+        case the old LIKE path could not find."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._populate(cache)
+        assert cache._has_fts5()
+        results = cache.search_local("tahliye taahhüdü geçerlilik şartları")
+        assert [r["document_id"] for r in results] == ["b1"]
+        cache.close()
+
+    def test_contiguous_like_would_have_failed(self, tmp_path):
+        """Pin the reason: the whole query is not a substring of the text."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._populate(cache)
+        row = cache.db.execute(
+            "SELECT COUNT(*) FROM documents_v2 WHERE full_text LIKE ?",
+            ("%tahliye taahhüdü geçerlilik şartları%",),
+        ).fetchone()[0]
+        assert row == 0, "if this matches, the regression test proves nothing"
+        assert cache.search_local("tahliye taahhüdü geçerlilik şartları")
+        cache.close()
+
+    def test_missing_term_excludes_document(self, tmp_path):
+        """AND semantics: every term must be present."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._populate(cache)
+        assert cache.search_local("tahliye kamulaştırma") == []
+        cache.close()
+
+    def test_diacritics_folded_by_the_index(self, tmp_path):
+        """tokenize='unicode61 remove_diacritics 2' — unlike Bedesten, the
+        local index matches diacritic-stripped input."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._populate(cache)
+        assert [r["document_id"] for r in cache.search_local("taahhudu gecerlilik")] == ["b1"]
+        cache.close()
+
+    def test_metadata_filters_still_apply_on_the_fts_path(self, tmp_path):
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._populate(cache)
+        assert cache.search_local("tahliye", court="Danıştay") == []
+        assert len(cache.search_local("tahliye", court="Yargıtay")) == 1
+        cache.close()
+
+    def test_falls_back_to_like_without_an_index(self, tmp_path):
+        """No FTS5 table — metadata-only and substring search must still work."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        docs = [Document(
+            source="bedesten", document_id="b1", title="Yargıtay Kararı",
+            full_text="Kıdem tazminatı hesabı", court="Yargıtay",
+            content_status=ContentStatus.FULL_TEXT,
+        )]
+        for doc in docs:
+            cache.store_document(doc)
+        assert not cache._has_fts5()
+        assert len(cache.search_local("Kıdem tazminatı")) == 1
+        assert len(cache.search_local(query="", court="Yargıtay")) == 1
+        cache.close()

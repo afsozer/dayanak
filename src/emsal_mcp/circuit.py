@@ -191,7 +191,9 @@ def is_circuit_open(
     from .config import config as app_config
     from .cache import Cache
 
-    _threshold = threshold if threshold is not None else app_config.circuit_breaker_threshold
+    # `threshold` is accepted for signature symmetry with the record_* helpers
+    # but plays no part here: opening the circuit is a counting decision, while
+    # this function only reads the stored state and the recovery timeout.
     _recovery_timeout = recovery_timeout if recovery_timeout is not None else app_config.circuit_recovery_timeout
 
     own_cache = cache is None

@@ -16,7 +16,7 @@ from .models import build_error
 
 def search_local_corpus(
     query: str = "",
-    mode: str = "rrf",
+    mode: str = "lexical",
     limit: int = 10,
     filters: dict[str, Any] | None = None,
     provider: str | None = None,
@@ -50,10 +50,12 @@ def search_local_corpus(
     you cite with ``search_decisions`` + ``get_document`` first.
 
     Args:
-        query: Natural-language legal concept (no operators). Write a focused
-            phrase/sentence, e.g. "işçinin haklı nedenle feshinde kıdem
-            tazminatı hakkı". Avoid single words or pasting whole questions.
-        mode: "lexical", "semantic", "hybrid", or "rrf" (default "rrf").
+        query: 2–6 legal keywords, e.g. "kıdem tazminatı zamanaşımı" — not a
+            sentence.  All terms are required (AND) and match anywhere in the
+            text, so narrative filler only shrinks the result set.  Wrap words
+            in double quotes to require them adjacent: `"tahliye taahhüdü"`.
+        mode: "lexical" (default; FTS5/BM25, sub-second), "semantic",
+            "hybrid", or "rrf" (BM25+TF-IDF fusion; slow on a large corpus).
         limit: Max results.
         filters: Optional dict with source, court, chamber, content_status.
         provider: Optional embedding provider for semantic modes.
@@ -163,7 +165,12 @@ def search_local_corpus(
                 draft_usable=draft_usable, quote_usable=quote_usable,
                 sort=sort, limit=limit,
             )
-            return _enrich({"ok": True, "results": results, "total_matches": len(results)})
+            return _enrich({
+                "ok": True,
+                "results": results,
+                "total_matches": len(results),
+                "method": "bm25_fts5",
+            })
         finally:
             cache.close()
 

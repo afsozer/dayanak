@@ -258,6 +258,11 @@ class SearchPage(BaseModel):
     page_size: int = 10
     total_pages: int | None = None
 
+    # Source-level notices about how the search was actually executed —
+    # e.g. a query rewritten from AND back to OR, or a court_types value
+    # dropped as invalid.  Merged into the tool response's `warnings`.
+    warnings: list[str] = Field(default_factory=list)
+
 
 class Document(SearchResult):
     full_text: str | None = None

@@ -716,11 +716,15 @@ def semantic_search(
 def _fts5_search(
     query: str, limit: int, cache: Cache | None = None, filters: dict | None = None
 ) -> list[dict[str, Any]]:
-    """Run BM25 FTS5 search and return results in standard format."""
+    """Run BM25 FTS5 search and return results in standard format.
+
+    ``search_local`` orders by BM25; RRF fuses on rank position alone, so the
+    per-item score is not needed and is left at 0.0.
+    """
     own_cache = cache is None
     c = cache or Cache()
     try:
-        raw = c.search_local(query=query, limit=limit)
+        raw = c.search_local(query=query, limit=limit, **(filters or {}))
         # Convert search_local format to standard result dict
         return [
             {
@@ -730,7 +734,7 @@ def _fts5_search(
                 "court": r.get("court"),
                 "chamber": r.get("chamber"),
                 "decision_date": r.get("decision_date"),
-                "score": 0.0,  # BM25 not directly available from LIKE fallback
+                "score": 0.0,  # RRF fuses on rank, not score
                 "content_status": r.get("content_status", ""),
                 "quote_usable": r.get("quote_usable", False),
                 "draft_usable": r.get("draft_usable", False),

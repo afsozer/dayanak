@@ -42,6 +42,7 @@ addopts = "-v --tb=short"
 markers = [
     "unit: Fast unit tests (no DB/IO)",
     "integration: Tests requiring DB setup or network I/O",
+    "live: Hits the real upstream source; opt-in via EMSAL_LIVE_TESTS=1",
 ]
 
 [tool.ruff]
@@ -52,6 +53,13 @@ line-length = 100
 # default rule set (E/W/F).  See ROADMAP.md M-68 / FAZ E.
 [tool.ruff.lint]
 extend-ignore = ["D100", "D101", "D103", "E402"]  # D=advisory docstrings, E402=deliberate lazy imports (M-52)
+
+# Only a bare `_` (or `__`, ...) counts as an intentionally-unused local.
+# The default regex also exempts every `_name`, which is how the dead
+# `_fts5_narrowed` in Cache.search_local survived: it was assigned the FTS5
+# candidate rowids and never read, so the index was queried and discarded
+# while a full-table LIKE scan did the actual work.  F841 must see those.
+dummy-variable-rgx = "^_+$"
 
 [tool.mypy]
 python_version = "3.11"

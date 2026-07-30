@@ -30,6 +30,77 @@ from emsal_mcp.models import ContentStatus, Document, SearchPage, SearchResult, 
 _SOLR_OPERATOR_RE = re.compile(r'[+\-"()]|\b(?:AND|OR|NOT)\b', re.UNICODE)
 
 
+# ── Bedesten itemType vocabulary ─────────────────────────────────────────────
+# Verified live against /emsal-karar/searchDocuments (phrase="tazminat"):
+#   YARGITAYKARARI 1_124_297 · DANISTAYKARAR 33_437 · YERELHUKUK 385_707
+#   ISTINAFHUKUK 136_892 · KYB 14
+# ⚠️ Bedesten does NOT reject an unknown itemType — it silently returns
+# total=0.  A typo therefore looks exactly like "no precedent exists", which
+# is how the default `DANISTAYKARARI` (correct: `DANISTAYKARAR`) dropped every
+# Danıştay decision from every default search without anyone noticing.  Hence
+# the explicit whitelist below: unknown values are surfaced, never sent.
+VALID_ITEM_TYPES: frozenset[str] = frozenset({
+    "YARGITAYKARARI",
+    "DANISTAYKARAR",
+    "YERELHUKUK",
+    "ISTINAFHUKUK",
+    "KYB",
+})
+
+# Historical/incorrect spellings we accept and repair rather than reject, so
+# callers pinned to the old (broken) docstring keep working.
+_ITEM_TYPE_ALIASES: dict[str, str] = {
+    "DANISTAYKARARI": "DANISTAYKARAR",
+    "DANISTAYKARARLARI": "DANISTAYKARAR",
+    "YERELKARARI": "YERELHUKUK",
+    "YERELKARAR": "YERELHUKUK",
+    "ISTINAFKARARI": "ISTINAFHUKUK",
+    "ISTINAFKARAR": "ISTINAFHUKUK",
+    "KYBKARAR": "KYB",
+    "KYBKARARI": "KYB",
+    "YARGITAYKARAR": "YARGITAYKARARI",
+}
+
+# Default sweep for a bedesten search with no explicit court_types.
+DEFAULT_COURT_TYPES: list[str] = ["YARGITAYKARARI", "DANISTAYKARAR"]
+
+
+def normalize_item_type(raw: str) -> str:
+    """Upper-case an itemType and repair known incorrect spellings.
+
+    Returns the canonical value when recognised, otherwise the upper-cased
+    input unchanged (the caller decides whether to reject it).
+    """
+    if not raw:
+        return raw
+    key = (
+        raw.strip().upper()
+        .replace(" ", "")
+        .replace("İ", "I").replace("Ş", "S").replace("Ğ", "G")
+        .replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
+    )
+    return _ITEM_TYPE_ALIASES.get(key, key)
+
+
+def normalize_item_types(raw: list[str]) -> tuple[list[str], list[str]]:
+    """Normalize a court_types list.
+
+    Returns ``(valid, unknown)`` — ``valid`` holds canonical itemTypes in the
+    caller's order (deduplicated), ``unknown`` holds the original spellings
+    that match no known type.
+    """
+    valid: list[str] = []
+    unknown: list[str] = []
+    for item in raw:
+        norm = normalize_item_type(str(item))
+        if norm in VALID_ITEM_TYPES:
+            if norm not in valid:
+                valid.append(norm)
+        else:
+            unknown.append(str(item))
+    return valid, unknown
+
+
 def rewrite_solr_query(query: str) -> tuple[str, bool]:
     """Rewrite a bare-term Solr query so every term is required.
 
@@ -39,6 +110,13 @@ def rewrite_solr_query(query: str) -> tuple[str, bool]:
     prefix each whitespace-separated token with ``+`` so all terms become
     required (intersection).  Queries that already use operators are returned
     unchanged — the caller clearly knows the dialect.
+
+    ⚠️ The rewrite is precision-first and BRITTLE: Bedesten's index is not
+    Turkish-stemmed (``+taahhüdü`` ≈ 16 700 hits, ``+taahhüt`` ≈ 43 800 — two
+    different tokens), so every inflected form must appear literally.  Four
+    required terms routinely intersect to zero.  ``search_page`` therefore
+    retries the original OR query when the AND form comes back empty; see
+    ``fallback_to_or``.
 
     Returns ``(rewritten_query, was_rewritten)``.
     """
@@ -53,6 +131,25 @@ def rewrite_solr_query(query: str) -> tuple[str, bool]:
         return query, False
     rewritten = " ".join(f"+{t}" for t in tokens)
     return rewritten, True
+
+
+def _result_count(raw_data: Any) -> int:
+    """How many records the upstream reports for a search response.
+
+    Prefers ``data.total``; falls back to the length of the item list when the
+    upstream omits a total.
+    """
+    data = raw_data.get("data", raw_data) if isinstance(raw_data, dict) else None
+    if not isinstance(data, dict):
+        return 0
+    total = data.get("total")
+    if isinstance(total, int):
+        return total
+    items = (
+        data.get("emsalKararList") or data.get("data")
+        or data.get("items") or data.get("content") or []
+    )
+    return len(items) if isinstance(items, list) else 0
 
 
 class BedestenClient(SourceClient):
@@ -76,6 +173,24 @@ class BedestenClient(SourceClient):
     _search_response_keys = ["emsalKararList", "items", "data", "content"]
     _get_document_response_keys = ["content", "document", "data"]
 
+    async def _post_search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST a search payload, retrying once on a transient upstream fault."""
+        async with client() as c:
+            r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
+            check_http_response(r, self.source_id)
+            raw_data = r.json()
+        try:
+            check_bedesten_response_error(raw_data, source=self.source_id)
+        except BedestenUpstreamError:
+            import asyncio as _aio
+            await _aio.sleep(self._upstream_retry_delay)
+            async with client() as c:
+                r2 = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
+                check_http_response(r2, self.source_id)
+                raw_data = r2.json()
+            check_bedesten_response_error(raw_data, source=self.source_id)
+        return raw_data
+
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
         """Search and return only the results list.
 
@@ -97,14 +212,26 @@ class BedestenClient(SourceClient):
         query, query_rewritten = rewrite_solr_query(query)
 
         # ── court_types → itemTypeList ────────────────────────────────
+        warnings: list[str] = []
         court_types: list[str] | None = filters.get("court_types") or filters.get("court_types_list")
         if court_types and isinstance(court_types, list) and len(court_types) > 0:
-            item_type_list = court_types
+            item_type_list, unknown_types = normalize_item_types(court_types)
+            if unknown_types:
+                warnings.append(
+                    f"Geçersiz court_types değeri yok sayıldı: {', '.join(unknown_types)}. "
+                    f"Geçerli değerler: {', '.join(sorted(VALID_ITEM_TYPES))}."
+                )
+            if not item_type_list:
+                # Every requested type was bogus.  Sending them would return a
+                # silent total=0 that reads as "no such precedent" — refuse
+                # instead, so the caller sees the real cause.
+                raise ValueError(
+                    f"Geçerli court_types kalmadı ({', '.join(unknown_types)}). "
+                    f"Geçerli değerler: {', '.join(sorted(VALID_ITEM_TYPES))}."
+                )
         else:
             item_type = filters.get("item_type") or filters.get("court") or self._default_item_type
-            if item_type and not item_type.isupper():
-                item_type = item_type.upper().replace(" ", "").replace("İ", "I").replace("Ş", "S").replace("Ğ", "G").replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
-            item_type_list = [item_type]
+            item_type_list = [normalize_item_type(str(item_type))]
 
         # ── esas_no / karar_no parsing ─────────────────────────────────
         def _parse_yy_slash_ss(raw: str | None) -> tuple[int | None, int | None]:
@@ -158,20 +285,43 @@ class BedestenClient(SourceClient):
             data_payload["kararNoYil"] = karar_yil
         if karar_sira is not None:
             data_payload["kararNoSira"] = karar_sira
-        async with client() as c:
-            r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
-            check_http_response(r, self.source_id)
-            raw_data = r.json()
-        try:
-            check_bedesten_response_error(raw_data, source=self.source_id)
-        except BedestenUpstreamError:
-            import asyncio as _aio
-            await _aio.sleep(self._upstream_retry_delay)
-            async with client() as c:
-                r2 = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
-                check_http_response(r2, self.source_id)
-                raw_data = r2.json()
-            check_bedesten_response_error(raw_data, source=self.source_id)
+        raw_data = await self._post_search(payload)
+
+        # ── AND → OR fallback ──────────────────────────────────────────
+        # The auto-`+` rewrite is precision-first, but the index is unstemmed,
+        # so a 3–4 term conjunction of inflected words routinely matches almost
+        # nothing — and the handful it does match are usually incidental
+        # co-occurrences, which is worse than an empty result because they look
+        # like an answer.  ("tahliye taahhüdü adli tatil" → 2 hits, one of them
+        # a Ceza Genel Kurulu görevi-kötüye-kullanma decision.)
+        #
+        # So: if the AND pass cannot even fill the requested page, re-run the
+        # caller's ORIGINAL query as OR.  Nothing is lost by discarding the AND
+        # hits — an OR query is a strict superset of the AND query, and Solr
+        # scores documents matching more terms higher, so any genuine
+        # conjunction match floats to the top of the OR results anyway.
+        # Reported via `fallback_to_or` + `warnings`.  The threshold depends
+        # only on the query, so it stays stable across pages.
+        fallback_to_or = False
+        and_count = _result_count(raw_data)
+        if query_rewritten and and_count < limit:
+            # Fresh payload — never mutate the one already sent, so the two
+            # passes stay independently inspectable.
+            or_payload = dict(payload)
+            or_payload["data"] = {**data_payload, "phrase": original_query}
+            raw_data = await self._post_search(or_payload)
+            fallback_to_or = True
+            query_rewritten = False
+            warnings.append(
+                f"'{original_query}' tüm terimler zorunlu (AND) biçiminde yalnızca "
+                f"{and_count} sonuç verdi (istenen: {limit}); sorgu OR olarak yeniden "
+                "çalıştırıldı ve sonuçlar Solr alaka sırasına göre döndürüldü. "
+                "Bedesten indeksi Türkçe kök analizi yapmaz, bu yüzden çekimli "
+                "kelimelerin kesişimi çoğu zaman boş kalır. Kesişim gerçekten "
+                "isteniyorsa terimleri öbek hâlinde verin, örn. "
+                "+\"tahliye taahhüdü\" +\"adli tatil\"."
+            )
+
         data = raw_data.get("data", raw_data)
         _ = self._check_response_schema(data, self._search_response_keys, "search")
 
@@ -183,7 +333,10 @@ class BedestenClient(SourceClient):
             total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 0
 
         if not isinstance(data, dict):
-            return SearchPage(results=[], total=total, page=page, page_size=page_size, total_pages=total_pages)
+            return SearchPage(
+                results=[], total=total, page=page, page_size=page_size,
+                total_pages=total_pages, warnings=warnings,
+            )
 
         items = data.get("emsalKararList") or data.get("data") or data.get("items") or data.get("content") or []
         out: list[SearchResult] = []
@@ -205,6 +358,9 @@ class BedestenClient(SourceClient):
             if query_rewritten:
                 meta["query_rewritten"] = True
                 meta["original_query"] = original_query
+            if fallback_to_or:
+                meta["fallback_to_or"] = True
+                meta["original_query"] = original_query
             # Legacy link kept as alternate_url for callers depending on it.
             meta["alternate_url"] = f"https://emsal.uyap.gov.tr/getDokuman?id={did}"
             out.append(SearchResult(
@@ -215,7 +371,10 @@ class BedestenClient(SourceClient):
                 source_url=f"https://mevzuat.adalet.gov.tr/ictihat/{did}",
                 content_status=ContentStatus.METADATA_ONLY, metadata=meta,
             ))
-        return SearchPage(results=out, total=total, page=page, page_size=page_size, total_pages=total_pages)
+        return SearchPage(
+            results=out, total=total, page=page, page_size=page_size,
+            total_pages=total_pages, warnings=warnings,
+        )
 
     async def get_document(self, document_id: str, **kwargs: Any) -> Document:
         import httpx

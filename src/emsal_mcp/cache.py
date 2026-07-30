@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,41 @@ def _default_cache_path() -> Path:
     """
     env = os.environ.get("EMSAL_CACHE_PATH")
     return Path(env) if env else DEFAULT_CACHE
+
+_FTS5_PHRASE_RE = re.compile(r'"([^"]+)"')
+_FTS5_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def _fts5_match_expr(query: str) -> str | None:
+    """Turn a free-text query into a safe FTS5 MATCH expression.
+
+    Every term is required (AND).  Quoted spans in the input are preserved as
+    FTS5 phrase queries, so ``"tahliye taahhüdü" geçerlilik`` means the phrase
+    *and* the extra term.  Each unit is emitted as a double-quoted string
+    literal, which makes FTS5 treat it as data rather than syntax — a bare
+    ``AND``/``OR``/``NOT``/``*`` in the user's text can then never change the
+    query's shape or raise a syntax error.
+
+    Returns ``None`` when the query has no usable tokens (caller falls back
+    to LIKE).
+    """
+    if not query or not query.strip():
+        return None
+
+    units: list[str] = []
+
+    def _add(text: str) -> None:
+        tokens = _FTS5_TOKEN_RE.findall(text)
+        if tokens:
+            units.append('"' + " ".join(tokens) + '"')
+
+    # Quoted spans first, then whatever is left over as individual terms.
+    remainder = _FTS5_PHRASE_RE.sub(lambda m: (_add(m.group(1)), " ")[1], query)
+    for token in _FTS5_TOKEN_RE.findall(remainder):
+        units.append(f'"{token}"')
+
+    return " AND ".join(units) if units else None
+
 
 # Schema version constant — bump when adding new migrations
 CACHE_SCHEMA_VERSION = 4
@@ -482,13 +518,18 @@ class Cache:
     ) -> list[dict[str, Any]]:
         """Search cached documents locally. No network required.
 
-        Uses FTS5 MATCH when the FTS5 index exists and a query is provided,
-        falling back to LIKE for metadata-only searches or when FTS5 is
-        unavailable.  When FTS5 is used the query is still verified with LIKE
-        to guarantee bit-identical results.
+        Uses FTS5 MATCH ranked by BM25 when the index exists and a query is
+        given; falls back to LIKE for metadata-only searches, when FTS5 is
+        unavailable, or when the engine rejects the MATCH expression.
+
+        Query terms are AND-ed, not treated as one contiguous string, so
+        ``tahliye taahhüdü geçerlilik`` finds decisions carrying all three
+        terms anywhere in the text.  Wrap words in double quotes to require
+        them adjacent: ``"tahliye taahhüdü" geçerlilik``.
 
         Args:
-            query: Free-text search term (matches title, full_text, markdown).
+            query: Free-text search terms (matches title, full_text, markdown).
+                All terms are required; `"quoted spans"` match as phrases.
             source: Filter by source identifier.
             court: Filter by court name (exact or partial match).
             chamber: Filter by chamber (exact or partial match).
@@ -510,84 +551,84 @@ class Cache:
 
         _start = _time.monotonic()
 
-        # M-50: Use FTS5 as a pre-filter when available for text queries.
-        # We still apply LIKE as the authoritative filter to guarantee
-        # bit-identical results with the non-FTS5 path.
-        _fts5_narrowed = False
-        if query and self._has_fts5():
-            try:
-                import re as _re
-                safe_q = _re.sub(r'[^\w\s]', ' ', query).strip()
-                if safe_q:
-                    # FTS5 MATCH to get candidate rowids — narrows the scan
-                    fts_rows = self.db.execute(
-                        "SELECT rowid FROM documents_v2_fts WHERE documents_v2_fts MATCH ?",
-                        (safe_q,),
-                    ).fetchall()
-                    if not fts_rows:
-                        # FTS5 found nothing — still need to apply metadata filters
-                        # but text LIKE would also find nothing, so short-circuit
-                        # after building the full condition set to check metadata-only
-                        pass
-                    _fts5_narrowed = bool(fts_rows)
-            except Exception:
-                pass  # FTS5 query failed — fall back to LIKE-only
+        def _build_conditions(prefix: str, include_text: bool) -> tuple[list[str], list[Any]]:
+            """Metadata (and optionally LIKE text) predicates for one table alias."""
+            conds: list[str] = []
+            prms: list[Any] = []
+            if include_text and query:
+                conds.append(
+                    f"({prefix}title LIKE ? OR {prefix}full_text LIKE ? "
+                    f"OR {prefix}markdown LIKE ?)"
+                )
+                like = f"%{query}%"
+                prms.extend([like, like, like])
+            for col, val, exact in [
+                ("source", source, True),
+                ("court", court, False),
+                ("chamber", chamber, False),
+                ("decision_date", date, False),
+                ("esas_no", esas_no, False),
+                ("karar_no", karar_no, False),
+                ("document_id", document_id, True),
+                ("content_status", content_status, True),
+            ]:
+                if val:
+                    conds.append(f"{prefix}{col} = ?" if exact else f"{prefix}{col} LIKE ?")
+                    prms.append(val if exact else f"%{val}%")
+            for col, flag in [("draft_usable", draft_usable), ("quote_usable", quote_usable)]:
+                if flag is not None:
+                    conds.append(f"{prefix}{col} = ?")
+                    prms.append(1 if flag else 0)
+            return conds, prms
 
-        conditions: list[str] = []
-        params: list[Any] = []
+        def _order_clause(prefix: str, fts: bool) -> str:
+            order_map = {
+                "decision_date_desc": f"{prefix}decision_date DESC NULLS LAST",
+                "decision_date_asc": f"{prefix}decision_date ASC NULLS FIRST",
+                "fetched_at_desc": f"{prefix}retrieved_at DESC",
+                "fetched_at_asc": f"{prefix}retrieved_at ASC",
+            }
+            # bm25() is negative-is-better, so ascending = most relevant first.
+            default = "bm25(documents_v2_fts)" if fts else f"{prefix}rowid DESC"
+            return order_map.get(sort, default)
 
-        if query:
-            conditions.append(
-                "(title LIKE ? OR full_text LIKE ? OR markdown LIKE ?)"
+        # ── Text matching strategy ──────────────────────────────────────
+        # Use the FTS5 index when we have one and a text query; LIKE is only a
+        # fallback (no index, metadata-only search, or a MATCH the engine
+        # rejects).
+        #
+        # This used to run the MATCH, discard the rowids, and let
+        # `full_text LIKE '%<the entire query>%'` decide — a contiguous
+        # substring test over a 10 GB table.  A four-word query took ~100 s and
+        # returned nothing, because no decision contains the whole phrase
+        # verbatim; the same terms through MATCH take ~0.01 s and find real
+        # precedent.  The index was built, populated, queried, and thrown away.
+        match_expr = _fts5_match_expr(query) if query else None
+        rows = None
+        if match_expr and self._has_fts5():
+            conds, prms = _build_conditions("d.", include_text=False)
+            where = (" AND " + " AND ".join(conds)) if conds else ""
+            sql = (
+                "SELECT d.* FROM documents_v2_fts f "
+                "JOIN documents_v2 d ON d.rowid = f.rowid "
+                f"WHERE documents_v2_fts MATCH ?{where} "
+                f"ORDER BY {_order_clause('d.', fts=True)} LIMIT ?"
             )
-            like = f"%{query}%"
-            params.extend([like, like, like])
-        if source:
-            conditions.append("source = ?")
-            params.append(source)
-        if court:
-            conditions.append("court LIKE ?")
-            params.append(f"%{court}%")
-        if chamber:
-            conditions.append("chamber LIKE ?")
-            params.append(f"%{chamber}%")
-        if date:
-            conditions.append("decision_date LIKE ?")
-            params.append(f"%{date}%")
-        if esas_no:
-            conditions.append("esas_no LIKE ?")
-            params.append(f"%{esas_no}%")
-        if karar_no:
-            conditions.append("karar_no LIKE ?")
-            params.append(f"%{karar_no}%")
-        if document_id:
-            conditions.append("document_id = ?")
-            params.append(document_id)
-        if content_status:
-            conditions.append("content_status = ?")
-            params.append(content_status)
-        if draft_usable is not None:
-            conditions.append("draft_usable = ?")
-            params.append(1 if draft_usable else 0)
-        if quote_usable is not None:
-            conditions.append("quote_usable = ?")
-            params.append(1 if quote_usable else 0)
+            try:
+                rows = self.db.execute(sql, [match_expr, *prms, limit]).fetchall()
+            except sqlite3.OperationalError:
+                # Malformed MATCH or a damaged index — degrade to LIKE rather
+                # than failing the search outright.
+                rows = None
 
-        where = " WHERE " + " AND ".join(conditions) if conditions else ""
-
-        order_map = {
-            "relevance": "rowid DESC",
-            "decision_date_desc": "decision_date DESC NULLS LAST",
-            "decision_date_asc": "decision_date ASC NULLS FIRST",
-            "fetched_at_desc": "retrieved_at DESC",
-            "fetched_at_asc": "retrieved_at ASC",
-        }
-        order = order_map.get(sort, "rowid DESC")
-
-        sql = f"SELECT * FROM documents_v2{where} ORDER BY {order} LIMIT ?"
-        params.append(limit)
-
-        rows = self.db.execute(sql, params).fetchall()
+        if rows is None:
+            conds, prms = _build_conditions("", include_text=True)
+            where = " WHERE " + " AND ".join(conds) if conds else ""
+            sql = (
+                f"SELECT * FROM documents_v2{where} "
+                f"ORDER BY {_order_clause('', fts=False)} LIMIT ?"
+            )
+            rows = self.db.execute(sql, [*prms, limit]).fetchall()
         results: list[dict[str, Any]] = []
         for row in rows:
             cached = self._row_to_cached_document(row)

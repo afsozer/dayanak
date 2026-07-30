@@ -439,7 +439,7 @@ class TestBedestenMocked:
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
             mc.return_value = cm
-            results = asyncio.run(ci.search("test", limit=5, court_types=["YARGITAYKARARI", "DANISTAYKARARI"]))
+            results = asyncio.run(ci.search("test", limit=5, court_types=["YARGITAYKARARI", "DANISTAYKARAR"]))
         assert len(results) == 2
         assert results[0].court == "Yargıtay"
         assert results[1].court == "Danıştay"

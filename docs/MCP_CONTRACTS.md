@@ -77,8 +77,12 @@ Dynamically loads extended tool categories into the running server (core profile
   query / esas_no / karar_no / birimAdi / date range)
 - `limit: int = 10`
 - `page: int = 1`
-- `court_types: list[str] | None` — defaults to `["YARGITAYKARARI","DANISTAYKARARI"]`
-  when source=bedesten and omitted
+- `court_types: list[str] | None` — defaults to `["YARGITAYKARARI","DANISTAYKARAR"]`
+  when source=bedesten and omitted. Valid Bedesten itemTypes: `YARGITAYKARARI`,
+  `DANISTAYKARAR`, `YERELHUKUK`, `ISTINAFHUKUK`, `KYB`. Anything else is rejected
+  with `INVALID_COURT_TYPE` (Bedesten answers an unknown itemType with a silent
+  `total=0`, indistinguishable from "no such precedent"); known-bad spellings
+  such as `DANISTAYKARARI` / `ISTINAFKARARI` are repaired transparently.
 - `sort_by: str | None` — `"relevance"` (default when query present) | `"date"`
 - `include_snippets: bool = False` — attach a ~360-char query-term snippet
 
@@ -89,8 +93,17 @@ Dynamically loads extended tool categories into the running server (core profile
       "results": [ /* SearchResult dicts */ ],
       "total_results": 543,       // null when source cannot provide total
       "page": 1,
-      "total_pages": 55           // null when total is null
+      "total_pages": 55,          // null when total is null
+      "warnings": [ /* optional: AND→OR fallback, dropped filters, ... */ ]
     }
+
+A bare multi-word `query` is first run with every term required (`+t1 +t2`).
+Because the Bedesten index is **not** Turkish-stemmed, that conjunction often
+matches nothing (or a couple of incidental co-occurrences); when it returns
+fewer than `limit` records the original query is re-run as OR, and the response
+carries `fallback_to_or: true` in each result's `metadata` plus an entry in
+`warnings`. An OR query is a superset of the AND query and Solr ranks
+multi-term matches higher, so genuine conjunction hits stay at the top.
 
 Each result dict is a ``SearchResult`` dump (now includes an optional ``snippet``
 field — a ~360-char passage around the query terms, populated for free from the
