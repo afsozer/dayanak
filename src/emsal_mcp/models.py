@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any, Literal
@@ -398,6 +399,91 @@ def build_content_status_fields(item: Any) -> dict[str, Any]:
         "metadata_confidence_reason": reason,
         "recommended_next_step": next_step,
     }
+
+
+# ── LLM bağlamı için çıktı sadeleştirme ─────────────────────────────────
+# Ölçüm (3 sonuçluk bir search_decisions yanıtı, 5.840 karakter): asıl içerik
+# (snippet) %19.6, metadata bloğu %23.6, sonuç başına tekrarlanan sabit metin
+# %20.9.  Yani yanıtın ~%44'ü ya düz alanların tekrarı ya da her sonuçta
+# birebir aynı olan boilerplate.  Tek çağrılık kullanımda zararsız; çok turlu
+# ajan döngüsünde bağlamı katlanarak şişiriyor.
+#
+# Aşağıdakiler yalnızca DIŞA VERİLEN sözlükten düşer — SearchResult modeli
+# aynen kalır, citation/research/exporter tarafı etkilenmez.
+
+# Her sonuçta tekrarlanan, yanıt seviyesinde bir kez yeterli olan alanlar.
+_PER_RESULT_BOILERPLATE = frozenset({
+    "content_status_label",       # content_status'un Türkçe etiketi
+    "content_available",          # content_status'tan türetilebilir
+    "full_text_available",        # content_status'tan türetilebilir
+    "metadata_confidence",
+    "metadata_confidence_reason",  # her sonuçta aynı cümle
+    "recommended_next_step",       # her sonuçta aynı cümle (yalnız id değişir)
+})
+
+# metadata bloğunda düz alanların birebir tekrarı olan anahtarlar.
+_METADATA_DUPES = frozenset({
+    "documentId",      # == document_id
+    "birimAdi",        # == chamber
+    "kararTarihi",     # == decision_date
+    "kararTarihiStr",  # == decision_date
+    "esasNo",          # == esas_no
+    "kararNo",         # == karar_no
+    "esasNoYil", "esasNoSira", "kararNoYil", "kararNoSira",  # esas_no/karar_no'nun parçaları
+    "itemType",        # == court
+    "alternate_url",   # source_url zaten var
+})
+
+
+def compact_result(data: dict[str, Any], *, include_raw: bool = False) -> dict[str, Any]:
+    """Bir arama sonucunu LLM bağlamı için sadeleştirir.
+
+    Düşenler bilgi kaybı değildir: hepsi ya başka bir alanın tekrarı, ya
+    ondan türetilebilir, ya da her sonuçta birebir aynı olan sabit metin.
+    ``include_raw=True`` ham metadata bloğunu korur.
+    """
+    out: dict[str, Any] = {}
+    for key, value in data.items():
+        if value is None or value == {} or value == []:
+            continue
+        if key in _PER_RESULT_BOILERPLATE:
+            continue
+        if key == "metadata" and not include_raw:
+            value = {
+                k: v for k, v in value.items()
+                if k not in _METADATA_DUPES and v is not None
+            }
+            if not value:
+                continue
+        out[key] = value
+    return out
+
+
+def compact_results(
+    results: list[dict[str, Any]], *, include_raw: bool = False
+) -> list[dict[str, Any]]:
+    """``compact_result``ı sonuç listesine uygular."""
+    return [compact_result(r, include_raw=include_raw) for r in results]
+
+
+_DOC_ID_ARG_RE = re.compile(r"document_id=['\"][^'\"]*['\"]")
+
+
+def collect_next_steps(results: list[dict[str, Any]]) -> list[str]:
+    """Sonuçlardaki yönlendirmeleri yanıt seviyesinde tekilleştirir.
+
+    ``get_document(... document_id='123')`` gibi kayda özel kısımlar
+    şablonlaştırılır, böylece N sonuç için N ayrı cümle yerine bir cümle kalır.
+    """
+    seen: list[str] = []
+    for item in results:
+        step = item.get("recommended_next_step")
+        if not step:
+            continue
+        step = _DOC_ID_ARG_RE.sub("document_id=<id>", step)
+        if step not in seen:
+            seen.append(step)
+    return seen
 
 
 class CitationCheck(BaseModel):

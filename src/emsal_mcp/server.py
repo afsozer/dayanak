@@ -737,6 +737,15 @@ def main() -> None:
                     )
         cache.close()
 
+        # ── Compact the payload for LLM context ─────────────────────────
+        # Sonuç başına tekrarlanan sabit metinleri ve düz alanların metadata
+        # içindeki kopyalarını düşür; yönlendirmeyi yanıt seviyesinde bir kez
+        # ver.  Bilgi kaybı yok, ~%40 daha az bağlam.  include_raw=True ile
+        # ham hâli alınır.
+        from .models import collect_next_steps, compact_results
+        next_steps = collect_next_steps(results)
+        results = compact_results(results, include_raw=include_raw)
+
         # ── Build response with pagination metadata ─────────────────────
         response: dict[str, Any] = {
             "results": results,

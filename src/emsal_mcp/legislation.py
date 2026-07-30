@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from .models import ContentStatus, Document, build_error
+from .models import ContentStatus, Document, build_error, compact_result
 from .safety import citation_check
 from .sources.registry import capabilities as get_capabilities, smoke_all_sync
 
@@ -549,7 +549,10 @@ def search_legislation(
                 r.title or "",
                 r.metadata if isinstance(r.metadata, dict) else None,
             )
-            all_results.append({
+            # compact_result: boş (None) alanlar serileştirilmez — mevzuat
+            # sonuçlarında summary/gazette_date çoğunlukla null ve her sonuçta
+            # yer kaplıyordu.  Dolu alanlar aynen korunur.
+            all_results.append(compact_result({
                 "document_id": r.document_id,
                 "source": r.source,
                 "title": r.title,
@@ -561,7 +564,7 @@ def search_legislation(
                 "summary": r.summary,
                 "content_status": r.content_status.value,
                 "court": r.court,
-            })
+            }))
 
     ok = len(all_results) > 0 and not any("bulunamadı" in w for w in warnings)
 
