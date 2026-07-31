@@ -44,6 +44,61 @@ def _ensure_edge_table(cache: Cache) -> None:
     cache.db.commit()
 
 
+_GRAPH_NEVER_BUILT_WARNING = (
+    "Atıf grafı hiç oluşturulmamış: citation_edges tablosu boş (0 kayıt). "
+    "Aşağıdaki sonuç 'atıf bulunamadı' değil, 'graf hiç kurulmadı' anlamına gelir."
+)
+_GRAPH_BUILT_BUT_EMPTY_WARNING = (
+    "Atıf grafı en son {when} tarihinde oluşturulmuş ama citation_edges tablosu "
+    "boş (0 kayıt) — o çalışma hiç atıf eşleştirememiş. Aşağıdaki sonuç 'atıf "
+    "bulunamadı' değil, 'graf kullanılabilir durumda değil' anlamına gelir."
+)
+_GRAPH_NEVER_BUILT_RECOMMENDATION = (
+    "build_citation_graph() çağırarak atıf grafını oluşturun."
+)
+
+
+def _last_graph_build(cache: Cache) -> str | None:
+    """Timestamp of the last build_citation_graph() run, if any.
+
+    Single indexed row lookup against the history table that
+    ``build_citation_graph()`` already writes on every run.
+    """
+    row = cache.db.execute(
+        "SELECT created_at FROM history WHERE action='build_citation_graph' "
+        "ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return row["created_at"] if row else None
+
+
+def _graph_build_state(cache: Cache) -> tuple[int, list[str], list[str]]:
+    """Report whether the citation graph has ever been populated.
+
+    Returns ``(total_edges, warnings, recommended_next_steps)``. When
+    ``total_edges`` is 0 the ``citation_edges`` table is empty overall —
+    a materially different situation from "this specific document has no
+    citations" in an already-populated graph. Callers use this to attach an
+    unmistakable warning to the former case while leaving the latter
+    warning-free.
+
+    The empty case is split in two, because they need different wording and
+    different follow-up: a graph that has never run at all, versus one that
+    ran and matched nothing. The latter is what the real corpus shows — a
+    build dated 2026-05-29, executed back when the corpus held only a handful
+    of test fixtures, that produced zero edges. Saying "never built" there
+    would contradict the timestamp the same response reports.
+    """
+    total_edges = cache.db.execute("SELECT COUNT(*) FROM citation_edges").fetchone()[0]
+    if total_edges == 0:
+        last_built = _last_graph_build(cache)
+        warning = (
+            _GRAPH_BUILT_BUT_EMPTY_WARNING.format(when=last_built)
+            if last_built else _GRAPH_NEVER_BUILT_WARNING
+        )
+        return 0, [warning], [_GRAPH_NEVER_BUILT_RECOMMENDATION]
+    return total_edges, [], []
+
+
 # ---------------------------------------------------------------------------
 # Internal matching helpers
 # ---------------------------------------------------------------------------
@@ -338,7 +393,11 @@ def get_citation_graph(
         max_depth: Traversal depth (1 = direct only).
 
     Returns:
-        Dict with ok, document, citing, cited_by, total_edges.
+        Dict with ok, document, citing, cited_by, total_edges, warnings,
+        recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+        only populated when the citation graph has never been built
+        (citation_edges table is empty overall) — a document that simply has
+        no citations in an already-built graph gets an empty warnings list.
     """
     c = cache or Cache()
     own_cache = cache is None
@@ -354,6 +413,8 @@ def get_citation_graph(
         if not doc_row:
             return build_error("DOC_NOT_FOUND", f"Belge bulunamadı: {source}:{document_id}")
         doc_info = dict(doc_row)
+
+        _, warnings, recommended = _graph_build_state(c)
 
         citing: list[dict[str, Any]] = []
         cited_by: list[dict[str, Any]] = []
@@ -415,6 +476,8 @@ def get_citation_graph(
             "citing": citing,
             "cited_by": cited_by,
             "total_edges": total_edges,
+            "warnings": warnings,
+            "recommended_next_steps": recommended,
         }
     except Exception as exc:
         return build_error("GRAPH_QUERY_FAILED", f"Sorgu başarısız: {exc}")
@@ -438,7 +501,12 @@ def find_citing_documents(
         limit: Maximum results.
 
     Returns:
-        Dict with ok, document, citing_documents list.
+        Dict with ok, document, citing_documents list, warnings,
+        recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+        only populated when the citation graph has never been built
+        (citation_edges table is empty overall) — a document that simply has
+        no citing documents in an already-built graph gets an empty
+        warnings list.
     """
     c = cache or Cache()
     own_cache = cache is None
@@ -453,6 +521,8 @@ def find_citing_documents(
         ).fetchone()
         if not doc_row:
             return build_error("DOC_NOT_FOUND", f"Belge bulunamadı: {source}:{document_id}")
+
+        _, warnings, recommended = _graph_build_state(c)
 
         rows = c.db.execute(
             """SELECT citing_doc_id, citing_source, confidence, match_type, extracted_from
@@ -487,6 +557,8 @@ def find_citing_documents(
             },
             "citing_documents": citing_docs,
             "total": len(citing_docs),
+            "warnings": warnings,
+            "recommended_next_steps": recommended,
         }
     except Exception as exc:
         return build_error("GRAPH_QUERY_FAILED", f"Sorgu başarısız: {exc}")
@@ -510,7 +582,12 @@ def find_cited_documents(
         limit: Maximum results.
 
     Returns:
-        Dict with ok, document, cited_documents list.
+        Dict with ok, document, cited_documents list, warnings,
+        recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+        only populated when the citation graph has never been built
+        (citation_edges table is empty overall) — a document that simply has
+        no cited documents in an already-built graph gets an empty
+        warnings list.
     """
     c = cache or Cache()
     own_cache = cache is None
@@ -525,6 +602,8 @@ def find_cited_documents(
         ).fetchone()
         if not doc_row:
             return build_error("DOC_NOT_FOUND", f"Belge bulunamadı: {source}:{document_id}")
+
+        _, warnings, recommended = _graph_build_state(c)
 
         rows = c.db.execute(
             """SELECT cited_doc_id, cited_source, confidence, match_type, extracted_from
@@ -559,6 +638,8 @@ def find_cited_documents(
             },
             "cited_documents": cited_docs,
             "total": len(cited_docs),
+            "warnings": warnings,
+            "recommended_next_steps": recommended,
         }
     except Exception as exc:
         return build_error("GRAPH_QUERY_FAILED", f"Sorgu başarısız: {exc}")
@@ -575,7 +656,12 @@ def get_citation_graph_stats(cache: Cache | None = None) -> dict[str, Any]:
 
     Returns:
         Dict with ok, total_edges, total_docs_with_citations,
-        most_cited_docs, avg_citations_per_doc.
+        most_cited_docs, avg_citations_per_doc, confidence_distribution,
+        total_cached_documents, documents_in_graph, graph_coverage_ratio,
+        last_built_at, warnings, recommended_next_steps. When
+        citation_edges is empty overall, ``warnings`` explains the graph was
+        never built (rather than "no citations exist") and
+        ``recommended_next_steps`` names build_citation_graph().
     """
     c = cache or Cache()
     own_cache = cache is None
@@ -583,7 +669,7 @@ def get_citation_graph_stats(cache: Cache | None = None) -> dict[str, Any]:
     try:
         _ensure_edge_table(c)
 
-        total_edges = c.db.execute("SELECT COUNT(*) FROM citation_edges").fetchone()[0]
+        total_edges, warnings, recommended = _graph_build_state(c)
 
         # Docs that appear as citing
         citing_docs = c.db.execute(
@@ -632,6 +718,27 @@ def get_citation_graph_stats(cache: Cache | None = None) -> dict[str, Any]:
         ).fetchall()
         conf_dist = {row["confidence"]: row["cnt"] for row in conf_rows}
 
+        # Coverage: distinct documents that appear anywhere in the graph vs.
+        # total cached corpus size. Both queries are cheap aggregates (single
+        # COUNT(*) each, no per-row Python processing / no join) — mirrors
+        # how get_index_status() reports TF-IDF vector coverage.
+        total_cached_documents = c.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+        documents_in_graph = c.db.execute(
+            """SELECT COUNT(*) FROM (
+                   SELECT citing_doc_id AS document_id, citing_source AS source FROM citation_edges
+                   UNION
+                   SELECT cited_doc_id, cited_source FROM citation_edges
+               )"""
+        ).fetchone()[0]
+        graph_coverage_ratio = (
+            round(documents_in_graph / total_cached_documents, 4) if total_cached_documents > 0 else 0.0
+        )
+
+        # Last build time, if ever run — build_citation_graph() logs to the
+        # history table on every successful run, so this is a single indexed
+        # row lookup (no scan of citation_edges or documents_v2).
+        last_built_at = _last_graph_build(c)
+
         return {
             "ok": True,
             "total_edges": total_edges,
@@ -641,6 +748,12 @@ def get_citation_graph_stats(cache: Cache | None = None) -> dict[str, Any]:
             "most_cited_docs": most_cited_docs,
             "avg_citations_per_doc": avg_citations,
             "confidence_distribution": conf_dist,
+            "total_cached_documents": total_cached_documents,
+            "documents_in_graph": documents_in_graph,
+            "graph_coverage_ratio": graph_coverage_ratio,
+            "last_built_at": last_built_at,
+            "warnings": warnings,
+            "recommended_next_steps": recommended,
         }
     except Exception as exc:
         return build_error("GRAPH_STATS_FAILED", f"İstatistik alınamadı: {exc}")
@@ -670,13 +783,19 @@ def export_graph(
         max_depth: For sub-graph, how many hops.
 
     Returns:
-        Dict with ok, format, export_text, node_count, edge_count.
+        Dict with ok, format, export_text, node_count, edge_count, warnings,
+        recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+        only populated when the citation graph has never been built
+        (citation_edges table is empty overall) — a sub-graph centered on a
+        document that simply has no citations gets an empty warnings list.
     """
     c = cache or Cache()
     own_cache = cache is None
 
     try:
         _ensure_edge_table(c)
+
+        _, warnings, recommended = _graph_build_state(c)
 
         # Collect nodes and edges
         node_ids: set[tuple[str, str]] = set()
@@ -813,6 +932,8 @@ def export_graph(
             "node_count": len(nodes),
             "edge_count": len(edges),
             "sub_graph": document_id is not None,
+            "warnings": warnings,
+            "recommended_next_steps": recommended,
         }
     except Exception as exc:
         return build_error("GRAPH_EXPORT_FAILED", f"Graf dışa aktarılamadı: {exc}")

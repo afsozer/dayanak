@@ -30,3 +30,4 @@ crawl_logs/
 .stfolder/
 .stversions/
 .stignore
+purged_fixtures_backup.json

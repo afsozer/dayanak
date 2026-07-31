@@ -706,3 +706,130 @@ class TestSearchLocalUsesFts5:
         assert len(cache.search_local("Kıdem tazminatı")) == 1
         assert len(cache.search_local(query="", court="Yargıtay")) == 1
         cache.close()
+
+
+class TestPurgeSyntheticDocuments:
+    """Test fixtures once leaked into the real 208k-document corpus and, being
+    ~40 characters each, ranked first in vector search for real queries. The
+    purge must remove them without touching legitimately-empty rows."""
+
+    def _seed(self, cache):
+        docs = [
+            # Leaked fixtures: synthetic id, no source_url.
+            Document(source="yargitay", document_id="yg-004",
+                     title="İşçi Alacakları Davası",
+                     full_text="İşçi alacakları kıdem tazminatı iş kanunu...",
+                     content_status=ContentStatus.FULL_TEXT),
+            Document(source="danistay", document_id="ds-001",
+                     title="İdari Para Cezası İptal Davası",
+                     full_text="İdari para cezası kabahatler kanunu...",
+                     content_status=ContentStatus.METADATA_ONLY),
+            # Real but empty: metadata-only crawl rows keep their source_url.
+            Document(source="uyap_arsiv", document_id="uyap:16082400",
+                     title="Yargıtay Kararı", esas_no="2004/6-198",
+                     source_url="https://emsal.uyap.gov.tr/getDokuman?id=16082400",
+                     content_status=ContentStatus.METADATA_ONLY),
+            Document(source="aym", document_id="BB/2021/30620",
+                     title="AYM 2021/30620",
+                     source_url="https://kararlarbilgibankasi.anayasa.gov.tr/BB/2021/30620",
+                     content_status=ContentStatus.METADATA_ONLY),
+            # Real and full.
+            Document(source="bedesten", document_id="1115295500",
+                     title="Yargıtay Kararı | 7. Hukuk Dairesi",
+                     full_text="x" * 900,
+                     source_url="https://mevzuat.adalet.gov.tr/ictihat/1115295500",
+                     content_status=ContentStatus.FULL_TEXT),
+        ]
+        for doc in docs:
+            cache.store_document(doc)
+
+    def test_finds_only_the_fixtures(self, tmp_path):
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._seed(cache)
+        found = {d["document_id"] for d in cache.find_synthetic_documents()}
+        assert found == {"yg-004", "ds-001"}
+        cache.close()
+
+    def test_empty_but_real_rows_are_kept(self, tmp_path):
+        """The AYM row has zero characters but a genuine source_url. Purging on
+        text length alone would delete it along with ~2700 UYAP rows."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._seed(cache)
+        cache.purge_synthetic_documents(dry_run=False)
+        survivors = {
+            r[0] for r in cache.db.execute("SELECT document_id FROM documents_v2").fetchall()
+        }
+        assert "BB/2021/30620" in survivors
+        assert "uyap:16082400" in survivors
+        assert "1115295500" in survivors
+        cache.close()
+
+    def test_dry_run_changes_nothing(self, tmp_path):
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._seed(cache)
+        before = cache.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+        res = cache.purge_synthetic_documents()  # dry_run defaults to True
+        assert res["dry_run"] is True
+        assert res["matched"] == 2
+        assert res["deleted"]["documents_v2"] == 0
+        assert cache.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0] == before
+        cache.close()
+
+    def test_purge_removes_rows_and_derived_indexes(self, tmp_path):
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._seed(cache)
+        from emsal_mcp.semantic import (
+            _ensure_embedding_vectors,
+            _ensure_fts5,
+            _ensure_search_vectors,
+        )
+        _ensure_fts5(cache.db)
+        _ensure_search_vectors(cache.db)
+        _ensure_embedding_vectors(cache.db)
+        cache.db.execute(
+            "INSERT INTO search_vectors(document_id, source, vector_json, norm) "
+            "VALUES ('yg-004','yargitay','{\"a\": 1.0}', 1.0)"
+        )
+        cache.db.execute(
+            "INSERT INTO embedding_vectors(document_id, source, provider_id, vector, norm, dim) "
+            "VALUES ('yg-004','yargitay','p', X'00', 1.0, 1)"
+        )
+        cache.db.commit()
+
+        res = cache.purge_synthetic_documents(dry_run=False)
+        assert res["ok"] is True
+        assert res["deleted"]["documents_v2"] == 2
+        assert res["deleted"]["search_vectors"] == 1
+        assert res["deleted"]["embedding_vectors"] == 1
+
+        left = {r[0] for r in cache.db.execute("SELECT document_id FROM documents_v2").fetchall()}
+        assert "yg-004" not in left and "ds-001" not in left
+        assert cache.db.execute(
+            "SELECT COUNT(*) FROM search_vectors WHERE document_id='yg-004'"
+        ).fetchone()[0] == 0
+        assert cache.db.execute(
+            "SELECT COUNT(*) FROM embedding_vectors WHERE document_id='yg-004'"
+        ).fetchone()[0] == 0
+        cache.close()
+
+    def test_fixture_no_longer_matches_search(self, tmp_path):
+        """The concrete regression: 'kıdem tazminatı' must not surface yg-004."""
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._seed(cache)
+        from emsal_mcp.semantic import _ensure_fts5
+        _ensure_fts5(cache.db)
+        assert any(r["document_id"] == "yg-004" for r in cache.search_local("kıdem tazminatı"))
+        cache.purge_synthetic_documents(dry_run=False)
+        assert not any(
+            r["document_id"] == "yg-004" for r in cache.search_local("kıdem tazminatı")
+        )
+        cache.close()
+
+    def test_purge_is_idempotent(self, tmp_path):
+        cache = Cache(tmp_path / "test.sqlite3")
+        self._seed(cache)
+        cache.purge_synthetic_documents(dry_run=False)
+        second = cache.purge_synthetic_documents(dry_run=False)
+        assert second["matched"] == 0
+        assert second["deleted"]["documents_v2"] == 0
+        cache.close()

@@ -460,6 +460,25 @@ class TestGraphStats:
             cache.close()
             path.unlink(missing_ok=True)
 
+    def test_stats_empty_warns_graph_never_built(self):
+        """The empty-graph case must be unmistakably labeled 'never built',
+        not confused with 'no citations exist'. ok stays True (empty graph
+        is a legitimate state, not an error)."""
+        cache, path = _temp_cache()
+        try:
+            result = get_citation_graph_stats(cache=cache)
+            assert result["ok"] is True
+            assert result["total_edges"] == 0
+            assert len(result["warnings"]) >= 1
+            assert any("hiç oluşturulmamış" in w for w in result["warnings"])
+            assert any(
+                "build_citation_graph" in step
+                for step in result["recommended_next_steps"]
+            )
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
     def test_stats_with_edges(self):
         cache, path = _temp_cache()
         try:
@@ -497,6 +516,15 @@ class TestGraphStats:
             assert result["total_docs_with_citations"] >= 2
             assert result["most_cited_docs"] is not None
             assert "confidence_distribution" in result
+            # Regression guard: a populated graph must NOT carry the
+            # "never built" warning — collapsing these two cases was the bug.
+            assert result["warnings"] == []
+            assert result["recommended_next_steps"] == []
+            # Coverage fields mirroring get_index_status()'s TF-IDF reporting.
+            assert result["total_cached_documents"] >= 2
+            assert result["documents_in_graph"] >= 2
+            assert 0.0 <= result["graph_coverage_ratio"] <= 1.0
+            assert result["last_built_at"] is not None
         finally:
             cache.close()
             path.unlink(missing_ok=True)
@@ -698,3 +726,253 @@ class TestExportGraph:
         finally:
             cache.close()
             path.unlink(missing_ok=True)
+
+    def test_export_empty_graph_warns_never_built(self):
+        cache, path = _temp_cache()
+        try:
+            result = export_graph(format="json", cache=cache)
+            assert result["ok"] is True
+            assert len(result["warnings"]) >= 1
+            assert any("hiç oluşturulmamış" in w for w in result["warnings"])
+            assert any(
+                "build_citation_graph" in step
+                for step in result["recommended_next_steps"]
+            )
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_export_populated_graph_no_never_built_warning(self):
+        cache, path = self._setup_graph()
+        try:
+            result = export_graph(format="json", cache=cache)
+            assert result["ok"] is True
+            assert result["warnings"] == []
+            assert result["recommended_next_steps"] == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# "Graph never built" vs "no citations for this document" (regression suite)
+# ---------------------------------------------------------------------------
+#
+# The bug this guards against: citation_graph_stats(), get_citation_graph(),
+# find_citing_documents(), find_cited_documents() and export_citation_graph()
+# all returned ok:true with plain zeros/empties when citation_edges had never
+# been populated by build_citation_graph() — indistinguishable from "this
+# document legitimately has no citations". These tests exercise all three
+# states for the per-document query tools: (1) edge table empty overall,
+# (2) edge table populated but the queried doc has no edges, (3) edge table
+# populated and the queried doc has edges.
+
+class TestNeverBuiltVsNoCitations:
+    def _setup_populated_graph(self) -> tuple[Cache, Path]:
+        """Build a graph where DOC-A cites DOC-B, and DOC-C is an isolated
+        document with no detectable citations and nothing citing it."""
+        cache, path = _temp_cache()
+        doc_a = _make_doc(
+            document_id="DOC-A",
+            source="source_a",
+            title="Dava Dilekçesi",
+            court="Yargıtay",
+            chamber="3. Hukuk Dairesi",
+            decision_date="2025-01-01",
+            esas_no="2025/100",
+            karar_no="2025/200",
+            full_text=(
+                "Yargıtay 3. Hukuk Dairesi Esas No: 2023/12345, "
+                "Karar No: 2024/5678 tarihli kararına atıfta bulunulmuştur."
+            ),
+        )
+        doc_b = _make_doc(
+            document_id="DOC-B",
+            source="source_b",
+            title="Yargıtay Kararı",
+            court="Yargıtay",
+            chamber="3. Hukuk Dairesi",
+            decision_date="2024-06-15",
+            esas_no="2023/12345",
+            karar_no="2024/5678",
+            full_text="Yargıtay 3. Hukuk Dairesi Esas No: 2023/12345 Karar No: 2024/5678",
+        )
+        doc_c = _make_doc(
+            document_id="DOC-C",
+            source="source_c",
+            title="İlgisiz Belge",
+            court="Danıştay",
+            chamber="5. Daire",
+            decision_date="2020-01-01",
+            esas_no="2020/1",
+            karar_no="2020/2",
+            full_text="Bu metinde herhangi bir hukuki referans bulunmamaktadır.",
+        )
+        _seed_cache_with_docs(cache, [doc_a, doc_b, doc_c])
+        build_citation_graph(cache=cache)
+        return cache, path
+
+    # -- get_citation_graph -------------------------------------------------
+
+    def test_get_citation_graph_empty_table_warns(self):
+        cache, path = _temp_cache()
+        try:
+            doc = _make_doc(document_id="DOC-SOLO", source="solo_src")
+            _seed_cache_with_docs(cache, [doc])
+            result = get_citation_graph("DOC-SOLO", "solo_src", cache=cache)
+            assert result["ok"] is True
+            assert len(result["warnings"]) >= 1
+            assert any("hiç oluşturulmamış" in w for w in result["warnings"])
+            assert any(
+                "build_citation_graph" in step
+                for step in result["recommended_next_steps"]
+            )
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_get_citation_graph_populated_doc_without_citations_no_warning(self):
+        """The regression case: an already-built graph where THIS document
+        has no edges must not be reported as 'graph never built'."""
+        cache, path = self._setup_populated_graph()
+        try:
+            result = get_citation_graph("DOC-C", "source_c", cache=cache)
+            assert result["ok"] is True
+            assert result["citing"] == []
+            assert result["cited_by"] == []
+            assert result["warnings"] == []
+            assert result["recommended_next_steps"] == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_get_citation_graph_populated_doc_with_citations_no_warning(self):
+        cache, path = self._setup_populated_graph()
+        try:
+            result = get_citation_graph("DOC-A", "source_a", cache=cache, direction="cited")
+            assert result["ok"] is True
+            assert len(result["cited_by"]) >= 1
+            assert result["warnings"] == []
+            assert result["recommended_next_steps"] == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    # -- find_citing_documents / find_cited_documents ------------------------
+
+    def test_find_citing_documents_empty_table_warns(self):
+        cache, path = _temp_cache()
+        try:
+            doc = _make_doc(document_id="DOC-SOLO", source="solo_src")
+            _seed_cache_with_docs(cache, [doc])
+            result = find_citing_documents("DOC-SOLO", "solo_src", cache=cache)
+            assert result["ok"] is True
+            assert any("hiç oluşturulmamış" in w for w in result["warnings"])
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_find_citing_documents_populated_doc_without_citations_no_warning(self):
+        cache, path = self._setup_populated_graph()
+        try:
+            result = find_citing_documents("DOC-C", "source_c", cache=cache)
+            assert result["ok"] is True
+            assert result["citing_documents"] == []
+            assert result["warnings"] == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_find_citing_documents_populated_doc_with_citations_no_warning(self):
+        cache, path = self._setup_populated_graph()
+        try:
+            result = find_citing_documents("DOC-B", "source_b", cache=cache)
+            assert result["ok"] is True
+            assert result["total"] >= 1
+            assert result["warnings"] == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_find_cited_documents_empty_table_warns(self):
+        cache, path = _temp_cache()
+        try:
+            doc = _make_doc(document_id="DOC-SOLO", source="solo_src")
+            _seed_cache_with_docs(cache, [doc])
+            result = find_cited_documents("DOC-SOLO", "solo_src", cache=cache)
+            assert result["ok"] is True
+            assert any("hiç oluşturulmamış" in w for w in result["warnings"])
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_find_cited_documents_populated_doc_without_citations_no_warning(self):
+        cache, path = self._setup_populated_graph()
+        try:
+            result = find_cited_documents("DOC-C", "source_c", cache=cache)
+            assert result["ok"] is True
+            assert result["cited_documents"] == []
+            assert result["warnings"] == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_find_cited_documents_populated_doc_with_citations_no_warning(self):
+        cache, path = self._setup_populated_graph()
+        try:
+            result = find_cited_documents("DOC-A", "source_a", cache=cache)
+            assert result["ok"] is True
+            assert result["total"] >= 1
+            assert result["warnings"] == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+class TestEmptyGraphWordingMatchesHistory:
+    """An empty edge table has two distinct causes and the message must not
+    contradict the timestamp reported alongside it. The real corpus shows a
+    build dated 2026-05-29 that produced zero edges — it ran against a corpus
+    of test fixtures — so "hiç oluşturulmamış" would be plainly wrong there."""
+
+    def _cache(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.citation_graph import _ensure_edge_table
+        c = Cache(tmp_path / "t.sqlite3")
+        _ensure_edge_table(c)
+        return c
+
+    def test_no_build_history_says_never_built(self, tmp_path):
+        from emsal_mcp.citation_graph import _graph_build_state
+        c = self._cache(tmp_path)
+        total, warnings, recs = _graph_build_state(c)
+        assert total == 0
+        assert "hiç oluşturulmamış" in warnings[0]
+        assert recs and "build_citation_graph()" in recs[0]
+        c.close()
+
+    def test_prior_build_with_zero_edges_says_so(self, tmp_path):
+        from emsal_mcp.citation_graph import _graph_build_state
+        c = self._cache(tmp_path)
+        c.log("build_citation_graph", {"edges": 0})
+        total, warnings, recs = _graph_build_state(c)
+        assert total == 0
+        assert "hiç oluşturulmamış" not in warnings[0], (
+            "contradicts the last_built_at timestamp reported in the same response"
+        )
+        assert "hiç atıf eşleştirememiş" in warnings[0]
+        assert recs and "build_citation_graph()" in recs[0]
+        c.close()
+
+    def test_populated_graph_has_no_warning_either_way(self, tmp_path):
+        from emsal_mcp.citation_graph import _graph_build_state
+        c = self._cache(tmp_path)
+        c.log("build_citation_graph", {"edges": 1})
+        c.db.execute(
+            "INSERT INTO citation_edges(citing_doc_id,citing_source,cited_doc_id,"
+            "cited_source,confidence,match_type) VALUES ('A','bedesten','B','bedesten',0.9,'exact')"
+        )
+        c.db.commit()
+        total, warnings, recs = _graph_build_state(c)
+        assert total == 1
+        assert warnings == [] and recs == []
+        c.close()

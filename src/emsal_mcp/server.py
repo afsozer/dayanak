@@ -1930,7 +1930,12 @@ def main() -> None:
             max_depth: Traversal depth (1 = direct only).
 
         Returns:
-            Dict with ok, document, citing, cited_by, total_edges.
+            Dict with ok, document, citing, cited_by, total_edges, warnings,
+            recommended_next_steps. warnings/recommended_next_steps are only
+            populated when the citation graph has never been built
+            (citation_edges table is empty overall) — naming
+            build_citation_graph() as the next step. A document that simply
+            has no citations in an already-built graph gets empty warnings.
         """
         return get_citation_graph_impl(
             document_id=document_id,
@@ -1953,7 +1958,13 @@ def main() -> None:
             limit: Maximum results.
 
         Returns:
-            Dict with ok, document, citing_documents list.
+            Dict with ok, document, citing_documents list, warnings,
+            recommended_next_steps. warnings/recommended_next_steps are only
+            populated when the citation graph has never been built
+            (citation_edges table is empty overall) — naming
+            build_citation_graph() as the next step. A document that simply
+            has no citing documents in an already-built graph gets empty
+            warnings.
         """
         return find_citing_documents_impl(
             document_id=document_id,
@@ -1975,7 +1986,13 @@ def main() -> None:
             limit: Maximum results.
 
         Returns:
-            Dict with ok, document, cited_documents list.
+            Dict with ok, document, cited_documents list, warnings,
+            recommended_next_steps. warnings/recommended_next_steps are only
+            populated when the citation graph has never been built
+            (citation_edges table is empty overall) — naming
+            build_citation_graph() as the next step. A document that simply
+            has no cited documents in an already-built graph gets empty
+            warnings.
         """
         return find_cited_documents_impl(
             document_id=document_id,
@@ -1989,7 +2006,13 @@ def main() -> None:
 
         Returns:
             Dict with ok, total_edges, total_docs_with_citations,
-            most_cited_docs, avg_citations_per_doc, confidence_distribution.
+            most_cited_docs, avg_citations_per_doc, confidence_distribution,
+            total_cached_documents, documents_in_graph, graph_coverage_ratio,
+            last_built_at, warnings, recommended_next_steps. When
+            citation_edges is empty overall (graph never built),
+            ``warnings`` says so explicitly and ``recommended_next_steps``
+            names build_citation_graph() — do not read total_edges==0 as
+            "no citations exist in the corpus".
         """
         return get_citation_graph_stats_impl()
 
@@ -2010,7 +2033,11 @@ def main() -> None:
             max_depth: For sub-graph, max traversal hops (default 2).
 
         Returns:
-            Dict with ok, format, export_text, node_count, edge_count.
+            Dict with ok, format, export_text, node_count, edge_count,
+            warnings, recommended_next_steps. warnings/recommended_next_steps
+            are only populated when the citation graph has never been built
+            (citation_edges table is empty overall) — naming
+            build_citation_graph() as the next step.
         """
         return export_graph_impl(
             format=format,

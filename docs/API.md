@@ -364,7 +364,11 @@ Get citation relationships for a document.
             max_depth: Traversal depth (1 = direct only).
     
         Returns:
-            Dict with ok, document, citing, cited_by, total_edges.
+            Dict with ok, document, citing, cited_by, total_edges, warnings,
+            recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+            only populated when the citation graph has never been built
+            (citation_edges table is empty overall) — a document that simply has
+            no citations in an already-built graph gets an empty warnings list.
 
 ---
 
@@ -379,7 +383,12 @@ Find documents that cite the given document.
             limit: Maximum results.
     
         Returns:
-            Dict with ok, document, citing_documents list.
+            Dict with ok, document, citing_documents list, warnings,
+            recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+            only populated when the citation graph has never been built
+            (citation_edges table is empty overall) — a document that simply has
+            no citing documents in an already-built graph gets an empty
+            warnings list.
 
 ---
 
@@ -394,7 +403,12 @@ Find documents that the given document cites.
             limit: Maximum results.
     
         Returns:
-            Dict with ok, document, cited_documents list.
+            Dict with ok, document, cited_documents list, warnings,
+            recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+            only populated when the citation graph has never been built
+            (citation_edges table is empty overall) — a document that simply has
+            no cited documents in an already-built graph gets an empty
+            warnings list.
 
 ---
 
@@ -407,7 +421,12 @@ Get statistics about the citation graph.
     
         Returns:
             Dict with ok, total_edges, total_docs_with_citations,
-            most_cited_docs, avg_citations_per_doc.
+            most_cited_docs, avg_citations_per_doc, confidence_distribution,
+            total_cached_documents, documents_in_graph, graph_coverage_ratio,
+            last_built_at, warnings, recommended_next_steps. When
+            citation_edges is empty overall, ``warnings`` explains the graph was
+            never built (rather than "no citations exist") and
+            ``recommended_next_steps`` names build_citation_graph().
 
 ---
 
@@ -423,7 +442,11 @@ Export citation graph in various formats.
             max_depth: For sub-graph, how many hops.
     
         Returns:
-            Dict with ok, format, export_text, node_count, edge_count.
+            Dict with ok, format, export_text, node_count, edge_count, warnings,
+            recommended_next_steps. ``warnings``/``recommended_next_steps`` are
+            only populated when the citation graph has never been built
+            (citation_edges table is empty overall) — a sub-graph centered on a
+            document that simply has no citations gets an empty warnings list.
 
 ---
 

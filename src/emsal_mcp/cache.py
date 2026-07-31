@@ -319,12 +319,15 @@ class Cache:
         total_q = sum(e["count"] for e in self._query_profile.values())
         return {"queries": result, "total_queries": total_q}
 
+    def _table_exists(self, name: str) -> bool:
+        """Whether a table exists in this database."""
+        return self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone() is not None
+
     def _has_fts5(self) -> bool:
         """Check if the FTS5 virtual table exists."""
-        row = self.db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='documents_v2_fts'"
-        ).fetchone()
-        return row is not None
+        return self._table_exists("documents_v2_fts")
 
     # ------------------------------------------------------------------
     # Legacy key-value cache
@@ -767,6 +770,99 @@ class Cache:
             "deleted": v2 > 0,
         })
         return v2 > 0
+
+    # Synthetic ids used by the test fixtures. Real sources never mint ids in
+    # this shape: Bedesten/UYAP use numeric ids, AYM uses "BB/YYYY/NNNNN",
+    # Resmî Gazete uses "YYYYMMDD-N".  Matching on the id pattern alone would
+    # still be too loose, so purge_synthetic_documents() also requires the row
+    # to have no source_url — every genuinely fetched document carries one.
+    _SYNTHETIC_ID_PATTERNS = ("yg-%", "ds-%", "test-%", "fake-%", "sample-%")
+
+    def find_synthetic_documents(self) -> list[dict[str, Any]]:
+        """Rows that look like leaked test fixtures rather than fetched documents.
+
+        A row qualifies only when BOTH hold:
+
+        * its ``document_id`` matches a known fixture pattern, and
+        * it has no ``source_url``.
+
+        The second condition is what makes this safe.  Plenty of legitimate
+        rows are empty — roughly 2 700 UYAP archive entries have metadata but
+        no text, and a real AYM record can sit at zero characters after a failed
+        fetch — but all of them carry the URL they were fetched from.  Deleting
+        on "short text" alone would take those with it.
+        """
+        clause = " OR ".join("document_id LIKE ?" for _ in self._SYNTHETIC_ID_PATTERNS)
+        rows = self.db.execute(
+            f"SELECT source, document_id, title, LENGTH(COALESCE(full_text,'')) AS n "
+            f"FROM documents_v2 WHERE ({clause}) "
+            f"AND (source_url IS NULL OR source_url = '') ORDER BY source, document_id",
+            self._SYNTHETIC_ID_PATTERNS,
+        ).fetchall()
+        return [
+            {"source": r["source"], "document_id": r["document_id"],
+             "title": r["title"], "text_length": r["n"]}
+            for r in rows
+        ]
+
+    def purge_synthetic_documents(self, dry_run: bool = True) -> dict[str, Any]:
+        """Delete leaked test fixtures from the corpus and every derived index.
+
+        Fixtures are tiny — a couple of dozen characters of keyword soup — which
+        makes them punch far above their weight in vector search: a short
+        document is a short vector, and short vectors score high on cosine
+        similarity.  One of them ("İşçi Alacakları Davası", 44 chars) ranked
+        first for a real query about kıdem tazminatı.
+
+        Rows are removed from ``documents_v2`` (the FTS index follows via its
+        AFTER DELETE trigger) plus ``search_vectors`` and ``embedding_vectors``,
+        which have no such trigger and would otherwise keep serving the deleted
+        documents.
+
+        Defaults to ``dry_run=True``: returns what WOULD be deleted and changes
+        nothing.
+        """
+        found = self.find_synthetic_documents()
+        result: dict[str, Any] = {
+            "ok": True,
+            "dry_run": dry_run,
+            "matched": len(found),
+            "documents": found,
+            "deleted": {"documents_v2": 0, "search_vectors": 0, "embedding_vectors": 0},
+        }
+        if not found or dry_run:
+            return result
+
+        # The derived index tables are created lazily by the semantic layer and
+        # may not exist yet.  Skip the ones that are absent instead of letting
+        # an OperationalError roll the whole purge back.
+        derived = [
+            name for name in ("search_vectors", "embedding_vectors")
+            if self._table_exists(name)
+        ]
+        try:
+            for item in found:
+                key = (item["document_id"], item["source"])
+                result["deleted"]["documents_v2"] += self.db.execute(
+                    "DELETE FROM documents_v2 WHERE document_id=? AND source=?", key
+                ).rowcount
+                self.db.execute(
+                    "DELETE FROM documents WHERE document_id=? AND source=?", key
+                )
+                for table in derived:
+                    result["deleted"][table] += self.db.execute(
+                        f"DELETE FROM {table} WHERE document_id=? AND source=?", key
+                    ).rowcount
+            self.db.commit()
+        except Exception as exc:
+            self.db.rollback()
+            return build_error("PURGE_FAILED", str(exc), matched=len(found))
+
+        self.log("purge_synthetic_documents", {
+            "matched": len(found),
+            "deleted": result["deleted"],
+        })
+        return result
 
     def prune_search_cache(self, max_age_days: int = 30) -> int:
         """Remove old search cache entries (key LIKE 'search:%')."""
