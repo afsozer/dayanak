@@ -2044,6 +2044,10 @@ Search legislation via the Mevzuat source.
                 Best when you know the law's name (e.g. "kişisel veri" → KVKK).
             mevzuat_no: Official legislation number (e.g. "6698" → KVKK, "5237" →
                 TCK). Never guess — confirm via mevzuat_adi first if unsure.
+                ⚠️ NOT globally unique: mevzuat.gov.tr numbers PER TYPE, so a
+                Yönetmelik and a Kanun can share a number (7589 is both a 1998
+                university regulation and a 2026 law). Pass ``mevzuat_tur_list``
+                to disambiguate, and always check the returned title.
             mevzuat_tur_list: Filter by one or more of the 12 types: KANUN, KHK,
                 TUZUK, YONETMELIK, CB_KARARNAME, CB_YONETMELIK, CB_KARAR,
                 CB_GENELGE, KKY, UY, TEBLIGLER, MULGA.

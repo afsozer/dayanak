@@ -294,6 +294,41 @@ class SourceClient(ABC):
                 wait_seconds=wait,
             )
 
+    def _io_free_capability_methods(self) -> list[str]:
+        """Capability methods that cannot possibly reach the network.
+
+        ``search`` and ``get_document`` are coroutines and every network call in
+        this package goes through ``await`` (``async with client()``).  A body
+        containing no ``await`` therefore did no I/O — it is a stub that can
+        only ever return an empty or UNAVAILABLE result.
+
+        Declarations inherited from the abstract base are skipped; only a
+        concrete override counts.
+        """
+        import ast as _ast
+        import inspect as _inspect
+        import textwrap as _textwrap
+
+        stubs: list[str] = []
+        for method_name in ("search", "get_document"):
+            owner = next(
+                (k for k in type(self).__mro__ if method_name in k.__dict__), None
+            )
+            if owner is None or owner is SourceClient:
+                continue
+            try:
+                tree = _ast.parse(
+                    _textwrap.dedent(_inspect.getsource(owner.__dict__[method_name]))
+                )
+            except (OSError, TypeError, SyntaxError):
+                continue  # source unavailable (C ext, exec'd, ...) — cannot judge
+            if not any(
+                isinstance(n, (_ast.Await, _ast.AsyncWith, _ast.AsyncFor))
+                for n in _ast.walk(tree)
+            ):
+                stubs.append(method_name)
+        return stubs
+
     async def smoke(self, online: bool = False) -> SourceSmokeResult:
         """Offline-safe smoke test. Override for online-specific checks.
 
@@ -303,6 +338,32 @@ class SourceClient(ABC):
         result = SourceSmokeResult(source_id=self.source_id)
         result.search_callable = self._supports_search
         result.get_document_callable = self._supports_get_document
+
+        # ── Stub detection ──────────────────────────────────────────────
+        # A source may honestly declare it has no search.  What must never
+        # pass is declaring support while the implementation never performs
+        # I/O: such a source returns [] for every query, and an agent reads
+        # that as "the source has nothing", not "the source does nothing".
+        # This is exactly how the resmigazete adapter sat unimplemented behind
+        # a green health_check while advertising "HTML-only scraping".
+        result.stub_methods = self._io_free_capability_methods()
+        for method_name, declared in (
+            ("search", self._supports_search),
+            ("get_document", self._supports_get_document),
+        ):
+            if method_name in result.stub_methods and declared:
+                result.warnings.append(
+                    f"STUB_DETECTED: {self.source_id}.{method_name}() performs no "
+                    f"I/O but _supports_{method_name} is declared True — it can "
+                    "only ever return an empty/unavailable result, which callers "
+                    "misread as 'nothing found'."
+                )
+                result.offline_ok = False
+                if method_name == "search":
+                    result.search_callable = False
+                else:
+                    result.get_document_callable = False
+
         cap = self.capability_model()
         if cap.source_id != self.source_id:
             result.warnings.append(

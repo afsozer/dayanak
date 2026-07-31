@@ -1176,3 +1176,169 @@ class TestBirimAdi:
             # Valid birimAdi should work fine
             results = _asyncio.run(ci.search("test", limit=1, birimAdi="H1"))
             assert len(results) == 1
+
+
+# ── Resmî Gazete adapter ──────────────────────────────────────────────
+
+_RG_INDEX_HTML = (
+    '<html><head><meta charset="windows-1254"></head><body>'
+    '<p><b><u><span style="font-weight: bold">YASAMA BÖLÜMÜ</span></u></b></p>'
+    '<p><b><u><span style="font-weight: bold">KANUNLAR</span></u></b></p>'
+    '<p><a href="20260731-1.htm"><span>7589&nbsp;&nbsp; </span>'
+    'Yargının Etkin ve Verimli İşlemesine Yönelik Kanun</a></p>'
+    '<p><b><u><span style="font-weight: bold">YÖNETMELİKLER</span></u></b></p>'
+    '<p><a href="20260731-9.pdf">&#8212;&nbsp; Maden Yönetmeliği</a></p>'
+    '<p><a href="baska-sey.html">alakasiz</a></p>'
+    '</body></html>'
+)
+
+
+def _rg_resp(body: str, status: int = 200, encoding: str = "windows-1254"):
+    resp = MagicMock()
+    resp.status_code = status
+    resp.content = body.encode(encoding, errors="replace")
+    resp.url = "http://mock"
+    resp.request = MagicMock()
+    return resp
+
+
+class TestResmiGazeteParsing:
+    """The index is a flat page: all-caps paragraphs are headings, the rest
+    hold one item link each."""
+
+    def _client(self):
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        return ResmiGazeteClient()
+
+    def test_index_items_inherit_headings(self):
+        ci = self._client()
+        items = ci._parse_index(_RG_INDEX_HTML, "20260731")
+        assert [i["id"] for i in items] == ["20260731-1", "20260731-9"]
+        law, reg = items
+        assert law["number"] == "7589"
+        assert law["category"] == "KANUNLAR"
+        assert law["section"] == "YASAMA BÖLÜMÜ"
+        assert law["title"].startswith("Yargının Etkin")
+        assert reg["number"] is None, "em-dash placeholder is not a number"
+        assert reg["category"] == "YÖNETMELİKLER"
+        assert reg["ext"] == "pdf"
+
+    def test_non_item_links_ignored(self):
+        ci = self._client()
+        ids = [i["id"] for i in ci._parse_index(_RG_INDEX_HTML, "20260731")]
+        assert "baska-sey" not in "".join(ids)
+
+    def test_windows_1254_is_decoded_from_the_meta_tag(self):
+        """The server sends no charset, so httpx would guess UTF-8 and mangle
+        every Turkish character. Decoding must follow the declared charset."""
+        from emsal_mcp.sources.resmigazete import _decode
+        assert "Yargının" in _decode(_rg_resp(_RG_INDEX_HTML))
+
+    def test_mukerrer_and_malformed_ids(self):
+        from emsal_mcp.sources.resmigazete import _parse_item_id
+        assert _parse_item_id("20260731-1") == ("20260731", "20260731-1")
+        assert _parse_item_id("20260731m1-4") == ("20260731", "20260731m1-4")
+        assert _parse_item_id("https://example.com/x.htm") is None
+        assert _parse_item_id("") is None
+
+
+class TestResmiGazeteSearch:
+    def _patched(self, responses):
+        queue = list(responses)
+
+        async def _get(*a, **k):
+            return queue.pop(0)
+
+        mc = patch("emsal_mcp.sources.resmigazete.client")
+        started = mc.start()
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=MagicMock(get=AsyncMock(side_effect=_get)))
+        cm.__aexit__ = AsyncMock(return_value=False)
+        started.return_value = cm
+        return mc
+
+    def test_search_lists_the_issue(self):
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        mc = self._patched([_rg_resp(_RG_INDEX_HTML)])
+        try:
+            sp = asyncio.run(ResmiGazeteClient().search_page("", limit=10, date="2026-07-31"))
+        finally:
+            mc.stop()
+        assert sp.total == 2
+        assert sp.results[0].document_id == "20260731-1"
+        assert sp.results[0].karar_no == "7589"
+        assert sp.results[0].decision_date == "2026-07-31"
+
+    def test_query_filters_diacritic_insensitively(self):
+        """'yonetmelik' must find 'YÖNETMELİKLER'."""
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        mc = self._patched([_rg_resp(_RG_INDEX_HTML)])
+        try:
+            sp = asyncio.run(
+                ResmiGazeteClient().search_page("yonetmelik", limit=10, date="2026-07-31")
+            )
+        finally:
+            mc.stop()
+        assert [r.document_id for r in sp.results] == ["20260731-9"]
+
+    def test_pdf_items_are_marked_pdf_link_only(self):
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        mc = self._patched([_rg_resp(_RG_INDEX_HTML)])
+        try:
+            sp = asyncio.run(ResmiGazeteClient().search_page("", limit=10, date="2026-07-31"))
+        finally:
+            mc.stop()
+        assert sp.results[1].content_status.value == "pdf_link_only"
+
+    def test_missing_issue_is_reported_not_crashed(self):
+        """Weekends and future dates 404; that is a real answer, not an error."""
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        mc = self._patched([_rg_resp("", status=404)])
+        try:
+            sp = asyncio.run(ResmiGazeteClient().search_page("", limit=10, date="2026-08-02"))
+        finally:
+            mc.stop()
+        assert sp.total == 0
+        assert any("bulunamadı" in w for w in sp.warnings)
+
+    def test_bad_document_id_explains_the_format(self):
+        """A full URL was the first thing tried by hand; the error must say
+        what the id should look like instead of a bare 'unavailable'."""
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        doc = asyncio.run(ResmiGazeteClient().get_document("https://example.com/x"))
+        assert doc.content_status.value == "unavailable"
+        warns = (doc.metadata or {}).get("_emsal_warnings", [])
+        assert any("YYYYMMDD-N" in w for w in warns), warns
+        assert any("20260731-1" in w for w in warns), "should show a concrete example"
+
+
+class TestStubDetection:
+    """A stub that advertises support is the failure mode that let the
+    unimplemented resmigazete adapter sit behind a green health_check."""
+
+    def test_declared_support_over_a_stub_fails_smoke(self):
+        from emsal_mcp.sources.kvkk import KvkkClient
+
+        class Lying(KvkkClient):
+            _supports_search = True
+            _supports_get_document = True
+
+        r = asyncio.run(Lying().smoke(online=False))
+        assert r.offline_ok is False
+        assert r.search_callable is False
+        assert set(r.stub_methods) == {"search", "get_document"}
+        assert any("STUB_DETECTED" in w for w in r.warnings)
+
+    def test_honest_stub_passes_but_is_still_reported(self):
+        """kvkk declares no search support, so it is not a contradiction —
+        but callers must still be able to see it produces nothing."""
+        from emsal_mcp.sources.registry import registry
+        r = asyncio.run(registry()["kvkk"].smoke(online=False))
+        assert r.offline_ok is True
+        assert "search" in r.stub_methods
+
+    def test_implemented_adapters_are_not_flagged(self):
+        from emsal_mcp.sources.registry import registry
+        for sid in ("bedesten", "mevzuat", "resmigazete"):
+            r = asyncio.run(registry()[sid].smoke(online=False))
+            assert r.stub_methods == [], f"{sid} wrongly flagged as a stub"

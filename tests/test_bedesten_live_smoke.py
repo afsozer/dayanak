@@ -148,3 +148,50 @@ def _live_total_phrase(phrase: str) -> int:
     ci = BedestenClient()
     sp = asyncio.run(ci.search_page(phrase, limit=1, court_types=["YARGITAYKARARI"]))
     return sp.total or 0
+
+
+class TestResmiGazeteLive:
+    """The RG adapter parses a live page, so a layout or encoding change breaks
+    it silently. Only a live probe catches that."""
+
+    KNOWN_DAY = "2026-07-31"  # issue 33326: 13 items, 2 of them Kanun
+
+    def _search(self, query: str = "", limit: int = 30):
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        return asyncio.run(
+            ResmiGazeteClient().search_page(query, limit=limit, date=self.KNOWN_DAY)
+        )
+
+    def test_index_parses_into_items(self):
+        sp = self._search()
+        assert sp.total >= 10, f"only {sp.total} items — index layout may have changed"
+        assert all(r.document_id.startswith("20260731") for r in sp.results)
+
+    def test_turkish_characters_survive_decoding(self):
+        """The page declares windows-1254 but the server sends no charset."""
+        sp = self._search()
+        blob = " ".join(r.title for r in sp.results)
+        assert "�" not in blob, "mojibake — charset detection regressed"
+        assert any(ch in blob for ch in "çğıöşüİ"), "no Turkish characters at all"
+
+    def test_law_number_and_category_extracted(self):
+        sp = self._search("7589")
+        assert sp.total == 1
+        hit = sp.results[0]
+        assert hit.document_id == "20260731-1"
+        assert hit.karar_no == "7589"
+        assert hit.metadata["kategori"] == "KANUNLAR"
+
+    def test_full_text_fetch(self):
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        doc = asyncio.run(ResmiGazeteClient().get_document("20260731-1"))
+        assert doc.content_status.value == "html_markdown"
+        assert len(doc.full_text or "") > 5000
+        assert "7589" in (doc.full_text or "")
+        assert "mso-style" not in (doc.full_text or ""), "Word boilerplate leaked in"
+
+    def test_pdf_only_item_is_not_claimed_as_text(self):
+        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        doc = asyncio.run(ResmiGazeteClient().get_document("20260731-3"))
+        assert doc.content_status.value == "pdf_link_only"
+        assert not doc.full_text

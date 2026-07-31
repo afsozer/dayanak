@@ -482,6 +482,10 @@ def search_legislation(
             Best when you know the law's name (e.g. "kişisel veri" → KVKK).
         mevzuat_no: Official legislation number (e.g. "6698" → KVKK, "5237" →
             TCK). Never guess — confirm via mevzuat_adi first if unsure.
+            ⚠️ NOT globally unique: mevzuat.gov.tr numbers PER TYPE, so a
+            Yönetmelik and a Kanun can share a number (7589 is both a 1998
+            university regulation and a 2026 law). Pass ``mevzuat_tur_list``
+            to disambiguate, and always check the returned title.
         mevzuat_tur_list: Filter by one or more of the 12 types: KANUN, KHK,
             TUZUK, YONETMELIK, CB_KARARNAME, CB_YONETMELIK, CB_KARAR,
             CB_GENELGE, KKY, UY, TEBLIGLER, MULGA.
@@ -566,9 +570,43 @@ def search_legislation(
                 "court": r.court,
             }))
 
+    # ── mevzuat_no is NOT globally unique ──────────────────────────────
+    # mevzuat.gov.tr numbers legislation PER TYPE. There is a Yönetmelik
+    # numbered 7589 (1998, Ege Üniversitesi) as well as a Kanun 7589 (2026).
+    # A bare number lookup can therefore return a completely unrelated
+    # document that merely shares the number — and it looks like a confident
+    # single hit, which is the worst possible failure shape.
+    if mevzuat_no and not mevzuat_tur_list:
+        if all_results:
+            found = sorted({
+                str(r.get("legislation_type")) for r in all_results
+                if r.get("legislation_type")
+            })
+            warnings.append(
+                f"mevzuat_no={mevzuat_no} tür filtresi olmadan arandı. "
+                "mevzuat.gov.tr numaraları TÜR BAZINDA verir; aynı numarayı taşıyan "
+                "farklı türde bir mevzuat dönmüş olabilir. "
+                + (f"Dönen tür(ler): {', '.join(found)}. " if found else "")
+                + "Sonucun BAŞLIĞINI doğrulayın; kesinleştirmek için "
+                "mevzuat_tur_list=['KANUN'] gibi bir tür filtresi ekleyin."
+            )
+        else:
+            warnings.append(
+                f"mevzuat_no={mevzuat_no} için sonuç yok. Numara yanlış olabilir; "
+                "ya da mevzuat çok yeni olduğu için mevzuat.gov.tr'ye henüz "
+                "işlenmemiştir (yayımdan sonra gecikme olur). Resmî Gazete'de "
+                "yayımlandıysa search_decisions(source='resmigazete', "
+                "date='YYYY-MM-DD') ile o günün sayısından tam metne ulaşabilirsiniz."
+            )
+
     ok = len(all_results) > 0 and not any("bulunamadı" in w for w in warnings)
 
     recommended: list[str] = []
+    if mevzuat_no and not mevzuat_tur_list and all_results:
+        recommended.append(
+            "Numara aramasında dönen başlığı doğrulayın; tür filtresi eklemeden "
+            "aynı numaralı başka türde mevzuat gelebilir."
+        )
     if not all_results:
         recommended.append("Farklı bir sorgu veya mevzuat türü deneyin.")
     if warnings:

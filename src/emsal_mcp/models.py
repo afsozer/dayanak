@@ -194,6 +194,10 @@ class SourceSmokeResult(BaseModel):
     get_document_callable: bool = True
     min_content_length_ok: bool = True
     content_length_chars: int = 0
+    # Capability methods whose body performs no I/O — they cannot return real
+    # data.  Empty for a working adapter; non-empty means the source is a stub
+    # (honest when the matching _supports_* flag is False, a bug when it isn't).
+    stub_methods: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     tested_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

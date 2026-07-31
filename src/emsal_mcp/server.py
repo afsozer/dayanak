@@ -519,6 +519,10 @@ def main() -> None:
         Args:
             source: Optional source identifier. Available sources:
                 - ``'bedesten'`` (default) — combined Yargıtay + Danıştay sweep
+                - ``'resmigazete'`` — Resmî Gazete, one issue per call.
+                  ``karar_tarihi_start='YYYY-MM-DD'`` picks the day (default
+                  today); ``query`` filters that issue locally (diacritic-
+                  insensitive), omit to list it all. Ids: ``20260731-1``.
                 - ``'aihm'`` — AİHM/ECHR via HUDOC (EXPERIMENTAL; search API
                   currently unavailable — returns empty; get_document works)
                 - ``'btk'`` — BTK Kurul Kararları (PARTIAL; HTML card scraping
@@ -538,12 +542,9 @@ def main() -> None:
                 with INVALID_COURT_TYPE — Bedesten answers a bogus itemType
                 with a silent total=0 that is indistinguishable from "no such
                 precedent", so we never forward one.
-            birimAdi: Optional chamber/unit code. Use the short enum codes:
-                Yargıtay: H1–H23 (hukuk daireleri), C1–C23 (ceza daireleri),
-                HGK (Hukuk Genel Kurulu), CGK (Ceza Genel Kurulu), BGK (Büyük
-                Genel Kurul); Danıştay: D1–D17 (daireler), IDDK (İdari Dava
-                Daireleri Kurulu), VDDK (Vergi Dava Daireleri Kurulu); Askeri:
-                AYIM. Full 79-option list: list_sources(detail="birim_codes").
+            birimAdi: Optional chamber code. Yargıtay H1–H23 / C1–C23 (hukuk /
+                ceza daireleri), HGK, CGK, BGK; Danıştay D1–D17, IDDK, VDDK;
+                AYIM. Full list: list_sources(detail="birim_codes").
             karar_tarihi_start: Optional start date filter (ISO format,
                 e.g. "2023-01-01"). Inclusive.
             karar_tarihi_end: Optional end date filter (ISO format,

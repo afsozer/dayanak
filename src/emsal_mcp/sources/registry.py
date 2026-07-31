@@ -118,18 +118,28 @@ class _SayistayClient(SayistayClient):
 
 
 class _ResmiGazeteClient(ResmiGazeteClient):
-    _capability_status = SourceStatus.EXPERIMENTAL
+    _capability_status = SourceStatus.PARTIAL
     _known_limitations: list[str] = [
-        "HTML-only scraping; no structured API available.",
-        "Search may require session/cookie handling.",
+        "No server-side search: one issue is fetched by date and filtered "
+        "locally, so a query only matches within that day's index.",
+        "Search defaults to today's issue; pass date='YYYY-MM-DD' for another.",
+        "Scanned items are published as PDF only; those return pdf_link_only "
+        "and need extraction for full text.",
     ]
 
 
 class _KvkkClient(KvkkClient):
+    # NOT experimental-but-flaky — not implemented at all.  search() returns []
+    # unconditionally and get_document() returns UNAVAILABLE; neither touches
+    # the network.  Declared honestly so callers stop reading empty results as
+    # "no such decision".
     _capability_status = SourceStatus.EXPERIMENTAL
+    _supports_search = False
+    _supports_get_document = False
+    _supports_full_text = False
     _known_limitations: list[str] = [
-        "HTML-only scraping; no structured API available.",
-        "Search may require session/cookie handling.",
+        "NOT IMPLEMENTED: search() always returns [] and get_document() always "
+        "returns UNAVAILABLE. An empty result says nothing about the source.",
     ]
 
 
