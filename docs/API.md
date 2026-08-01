@@ -196,6 +196,32 @@ Find chambers with similar topic profiles based on keyword overlap.
 
 ---
 
+## `chunking`
+
+### `def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]`
+
+Split ``text`` into overlapping, paragraph-aligned chunks.
+
+    Args:
+            text: Full document text (full_text or markdown).
+            chunk_size: Max chars per chunk. Default sized for e5-small's
+                512-token window against Turkish legal prose (see module
+                docstring).
+            overlap: Chars of trailing context carried from one chunk into
+                the start of the next, so content near a chunk boundary
+                isn't split without any surrounding context in either chunk.
+    
+        Returns:
+            List of chunk strings, in document order. Empty/whitespace-only
+            input returns ``[]``. Input no longer than ``chunk_size`` returns
+            a single-element list (the stripped text, unchanged) — no
+            overlap logic applies when there's nothing to split.
+    
+        Raises:
+            ValueError: if ``overlap >= chunk_size`` or either is non-positive.
+
+---
+
 ## `circuit`
 
 ### `def record_success(source_id: str, cache: Any) -> None`
@@ -331,19 +357,67 @@ Verify legal citations found in text or file.
 
 ## `citation_graph`
 
+### `def get_citation_graph_build_progress(cache: Cache | None) -> dict[str, Any]`
+
+Report progress of a resumable build_citation_graph(resume=True) run.
+
+    Reads the ``citation_graph_build_state`` checkpoint row, which a
+        resumable build commits periodically (every ``commit_every`` docs) —
+        a separate connection (WAL mode) can observe it advance in real time
+        without waiting for the build to finish, and a build interrupted
+        mid-run (process killed, not just a caught exception) leaves a
+        checkpoint that the next ``build_citation_graph(resume=True)`` call
+        picks up from, since edges and the checkpoint are committed together.
+    
+        Returns:
+            Dict with ok, status ('not_started'|'running'|'completed'), and
+            the checkpoint fields (last_rowid, docs_processed, target_docs,
+            etc.) when a build has run at least once.
+
+---
+
 ### `def build_citation_graph(cache: Cache | None, sources_override: dict[str, Any] | None, limit_docs: int) -> dict[str, Any]`
 
 Build the citation graph by extracting references from cached documents.
 
     1. Select up to ``limit_docs`` documents with full_text or markdown.
         2. Extract citation candidates from each document.
-        3. Search local cache for matching documents.
+        3. Match candidates against an in-memory index of the corpus (built
+           once per call — see ``_CorpusIndex``) instead of a per-candidate
+           SQL query; this is the perf fix (profiling showed the old
+           per-candidate ``LIKE '%...%'`` query was 90% of build time and
+           scales with corpus size).
         4. Insert verified edges into ``citation_edges`` table.
+    
+        Two modes:
+    
+        - ``resume=False`` (default, unchanged since before this fix): selects
+          the ``limit_docs`` most recently accessed documents, single commit
+          at the end. Matches the exact old behaviour/ordering — safe for the
+          existing bounded/test call sites.
+        - ``resume=True``: for a full-corpus build. Iterates ALL matching
+          documents in stable rowid order, commits progress every
+          ``commit_every`` documents (both the edges found so far AND a
+          checkpoint row in ``citation_graph_build_state``), so a build that
+          dies partway through resumes from the checkpoint instead of
+          restarting, and ``get_citation_graph_build_progress()`` can report
+          status from a separate connection while it runs. Pass ``limit_docs
+          =None`` to process the entire remaining corpus in one call, or a
+          finite number to advance in bounded increments (e.g. from a
+          scheduler that reinvokes periodically).
     
         Args:
             cache: Optional Cache instance (creates one if None).
             sources_override: Unused; kept for interface compatibility.
-            limit_docs: Maximum documents to process.
+            limit_docs: Maximum documents to process this call. None means
+                "no cap" (only meaningful with resume=True).
+            resume: Use the resumable, checkpointed, rowid-ordered path.
+            commit_every: Documents between commits/checkpoints in resumable
+                mode (ignored when resume=False, which always commits once
+                at the end, matching prior behavior).
+            progress_callback: Optional callable invoked with the same dict
+                ``get_citation_graph_build_progress()`` would return, once
+                per commit interval (resume=True only).
     
         Returns:
             Dict with ok, edges_created, docs_processed, citations_found,
@@ -857,9 +931,9 @@ Mevzuat atıf formatla.
 
 ---
 
-### `def semantic_index(force_rebuild: bool, json_out: bool) -> None`
+### `def semantic_index(force_rebuild: bool, batch_size: int, json_out: bool) -> None`
 
-Build FTS5 + TF-IDF search indices.
+Build FTS5 + TF-IDF search indices (resumable — see --batch-size).
 
 ---
 
@@ -947,9 +1021,15 @@ Find chambers with similar topic profiles.
 
 ---
 
-### `def graph_build(limit_docs: int, json_out: bool) -> None`
+### `def graph_build(limit_docs: Optional[int], resume: bool, commit_every: int, json_out: bool) -> None`
 
 Build citation graph from cached documents.
+
+---
+
+### `def graph_progress(json_out: bool) -> None`
+
+Show progress of a resumable (--resume) citation graph build.
 
 ---
 
@@ -2901,17 +2981,27 @@ Record a search in the analytics table.
 
 ## `semantic`
 
-### `def build_semantic_index(cache: Cache | None, force_rebuild: bool) -> dict[str, Any]`
+### `def build_semantic_index(cache: Cache | None, force_rebuild: bool, limit: int) -> dict[str, Any]`
 
 Build FTS5 and TF-IDF indices.
 
     Args:
             cache: Optional Cache instance for DB injection.  If None a fresh Cache
                    is created.
-            force_rebuild: If True, drop and recreate all index tables first.
+            force_rebuild: If True, drop and recreate all index tables (including
+                the frozen IDF snapshot) first, so IDF is recomputed fresh over
+                the whole corpus and every vector is rewritten under it.
+            limit: Cap on how many still-missing documents to write THIS call
+                (0 = no cap, process all of them). Use a bounded value to drive
+                a long build in resumable chunks — each call only fills gaps
+                (it never deletes existing vectors), and reuses the same cached
+                IDF snapshot across calls, so partial progress is always
+                internally consistent. Re-running with the same or larger corpus
+                picks up exactly where the previous call left off.
     
         Returns:
-            Status dict with ok, fts5_exists, fts5_row_count, vectors_count, etc.
+            Status dict with ok, fts5_exists, fts5_row_count, vectors_count,
+            newly_indexed, remaining_unindexed, elapsed_seconds, etc.
 
 ---
 
@@ -3418,6 +3508,6 @@ Verify ZIP bundle archive integrity.
 
 ## Coverage Summary
 
-- **Total public functions:** 305
-- **With docstrings:** 304
+- **Total public functions:** 308
+- **With docstrings:** 307
 - **Coverage:** 99.7%

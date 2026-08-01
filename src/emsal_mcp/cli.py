@@ -1070,11 +1070,22 @@ def legislation_format(
 @semantic_app.command("index")
 def semantic_index(
     force_rebuild: bool = typer.Option(False, "--force-rebuild", help="Drop and recreate indices"),
+    batch_size: int = typer.Option(
+        0,
+        "--batch-size",
+        help=(
+            "Cap on documents to index THIS run (0 = all). Each batch only "
+            "fills gaps under a shared, cached IDF snapshot — it never "
+            "deletes prior progress — so re-running the same command "
+            "resumes automatically. Use a bounded value plus repeated "
+            "invocations to drive a long build in observable chunks."
+        ),
+    ),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
-    """Build FTS5 + TF-IDF search indices."""
+    """Build FTS5 + TF-IDF search indices (resumable — see --batch-size)."""
     from .semantic import build_semantic_index as build_semantic_impl
-    result = build_semantic_impl(force_rebuild=force_rebuild)
+    result = build_semantic_impl(force_rebuild=force_rebuild, limit=batch_size)
     _print(result, json_out)
 
 
@@ -1268,12 +1279,33 @@ def chamber_similar(
 
 @graph_app.command("build")
 def graph_build(
-    limit_docs: int = typer.Option(100, help="Maksimum işlenecek belge sayısı"),
+    limit_docs: Optional[int] = typer.Option(
+        100, help="Maksimum işlenecek belge sayısı (--resume ile None/atlanırsa kalan tüm korpus)"
+    ),
+    resume: bool = typer.Option(
+        False,
+        "--resume/--no-resume",
+        help="Kesintiye dayanıklı, ilerleme kaydeden mod (tam korpus build'i için). "
+        "rowid sırasıyla ilerler, kaldığı yerden devam eder.",
+    ),
+    commit_every: int = typer.Option(
+        500, help="--resume modunda kaç belgede bir commit/checkpoint yapılacağı"
+    ),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Build citation graph from cached documents."""
     from .citation_graph import build_citation_graph as build_citation_graph_impl
-    result = build_citation_graph_impl(limit_docs=limit_docs)
+    result = build_citation_graph_impl(
+        limit_docs=limit_docs, resume=resume, commit_every=commit_every,
+    )
+    _print(result, json_out)
+
+
+@graph_app.command("progress")
+def graph_progress(json_out: bool = typer.Option(False, "--json")) -> None:
+    """Show progress of a resumable (--resume) citation graph build."""
+    from .citation_graph import get_citation_graph_build_progress as progress_impl
+    result = progress_impl()
     _print(result, json_out)
 
 

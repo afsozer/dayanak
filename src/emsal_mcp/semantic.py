@@ -251,34 +251,208 @@ def _ensure_search_vectors(db: sqlite3.Connection) -> bool:
     return already_existed
 
 
-def _compute_tfidf_vectors(db: sqlite3.Connection, limit: int = 1000) -> int:
-    """Compute TF-IDF vectors for all documents with text content.
+# ---------------------------------------------------------------------------
+# TF-IDF Corpus Statistics (frozen IDF snapshot — M-108 consistency fix)
+# ---------------------------------------------------------------------------
+#
+# Bug this fixes: the previous implementation computed document-frequency
+# (and therefore IDF) from whichever rows a single call happened to touch
+# (a `LIMIT`-bounded batch, or the whole table when unlimited), then
+# unconditionally deleted the ENTIRE search_vectors table before writing
+# that batch. Two consequences: (1) vectors written by different calls were
+# scaled by different, batch-local IDF values, so cosine similarity across
+# documents from different batches was not meaningful; (2) any call made
+# with a bounded `limit` silently destroyed all previously indexed vectors,
+# leaving only the last batch. Both were confirmed against the live corpus:
+# a single `limit=1000` diagnostic call reduced search_vectors from 112,692
+# rows to 1,000.
+#
+# Fix: IDF is computed exactly once per "epoch" over the WHOLE corpus in a
+# dedicated streaming pass (`_compute_corpus_idf`), then persisted to
+# `tfidf_corpus_stats`. Every subsequent vector-writing call — regardless of
+# batch size, and regardless of how many separate calls it takes to cover
+# the corpus — reuses that SAME frozen IDF snapshot. This guarantees any two
+# vectors ever written under one snapshot are on an identical basis, and
+# batches never delete existing rows (only fill in documents that are still
+# missing), making the build resumable and interruption-safe.
 
-    Reads documents from documents_v2 using cursor iteration (one row at a time)
-    to minimize peak memory, tokenizes their text, computes IDF across the
-    corpus, builds per-document TF-IDF vectors, and stores them in the
-    search_vectors table.
+_TFIDF_STATS_TABLE = """\
+CREATE TABLE IF NOT EXISTS tfidf_corpus_stats (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    n_docs INTEGER NOT NULL,
+    idf_json TEXT NOT NULL,
+    computed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);"""
 
-    Returns the number of documents indexed.
+
+def _ensure_tfidf_stats(db: sqlite3.Connection) -> bool:
+    """Create the tfidf_corpus_stats table if it does not exist.
+
+    Returns True if the table already existed.
     """
-    # M-51: Use cursor iteration instead of fetchall() to reduce peak memory.
-    # First pass: tokenize and build document frequency (DF).
-    if limit > 0:
-        cursor = db.execute(
-            "SELECT document_id, source, full_text, markdown FROM documents_v2 LIMIT ?",
-            (limit,),
-        )
-    else:
-        cursor = db.execute(
-            "SELECT document_id, source, full_text, markdown FROM documents_v2",
-        )
+    existing = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='tfidf_corpus_stats'"
+    ).fetchone()
+    already_existed = existing is not None
+    db.execute(_TFIDF_STATS_TABLE)
+    db.commit()
+    return already_existed
 
-    doc_tokens: list[tuple[str, str, Counter]] = []  # (doc_id, source, token_counter)
-    df: Counter = Counter()  # document frequency per term
+
+def _compute_corpus_idf(db: sqlite3.Connection) -> tuple[dict[str, float], int]:
+    """Stream the WHOLE corpus once to compute document frequency / IDF.
+
+    Only aggregate counts are kept in memory (a term->df Counter plus a doc
+    count) — per-document token lists are discarded immediately after
+    updating the counter, so peak memory is O(vocabulary size), not
+    O(corpus size). This is the "pass 1" of the two-pass build; its result
+    is persisted to tfidf_corpus_stats so later vector-writing calls do not
+    need to repeat it.
+
+    Returns (idf_map, n_docs). If no document has usable text, returns
+    ({}, 0) and does NOT persist a stats row (so a later call, once real
+    text exists, will recompute rather than being stuck with an empty
+    snapshot).
+    """
+    cursor = db.execute("SELECT full_text, markdown FROM documents_v2")
+    df: Counter = Counter()
     n_docs = 0
+    for full_text, markdown in cursor:
+        text = full_text or markdown or ""
+        if not text.strip():
+            continue
+        tokens = _tokenize(text)
+        if not tokens:
+            continue
+        for term in set(tokens):
+            df[term] += 1
+        n_docs += 1
 
-    for row in cursor:
-        doc_id, source, full_text, markdown = row
+    if n_docs == 0:
+        return {}, 0
+
+    idf: dict[str, float] = {term: math.log(n_docs / freq) for term, freq in df.items()}
+
+    _ensure_tfidf_stats(db)
+    db.execute(
+        "INSERT OR REPLACE INTO tfidf_corpus_stats(id, n_docs, idf_json, computed_at) "
+        "VALUES (1, ?, ?, CURRENT_TIMESTAMP)",
+        (n_docs, json.dumps(idf, ensure_ascii=False)),
+    )
+    db.commit()
+    return idf, n_docs
+
+
+def _load_corpus_idf(db: sqlite3.Connection) -> tuple[dict[str, float], int] | None:
+    """Load the persisted IDF snapshot, if one has been computed.
+
+    Returns (idf_map, n_docs) or None if tfidf_corpus_stats has no row yet.
+    """
+    _ensure_tfidf_stats(db)
+    row = db.execute("SELECT n_docs, idf_json FROM tfidf_corpus_stats WHERE id = 1").fetchone()
+    if row is None:
+        return None
+    n_docs, idf_json = row
+    try:
+        idf = json.loads(idf_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return idf, n_docs
+
+
+def _get_or_build_corpus_idf(
+    db: sqlite3.Connection, idf_refresh: bool = False
+) -> tuple[dict[str, float], int]:
+    """Return the frozen IDF snapshot, computing it if missing or refresh is requested."""
+    if not idf_refresh:
+        cached = _load_corpus_idf(db)
+        if cached is not None:
+            return cached
+    return _compute_corpus_idf(db)
+
+
+def _compute_tfidf_vectors(
+    db: sqlite3.Connection,
+    limit: int = 1000,
+    *,
+    idf_refresh: bool = False,
+    since: str | None = None,
+) -> int:
+    """Write TF-IDF vectors for documents not yet indexed, using a frozen IDF.
+
+    Two-pass, resumable, non-destructive:
+
+    - Pass 1 (once per IDF "epoch"): a full streaming scan of the corpus to
+      compute document frequency / IDF (see `_compute_corpus_idf`). Skipped
+      if a snapshot is already cached in tfidf_corpus_stats, unless
+      ``idf_refresh=True``.
+    - Pass 2 (this call): stream documents_v2 LEFT JOIN search_vectors,
+      selecting only rows with no existing vector (optionally restricted to
+      ``since``), tokenize, score with the frozen IDF, and INSERT OR REPLACE
+      into search_vectors. Never deletes existing rows. Commits periodically
+      so a long run can be interrupted without losing prior progress, and a
+      subsequent call simply picks up the remaining missing documents.
+
+    Self-healing: if search_vectors already has rows but no IDF snapshot
+    exists (the signature of the old batch-scoped implementation, or of an
+    interrupted legacy run), those rows cannot be trusted to share one IDF
+    basis with anything written going forward — they are wiped so the corpus
+    is rebuilt cleanly under a single snapshot.
+
+    Args:
+        limit: Max documents to WRITE this call (0 = no cap, process all
+            currently-missing documents). Does not bound the IDF pass, which
+            always covers the whole corpus.
+        idf_refresh: Force recomputation of the IDF snapshot even if one is
+            cached. Callers that do this should also have dropped/rewritten
+            all existing vectors (see build_semantic_index force_rebuild),
+            since old vectors would otherwise be scored under a stale IDF.
+        since: Optional ISO timestamp; only consider documents whose
+            documents_v2.retrieved_at is >= this value (used by incremental
+            update_indexes()).
+
+    Returns:
+        Number of documents newly written to search_vectors in this call.
+    """
+    _ensure_search_vectors(db)
+    _ensure_tfidf_stats(db)
+
+    stats = None if idf_refresh else _load_corpus_idf(db)
+    if stats is None:
+        existing_vec_count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
+        if existing_vec_count > 0:
+            # Legacy/inconsistent vectors — cannot trust their IDF basis.
+            db.execute("DELETE FROM search_vectors")
+            db.commit()
+        idf, _n_docs = _compute_corpus_idf(db)
+    else:
+        idf, _n_docs = stats
+
+    if not idf:
+        return 0
+
+    where_clauses = ["sv.document_id IS NULL"]
+    params: list[Any] = []
+    if since:
+        where_clauses.append("dv.retrieved_at >= ?")
+        params.append(since)
+
+    query = f"""
+        SELECT dv.document_id, dv.source, dv.full_text, dv.markdown
+        FROM documents_v2 dv
+        LEFT JOIN search_vectors sv
+          ON dv.document_id = sv.document_id AND dv.source = sv.source
+        WHERE {' AND '.join(where_clauses)}
+    """
+    if limit and limit > 0:
+        query += " LIMIT ?"
+        params.append(limit)
+
+    cursor = db.execute(query, params)
+
+    indexed = 0
+    _COMMIT_EVERY = 2000
+    for doc_id, source, full_text, markdown in cursor:
         text = full_text or markdown or ""
         if not text.strip():
             continue
@@ -286,30 +460,12 @@ def _compute_tfidf_vectors(db: sqlite3.Connection, limit: int = 1000) -> int:
         if not tokens:
             continue
         token_counts = Counter(tokens)
-        doc_tokens.append((doc_id, source, token_counts))
-        for term in set(tokens):
-            df[term] += 1
-        n_docs += 1
-
-    if n_docs == 0:
-        return 0
-
-    # Step 2: compute IDF: idf(term) = log(N / df[term])
-    idf: dict[str, float] = {}
-    for term, freq in df.items():
-        idf[term] = math.log(n_docs / freq)
-
-    # Step 3: compute TF-IDF for each document and store
-    db.execute("DELETE FROM search_vectors")
-    indexed = 0
-    for doc_id, source, token_counts in doc_tokens:
         total_tokens = sum(token_counts.values())
         vector: dict[str, float] = {}
         for term, count in token_counts.items():
             tf = count / total_tokens
             vector[term] = tf * idf.get(term, 0.0)
 
-        # Precompute L2 norm
         norm = math.sqrt(sum(v * v for v in vector.values())) if vector else 0.0
         vector_json = json.dumps(vector, ensure_ascii=False)
 
@@ -318,6 +474,8 @@ def _compute_tfidf_vectors(db: sqlite3.Connection, limit: int = 1000) -> int:
             (doc_id, source, vector_json, norm),
         )
         indexed += 1
+        if indexed % _COMMIT_EVERY == 0:
+            db.commit()
 
     db.commit()
     return indexed
@@ -466,11 +624,15 @@ def _build_query_vector(query: str, idf: dict[str, float] | None = None) -> dict
 
 
 def _load_idf_from_vectors(db: sqlite3.Connection) -> dict[str, float]:
-    """Approximate IDF from stored vectors.
+    """Reconstruct an approximate IDF from stored vectors (legacy fallback only).
 
-    Uses the stored vector norms and term frequencies to derive an approximate
-    IDF.  For a small corpus this is good enough; for larger ones the exact IDF
-    from _compute_tfidf_vectors is preferred (and already stored in vectors).
+    Treats "documents currently present in search_vectors" as the corpus and
+    counts term presence across their stored vector_json. This is only an
+    approximation and is NOT guaranteed to match the IDF that was actually
+    used when a given document's vector was written — prefer
+    `_load_query_idf`, which uses the exact persisted snapshot in
+    tfidf_corpus_stats when available. This function remains as a fallback
+    for databases that predate that table.
     M-51: uses cursor iteration to reduce peak memory.
     """
     cursor = db.execute("SELECT vector_json FROM search_vectors")
@@ -492,21 +654,50 @@ def _load_idf_from_vectors(db: sqlite3.Connection) -> dict[str, float]:
     return idf
 
 
+def _load_query_idf(db: sqlite3.Connection) -> dict[str, float]:
+    """Load the IDF map to use for scoring a query.
+
+    Prefers the exact IDF snapshot persisted in tfidf_corpus_stats — the
+    same weights used when the currently-stored document vectors were
+    written — so query scoring is on the same basis as the index. Falls
+    back to the older per-vector reconstruction only if no snapshot exists
+    yet (e.g. a legacy database before its next build/update self-heals).
+    """
+    cached = _load_corpus_idf(db)
+    if cached is not None:
+        return cached[0]
+    return _load_idf_from_vectors(db)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def build_semantic_index(cache: Cache | None = None, force_rebuild: bool = False) -> dict[str, Any]:
+def build_semantic_index(
+    cache: Cache | None = None, force_rebuild: bool = False, limit: int = 0
+) -> dict[str, Any]:
     """Build FTS5 and TF-IDF indices.
 
     Args:
         cache: Optional Cache instance for DB injection.  If None a fresh Cache
                is created.
-        force_rebuild: If True, drop and recreate all index tables first.
+        force_rebuild: If True, drop and recreate all index tables (including
+            the frozen IDF snapshot) first, so IDF is recomputed fresh over
+            the whole corpus and every vector is rewritten under it.
+        limit: Cap on how many still-missing documents to write THIS call
+            (0 = no cap, process all of them). Use a bounded value to drive
+            a long build in resumable chunks — each call only fills gaps
+            (it never deletes existing vectors), and reuses the same cached
+            IDF snapshot across calls, so partial progress is always
+            internally consistent. Re-running with the same or larger corpus
+            picks up exactly where the previous call left off.
 
     Returns:
-        Status dict with ok, fts5_exists, fts5_row_count, vectors_count, etc.
+        Status dict with ok, fts5_exists, fts5_row_count, vectors_count,
+        newly_indexed, remaining_unindexed, elapsed_seconds, etc.
     """
+    import time
+
     db, own_cache = _get_db(cache)
     warnings: list[str] = []
     try:
@@ -517,25 +708,42 @@ def build_semantic_index(cache: Cache | None = None, force_rebuild: bool = False
             db.execute("DROP TRIGGER IF EXISTS documents_v2_au")
             db.execute("DROP TABLE IF EXISTS documents_v2_fts")
             db.execute("DROP TABLE IF EXISTS search_vectors")
+            # Drop the frozen IDF snapshot too — force_rebuild means every
+            # vector is rewritten, so IDF must be recomputed over the
+            # current whole corpus rather than reusing a stale snapshot.
+            db.execute("DROP TABLE IF EXISTS tfidf_corpus_stats")
             db.commit()
             warnings.append("Existing FTS5 and vector indices were dropped for rebuild.")
 
         fts5_existed = _ensure_fts5(db)
         _ensure_search_vectors(db)
-        vectors_count = _compute_tfidf_vectors(db, limit=0)  # 0 = no limit
 
+        t0 = time.time()
+        newly_indexed = _compute_tfidf_vectors(db, limit=limit)
+        elapsed = round(time.time() - t0, 3)
+
+        vectors_count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
         fts5_row_count = db.execute("SELECT COUNT(*) FROM documents_v2_fts").fetchone()[0]
         docs_total = db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+        remaining_unindexed = max(0, docs_total - vectors_count)
 
         if vectors_count == 0 and docs_total > 0:
             warnings.append("No documents with text content found; vectors table is empty.")
+        if limit and remaining_unindexed > 0:
+            warnings.append(
+                f"{remaining_unindexed} document(s) still unindexed after this batch "
+                "(limit was applied). Call build_semantic_index() again to continue."
+            )
 
         return {
             "ok": True,
             "fts5_exists": fts5_existed or not force_rebuild,
             "fts5_row_count": fts5_row_count,
             "vectors_count": vectors_count,
+            "newly_indexed": newly_indexed,
+            "remaining_unindexed": remaining_unindexed,
             "documents_total": docs_total,
+            "elapsed_seconds": elapsed,
             "warnings": warnings,
             "recommended_next_steps": [
                 "Use hybrid_search() to query the index.",
@@ -608,8 +816,8 @@ def semantic_search(
         # Expand query with Turkish suffix stripping
         expanded_terms = _expand_query(query)
 
-        # Load IDF from stored vectors
-        idf = _load_idf_from_vectors(db)
+        # Load IDF — prefers the exact snapshot used when vectors were written
+        idf = _load_query_idf(db)
         query_vec = _build_query_vector(query, idf)
 
         if not query_vec:
@@ -989,7 +1197,7 @@ def hybrid_search(
             vec_count = computed
 
         if vec_count > 0:
-            idf = _load_idf_from_vectors(db)
+            idf = _load_query_idf(db)
             query_vec = _build_query_vector(query, idf)
             if query_vec:
                 # M-53: fetch pre-computed norm to skip per-vector L2 recomputation
@@ -1626,78 +1834,18 @@ def update_indexes(
         _ensure_search_vectors(db)
 
         # --- TF-IDF incremental ---
-        # Find documents with text that are NOT yet in search_vectors
-        tfidf_query = """
-            SELECT dv.document_id, dv.source, dv.full_text, dv.markdown, dv.content_hash
-            FROM documents_v2 dv
-            LEFT JOIN search_vectors sv ON dv.document_id = sv.document_id AND dv.source = sv.source
-            WHERE sv.document_id IS NULL
-              AND ((dv.full_text IS NOT NULL AND dv.full_text != '')
-                OR (dv.markdown IS NOT NULL AND dv.markdown != ''))
-        """
-        params: list[Any] = []
-        if since:
-            tfidf_query += " AND dv.retrieved_at >= ?"
-            params.append(since)
-
-        new_tfidf_docs = db.execute(tfidf_query, params).fetchall()
-
-        if new_tfidf_docs:
-            # Get existing IDF from stored vectors
-            existing_terms: Counter = Counter()
-            existing_rows = db.execute(
-                "SELECT vector_json FROM search_vectors"
-            ).fetchall()
-            for row in existing_rows:
-                try:
-                    vec = json.loads(row["vector_json"])
-                    for term in vec:
-                        existing_terms[term] += 1
-                except (json.JSONDecodeError, TypeError):
-                    pass
-
-            # Tokenize new docs and count
-            new_terms: Counter = Counter()
-            new_docs_text: list[tuple[str, str, str | None, list[str]]] = []
-            for row in new_tfidf_docs:
-                text = row["full_text"] or row["markdown"] or ""
-                tokens = _tokenize(text)
-                if tokens:
-                    new_docs_text.append(
-                        (row["document_id"], row["source"], row["content_hash"], tokens)
-                    )
-                    for t in set(tokens):
-                        new_terms[t] += 1
-
-            # Update IDF
-            total_docs = len(existing_rows) + len(new_docs_text)
-            idf: dict[str, float] = {}
-            for term in set(existing_terms.keys()) | set(new_terms.keys()):
-                df = existing_terms.get(term, 0) + new_terms.get(term, 0)
-                if df > 0:
-                    idf[term] = math.log(total_docs / df) + 1.0
-
-            # Compute TF-IDF for new docs
-            for doc_id, source, _content_hash, tokens in new_docs_text:
-                tf = Counter(tokens)
-                total = len(tokens) or 1
-                vec = {
-                    t: (c_val / total) * idf.get(t, 1.0)
-                    for t, c_val in tf.items()
-                    if idf.get(t, 0) > 0
-                }
-                norm = math.sqrt(sum(v * v for v in vec.values())) if vec else 0.0
-                vector_json = json.dumps(vec, ensure_ascii=False)
-
-                db.execute(
-                    """
-                    INSERT OR REPLACE INTO search_vectors (document_id, source, vector_json, norm, indexed_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """,
-                    (doc_id, source, vector_json, norm),
-                )
-                results["tfidf_updated"] += 1
-        else:
+        # Delegates to _compute_tfidf_vectors, which reuses the SAME frozen
+        # IDF snapshot (tfidf_corpus_stats) used by build_semantic_index.
+        # Previously this block computed its own ad hoc "existing + new"
+        # IDF merge with a formula (log(N/df) + 1.0) that didn't even match
+        # the one used elsewhere (log(N/df)) — two inconsistent IDF
+        # definitions for the same table. Sharing one implementation means
+        # documents indexed via update_indexes() are on the exact same basis
+        # as those indexed via build_semantic_index(), regardless of which
+        # path wrote them or in how many calls.
+        tfidf_updated = _compute_tfidf_vectors(db, limit=0, since=since)
+        results["tfidf_updated"] = tfidf_updated
+        if tfidf_updated == 0:
             results["skipped"] += db.execute(
                 "SELECT COUNT(*) FROM search_vectors"
             ).fetchone()[0]

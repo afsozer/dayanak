@@ -7,16 +7,24 @@ references are graphed.
 """
 from __future__ import annotations
 
+import heapq
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, Callable
 
 from .cache import Cache
-from .citation import CitationCandidate, extract_citation_candidates
+from .citation import _COURT_PATTERNS, CitationCandidate, extract_citation_candidates
 from .models import build_error
 
 logger = logging.getLogger(__name__)
+
+# Canonical court names a CitationCandidate.court can ever hold — derived
+# from citation._COURT_PATTERNS (the same table _detect_court() matches
+# against), not duplicated by hand, so the two stay in sync.  There are
+# only ~10 of these; that finite vocabulary is what makes an in-memory
+# court/title bucket index (see _CorpusIndex below) tractable.
+_CANONICAL_COURT_NAMES: tuple[str, ...] = tuple(dict.fromkeys(name for _, name in _COURT_PATTERNS))
 
 
 # ---------------------------------------------------------------------------
@@ -196,25 +204,381 @@ def _classify_match(
 
 
 # ---------------------------------------------------------------------------
+# In-memory corpus index (perf fix — see module docstring addendum below)
+# ---------------------------------------------------------------------------
+#
+# PROFILED ROOT CAUSE: the original ``_search_cache_for_match()`` ran one SQL
+# query per citation candidate, e.g. ``esas_no LIKE '%2023/123%'``. A LIKE
+# pattern with a leading '%' cannot use the esas_no/karar_no/court indexes,
+# so SQLite falls back to a full table scan of documents_v2 for *every*
+# candidate. cProfile against a 20k-row real-corpus subset (copied out of
+# ~/.emsal-mcp/cache.backup-20k.sqlite3, never the live 208k-row DB) showed
+# 15.3 of 16.97 wall-clock seconds (90%) for just 20 documents / 76
+# candidates inside exactly that call — 9.9s in Connection.execute(), 7.0s
+# in Cursor.fetchall(). That confirms the suspected per-candidate-lookup
+# cost, and it scales with corpus size: the same code against a 300-row
+# sample finished in 0.07s total. At the full corpus's ~208k rows (10x the
+# 20k subset, and I/O bound rather than pure CPU) this reproduces the
+# measured >12s/document, ~29-day full-corpus estimate.
+#
+# FIX: build every index the matcher needs in a single full pass over
+# documents_v2 (selecting only the lightweight metadata columns, never
+# full_text/markdown, so memory stays bounded), then match candidates via
+# dict lookups instead of SQL queries.
+#
+# Semantics preserved exactly. The old SQL WHERE clause was
+#     (esas_no LIKE %v%) OR (karar_no LIKE %v%) OR (court LIKE %v% OR title LIKE %v%)
+# with no ORDER BY and LIMIT 20 — SQLite executes an unindexed WHERE as a
+# full rowid-order table scan, so the result was "first 20 rowid-order rows
+# satisfying any OR-branch, excluding the citing doc itself". This index
+# reproduces that:
+#   - esas_no/karar_no: exact-match dict lookup is a *subset* of substring
+#     containment, but the downstream classifiers (_match_exact_esas_karar,
+#     _match_karar_only) require exact normalized equality anyway — no
+#     substring-only (non-exact) match could ever have produced an edge
+#     through those paths, so restricting to exact keys changes nothing
+#     that reaches citation_edges.
+#   - court/title: candidate.court is always one of the ~10 canonical names
+#     in _CANONICAL_COURT_NAMES (the same fixed vocabulary _detect_court()
+#     draws from), so a precomputed forward-containment bucket per
+#     canonical name reproduces the ``court LIKE`` / ``title LIKE``
+#     branches exactly.
+#   - Results are deduped by (document_id, source), sorted by rowid, and
+#     capped at 20 — identical order and limit to the old SQL.
+# Proven identical on a fixture corpus in tests/test_citation_graph.py
+# (TestIndexMatchesSqlReference).
+
+
+class _CorpusIndex:
+    """In-memory replacement for the per-candidate SQL lookup.
+
+    Built once per ``build_citation_graph()`` call (one full pass over
+    documents_v2's lightweight metadata columns), then every citation
+    candidate is matched via O(1) dict lookups instead of a full-table
+    LIKE scan.
+    """
+
+    __slots__ = ("by_esas", "by_karar", "by_court_or_title")
+
+    def __init__(self) -> None:
+        self.by_esas: dict[str, list[dict[str, Any]]] = {}
+        self.by_karar: dict[str, list[dict[str, Any]]] = {}
+        self.by_court_or_title: dict[str, list[dict[str, Any]]] = {
+            name: [] for name in _CANONICAL_COURT_NAMES
+        }
+
+    def add(self, doc: dict[str, Any]) -> None:
+        esas = _normalize_no(doc.get("esas_no"))
+        if esas:
+            self.by_esas.setdefault(esas, []).append(doc)
+        karar = _normalize_no(doc.get("karar_no"))
+        if karar:
+            self.by_karar.setdefault(karar, []).append(doc)
+
+        court_l = (doc.get("court") or "").lower()
+        title_l = (doc.get("title") or "").lower()
+        if court_l or title_l:
+            for name in _CANONICAL_COURT_NAMES:
+                name_l = name.lower()
+                if (court_l and name_l in court_l) or (title_l and name_l in title_l):
+                    self.by_court_or_title[name].append(doc)
+
+    def candidates_for(
+        self,
+        candidate: CitationCandidate,
+        *,
+        exclude: tuple[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return matching docs — same set/order/cap as the old SQL query.
+
+        A common canonical court name (e.g. "Yargıtay") matches most of the
+        corpus, so its bucket can hold tens/hundreds of thousands of docs.
+        Materializing and sorting that whole bucket per candidate (an
+        earlier version of this method did exactly that) reintroduces an
+        O(corpus size) cost per candidate — the same scaling problem this
+        index exists to eliminate, just cheaper per-op than SQL. Since each
+        bucket is already built in ascending-rowid order (``_build_corpus_
+        index`` iterates ``ORDER BY rowid``), a lazy k-way merge across the
+        (at most 3) already-sorted streams yields the same "ascending
+        rowid, deduped, excluded doc skipped, capped at 20" result while
+        only ever touching the first ~20 rowid-order matches — O(1) per
+        bucket size, not O(bucket size).
+        """
+        streams: list[list[dict[str, Any]]] = []
+        if candidate.esas_no:
+            lst = self.by_esas.get(_normalize_no(candidate.esas_no))
+            if lst:
+                streams.append(lst)
+        if candidate.karar_no:
+            lst = self.by_karar.get(_normalize_no(candidate.karar_no))
+            if lst:
+                streams.append(lst)
+        if candidate.court:
+            lst = self.by_court_or_title.get(candidate.court)
+            if lst:
+                streams.append(lst)
+
+        if not streams:
+            return []
+
+        results: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, str]] = set()
+        for d in heapq.merge(*streams, key=lambda d: d["rowid"]):
+            key = (d["document_id"], d["source"])
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            if exclude and key == exclude:
+                continue
+            results.append(d)
+            if len(results) >= 20:
+                break
+        return results
+
+
+def _build_corpus_index(cache: Cache) -> _CorpusIndex:
+    """Single full pass over documents_v2 building the in-memory index.
+
+    Selects only the metadata columns matching needs (never full_text or
+    markdown), so memory stays bounded at corpus scale: ~208k rows of a
+    handful of short string fields each, on the order of tens of MB — not
+    the ~10GB the full table (with full_text) occupies on disk.
+
+    ``ORDER BY rowid`` is required, not cosmetic: ``_CorpusIndex.candidates_
+    for`` k-way merges each bucket with ``heapq.merge``, which assumes its
+    inputs are already sorted — that precondition comes from insertion
+    order here.
+    """
+    index = _CorpusIndex()
+    cursor = cache.db.execute(
+        """SELECT rowid, document_id, source, title, court, chamber,
+                  decision_date, esas_no, karar_no
+           FROM documents_v2
+           ORDER BY rowid"""
+    )
+    for row in cursor:
+        index.add(dict(row))
+    return index
+
+
+# ---------------------------------------------------------------------------
+# Resumable build checkpoint state
+# ---------------------------------------------------------------------------
+
+_CREATE_BUILD_STATE_SQL = """
+CREATE TABLE IF NOT EXISTS citation_graph_build_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    last_rowid INTEGER NOT NULL DEFAULT 0,
+    target_docs INTEGER,
+    docs_processed INTEGER NOT NULL DEFAULT 0,
+    citations_found INTEGER NOT NULL DEFAULT 0,
+    matches_found INTEGER NOT NULL DEFAULT 0,
+    edges_created INTEGER NOT NULL DEFAULT 0,
+    conf_high INTEGER NOT NULL DEFAULT 0,
+    conf_medium INTEGER NOT NULL DEFAULT 0,
+    conf_low INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'idle',
+    started_at TEXT,
+    updated_at TEXT
+)
+"""
+
+
+def _ensure_build_state_table(cache: Cache) -> None:
+    cache.db.execute(_CREATE_BUILD_STATE_SQL)
+    cache.db.commit()
+
+
+def _load_build_state(cache: Cache) -> dict[str, Any] | None:
+    row = cache.db.execute(
+        "SELECT * FROM citation_graph_build_state WHERE id=1"
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _save_build_state(cache: Cache, **fields: Any) -> None:
+    """Upsert the single build-state row. Commits so a concurrent reader
+    (WAL mode, see cache.py) can observe progress while the build is still
+    running — this is the "progress reporting the caller can observe" half
+    of resumability."""
+    existing = _load_build_state(cache)
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    if existing is None:
+        merged = {
+            "last_rowid": 0, "target_docs": None, "docs_processed": 0,
+            "citations_found": 0, "matches_found": 0, "edges_created": 0,
+            "conf_high": 0, "conf_medium": 0, "conf_low": 0,
+            "status": "running", "started_at": now, "updated_at": now,
+        }
+        merged.update(fields)
+        cache.db.execute(
+            """INSERT INTO citation_graph_build_state
+               (id, last_rowid, target_docs, docs_processed, citations_found,
+                matches_found, edges_created, conf_high, conf_medium, conf_low,
+                status, started_at, updated_at)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                merged["last_rowid"], merged["target_docs"], merged["docs_processed"],
+                merged["citations_found"], merged["matches_found"], merged["edges_created"],
+                merged["conf_high"], merged["conf_medium"], merged["conf_low"],
+                merged["status"], merged["started_at"], merged["updated_at"],
+            ),
+        )
+    else:
+        merged = {**existing, **fields, "updated_at": now}
+        cache.db.execute(
+            """UPDATE citation_graph_build_state SET
+                   last_rowid=?, target_docs=?, docs_processed=?, citations_found=?,
+                   matches_found=?, edges_created=?, conf_high=?, conf_medium=?,
+                   conf_low=?, status=?, updated_at=?
+               WHERE id=1""",
+            (
+                merged["last_rowid"], merged["target_docs"], merged["docs_processed"],
+                merged["citations_found"], merged["matches_found"], merged["edges_created"],
+                merged["conf_high"], merged["conf_medium"], merged["conf_low"],
+                merged["status"], merged["updated_at"],
+            ),
+        )
+    cache.db.commit()
+
+
+def get_citation_graph_build_progress(cache: Cache | None = None) -> dict[str, Any]:
+    """Report progress of a resumable build_citation_graph(resume=True) run.
+
+    Reads the ``citation_graph_build_state`` checkpoint row, which a
+    resumable build commits periodically (every ``commit_every`` docs) —
+    a separate connection (WAL mode) can observe it advance in real time
+    without waiting for the build to finish, and a build interrupted
+    mid-run (process killed, not just a caught exception) leaves a
+    checkpoint that the next ``build_citation_graph(resume=True)`` call
+    picks up from, since edges and the checkpoint are committed together.
+
+    Returns:
+        Dict with ok, status ('not_started'|'running'|'completed'), and
+        the checkpoint fields (last_rowid, docs_processed, target_docs,
+        etc.) when a build has run at least once.
+    """
+    c = cache or Cache()
+    own_cache = cache is None
+    try:
+        _ensure_build_state_table(c)
+        state = _load_build_state(c)
+        if state is None:
+            return {"ok": True, "status": "not_started", "docs_processed": 0, "last_rowid": 0}
+        percent = None
+        if state.get("target_docs"):
+            percent = round(100 * state["docs_processed"] / state["target_docs"], 1)
+        return {"ok": True, **state, "percent_complete": percent}
+    except Exception as exc:
+        return build_error("GRAPH_PROGRESS_FAILED", f"İlerleme okunamadı: {exc}")
+    finally:
+        if own_cache:
+            c.close()
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+def _process_doc_row(
+    c: Cache,
+    row: Any,
+    match_lookup: Callable[[CitationCandidate, tuple[str, str]], list[dict[str, Any]]],
+    counters: dict[str, Any],
+) -> None:
+    """Extract citations from one document row and insert matched edges.
+
+    Shared by both the legacy (resume=False) and resumable (resume=True)
+    code paths in ``build_citation_graph`` — the only thing that differs
+    between them is which documents get iterated and in what order;
+    per-document candidate extraction and matching is identical.
+    """
+    doc_id = row["document_id"]
+    source = row["source"]
+    text = row["full_text"] or row["markdown"] or ""
+    if not text or len(text.strip()) < 20:
+        return
+
+    counters["docs_processed"] += 1
+
+    candidates = extract_citation_candidates(text, limit=10)
+    counters["citations_found"] += len(candidates)
+
+    for cand in candidates:
+        matched_docs = match_lookup(cand, (doc_id, source))
+
+        for match_doc in matched_docs:
+            result = _classify_match(cand, match_doc)
+            if result is None:
+                continue
+            confidence, match_type = result
+            counters["matches_found"] += 1
+            counters["conf_dist"][confidence] = counters["conf_dist"].get(confidence, 0) + 1
+
+            c.db.execute(
+                """INSERT OR IGNORE INTO citation_edges
+                   (citing_doc_id, citing_source, cited_doc_id, cited_source,
+                    confidence, match_type, extracted_from)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    doc_id, source,
+                    match_doc["document_id"], match_doc["source"],
+                    confidence, match_type,
+                    cand.raw_text[:500],
+                ),
+            )
+            counters["edges_created"] += 1
+
 
 def build_citation_graph(
     cache: Cache | None = None,
     sources_override: dict[str, Any] | None = None,  # unused, kept for interface compat
     limit_docs: int = 100,
+    *,
+    resume: bool = False,
+    commit_every: int = 500,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Build the citation graph by extracting references from cached documents.
 
     1. Select up to ``limit_docs`` documents with full_text or markdown.
     2. Extract citation candidates from each document.
-    3. Search local cache for matching documents.
+    3. Match candidates against an in-memory index of the corpus (built
+       once per call — see ``_CorpusIndex``) instead of a per-candidate
+       SQL query; this is the perf fix (profiling showed the old
+       per-candidate ``LIKE '%...%'`` query was 90% of build time and
+       scales with corpus size).
     4. Insert verified edges into ``citation_edges`` table.
+
+    Two modes:
+
+    - ``resume=False`` (default, unchanged since before this fix): selects
+      the ``limit_docs`` most recently accessed documents, single commit
+      at the end. Matches the exact old behaviour/ordering — safe for the
+      existing bounded/test call sites.
+    - ``resume=True``: for a full-corpus build. Iterates ALL matching
+      documents in stable rowid order, commits progress every
+      ``commit_every`` documents (both the edges found so far AND a
+      checkpoint row in ``citation_graph_build_state``), so a build that
+      dies partway through resumes from the checkpoint instead of
+      restarting, and ``get_citation_graph_build_progress()`` can report
+      status from a separate connection while it runs. Pass ``limit_docs
+      =None`` to process the entire remaining corpus in one call, or a
+      finite number to advance in bounded increments (e.g. from a
+      scheduler that reinvokes periodically).
 
     Args:
         cache: Optional Cache instance (creates one if None).
         sources_override: Unused; kept for interface compatibility.
-        limit_docs: Maximum documents to process.
+        limit_docs: Maximum documents to process this call. None means
+            "no cap" (only meaningful with resume=True).
+        resume: Use the resumable, checkpointed, rowid-ordered path.
+        commit_every: Documents between commits/checkpoints in resumable
+            mode (ignored when resume=False, which always commits once
+            at the end, matching prior behavior).
+        progress_callback: Optional callable invoked with the same dict
+            ``get_citation_graph_build_progress()`` would return, once
+            per commit interval (resume=True only).
 
     Returns:
         Dict with ok, edges_created, docs_processed, citations_found,
@@ -228,7 +592,17 @@ def build_citation_graph(
     try:
         _ensure_edge_table(c)
 
-        # 1. Select documents with content — M-51: use cursor iteration
+        index = _build_corpus_index(c)
+
+        def match_lookup(cand: CitationCandidate, exclude: tuple[str, str]) -> list[dict[str, Any]]:
+            return index.candidates_for(cand, exclude=exclude)
+
+        if resume:
+            return _build_citation_graph_resumable(
+                c, limit_docs, commit_every, progress_callback, match_lookup, t0, warnings,
+            )
+
+        # --- legacy path: unchanged selection/ordering/commit behaviour ---
         cursor = c.db.execute(
             """SELECT document_id, source, title, court, chamber, decision_date,
                       esas_no, karar_no, full_text, markdown
@@ -252,73 +626,31 @@ def build_citation_graph(
                 "timing_ms": round((time.time() - t0) * 1000, 1),
             }
 
-        edges_created = 0
-        citations_found = 0
-        matches_found = 0
-        docs_processed = 0
-        conf_dist: dict[str, int] = {"high": 0, "medium": 0, "low": 0}
-
-        def _process_row(row: Any) -> None:
-            nonlocal edges_created, citations_found, matches_found, docs_processed
-            doc_id = row["document_id"]
-            source = row["source"]
-            text = row["full_text"] or row["markdown"] or ""
-            if not text or len(text.strip()) < 20:
-                return
-
-            docs_processed += 1
-
-            # Extract citation candidates
-            candidates = extract_citation_candidates(text, limit=10)
-            citations_found += len(candidates)
-
-            for cand in candidates:
-                # Search cache for matching documents
-                matched_docs = _search_cache_for_match(c, cand, exclude=(doc_id, source))
-
-                for match_doc in matched_docs:
-                    result = _classify_match(cand, match_doc)
-                    if result is None:
-                        continue
-                    confidence, match_type = result
-                    matches_found += 1
-                    conf_dist[confidence] = conf_dist.get(confidence, 0) + 1
-
-                    # Insert edge (idempotent via UPSERT)
-                    c.db.execute(
-                        """INSERT OR IGNORE INTO citation_edges
-                           (citing_doc_id, citing_source, cited_doc_id, cited_source,
-                            confidence, match_type, extracted_from)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        (
-                            doc_id, source,
-                            match_doc["document_id"], match_doc["source"],
-                            confidence, match_type,
-                            cand.raw_text[:500],
-                        ),
-                    )
-                    edges_created += 1
+        counters: dict[str, Any] = {
+            "edges_created": 0, "citations_found": 0, "matches_found": 0,
+            "docs_processed": 0, "conf_dist": {"high": 0, "medium": 0, "low": 0},
+        }
 
         # M-51: process first row, then iterate remaining via cursor
-        _process_row(first_row)
+        _process_doc_row(c, first_row, match_lookup, counters)
         for row in cursor:
-            _process_row(row)
+            _process_doc_row(c, row, match_lookup, counters)
 
         c.db.commit()
         c.log("build_citation_graph", {
-            "docs_processed": docs_processed,
-            "citations_found": citations_found,
-            "matches_found": matches_found,
-            "edges_created": edges_created,
+            "docs_processed": counters["docs_processed"],
+            "citations_found": counters["citations_found"],
+            "matches_found": counters["matches_found"],
+            "edges_created": counters["edges_created"],
         })
 
         return {
             "ok": True,
-            "edges_created": edges_created,
-            "docs_processed": docs_processed,
-            "citations_found": citations_found,
-            "matches_found": matches_found,
-            "confidence_distribution": conf_dist,
+            "edges_created": counters["edges_created"],
+            "docs_processed": counters["docs_processed"],
+            "citations_found": counters["citations_found"],
+            "matches_found": counters["matches_found"],
+            "confidence_distribution": counters["conf_dist"],
             "warnings": warnings,
             "timing_ms": round((time.time() - t0) * 1000, 1),
         }
@@ -327,6 +659,133 @@ def build_citation_graph(
     finally:
         if own_cache:
             c.close()
+
+
+def _build_citation_graph_resumable(
+    c: Cache,
+    limit_docs: int | None,
+    commit_every: int,
+    progress_callback: Callable[[dict[str, Any]], None] | None,
+    match_lookup: Callable[[CitationCandidate, tuple[str, str]], list[dict[str, Any]]],
+    t0: float,
+    warnings: list[str],
+) -> dict[str, Any]:
+    """Resumable/observable build path used when ``resume=True``.
+
+    Ordered by rowid ASC (stable across calls, unlike last_accessed_at
+    which can change between runs) so ``WHERE rowid > last_checkpoint``
+    correctly picks up where a prior call left off. Commits edges and the
+    checkpoint together every ``commit_every`` documents, bounding both
+    memory (nothing but the corpus index and the current batch's counters
+    are held) and the amount of work lost if the process dies mid-run.
+    """
+    _ensure_build_state_table(c)
+    state = _load_build_state(c)
+    start_rowid = state["last_rowid"] if state else 0
+
+    target_docs = (state or {}).get("target_docs")
+    if target_docs is None:
+        target_docs = c.db.execute(
+            "SELECT COUNT(*) FROM documents_v2 WHERE full_text IS NOT NULL OR markdown IS NOT NULL"
+        ).fetchone()[0]
+
+    sql = """SELECT rowid, document_id, source, title, court, chamber, decision_date,
+                     esas_no, karar_no, full_text, markdown
+              FROM documents_v2
+              WHERE (full_text IS NOT NULL OR markdown IS NOT NULL) AND rowid > ?
+              ORDER BY rowid ASC"""
+    params: tuple[Any, ...] = (start_rowid,)
+    if limit_docs is not None:
+        sql += " LIMIT ?"
+        params = (start_rowid, limit_docs)
+
+    cursor = c.db.execute(sql, params)
+
+    total = {
+        "docs_processed": (state or {}).get("docs_processed", 0),
+        "citations_found": (state or {}).get("citations_found", 0),
+        "matches_found": (state or {}).get("matches_found", 0),
+        "edges_created": (state or {}).get("edges_created", 0),
+        "conf_dist": {
+            "high": (state or {}).get("conf_high", 0),
+            "medium": (state or {}).get("conf_medium", 0),
+            "low": (state or {}).get("conf_low", 0),
+        },
+    }
+    last_rowid = start_rowid
+    since_commit = 0
+
+    def _checkpoint(status: str) -> None:
+        c.db.commit()
+        _save_build_state(
+            c,
+            last_rowid=last_rowid,
+            target_docs=target_docs,
+            docs_processed=total["docs_processed"],
+            citations_found=total["citations_found"],
+            matches_found=total["matches_found"],
+            edges_created=total["edges_created"],
+            conf_high=total["conf_dist"]["high"],
+            conf_medium=total["conf_dist"]["medium"],
+            conf_low=total["conf_dist"]["low"],
+            status=status,
+        )
+        if progress_callback is not None:
+            progress_callback(get_citation_graph_build_progress(c))
+
+    for row in cursor:
+        batch_counters: dict[str, Any] = {
+            "edges_created": 0, "citations_found": 0, "matches_found": 0,
+            "docs_processed": 0, "conf_dist": {"high": 0, "medium": 0, "low": 0},
+        }
+        _process_doc_row(c, row, match_lookup, batch_counters)
+
+        total["docs_processed"] += batch_counters["docs_processed"]
+        total["citations_found"] += batch_counters["citations_found"]
+        total["matches_found"] += batch_counters["matches_found"]
+        total["edges_created"] += batch_counters["edges_created"]
+        for k, v in batch_counters["conf_dist"].items():
+            total["conf_dist"][k] = total["conf_dist"].get(k, 0) + v
+
+        last_rowid = row["rowid"]
+        since_commit += 1
+        if since_commit >= commit_every:
+            _checkpoint("running")
+            since_commit = 0
+
+    # Final checkpoint. status='completed' only if this call reached the end
+    # of the corpus (no LIMIT, or fewer rows remained than limit_docs asked
+    # for) — otherwise a subsequent call still has work to do.
+    remaining = c.db.execute(
+        "SELECT COUNT(*) FROM documents_v2 WHERE (full_text IS NOT NULL OR markdown IS NOT NULL) AND rowid > ?",
+        (last_rowid,),
+    ).fetchone()[0]
+    _checkpoint("completed" if remaining == 0 else "running")
+
+    if total["docs_processed"] == 0 and (state is None):
+        warnings.append("Cached document bulunamadı; graf oluşturulamadı.")
+
+    c.log("build_citation_graph", {
+        "docs_processed": total["docs_processed"],
+        "citations_found": total["citations_found"],
+        "matches_found": total["matches_found"],
+        "edges_created": total["edges_created"],
+    })
+
+    return {
+        "ok": True,
+        "edges_created": total["edges_created"],
+        "docs_processed": total["docs_processed"],
+        "citations_found": total["citations_found"],
+        "matches_found": total["matches_found"],
+        "confidence_distribution": total["conf_dist"],
+        "warnings": warnings,
+        "timing_ms": round((time.time() - t0) * 1000, 1),
+        "resumed_from_rowid": start_rowid,
+        "last_rowid": last_rowid,
+        "remaining_docs": remaining,
+        "target_docs": target_docs,
+    }
 
 
 def _search_cache_for_match(

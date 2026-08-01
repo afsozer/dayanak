@@ -14,6 +14,7 @@ from .simple_public import (
     SayistayClient,
     UyusmazlikClient,
 )
+from .mevzuatgov import MevzuatGovClient
 from .resmigazete import ResmiGazeteClient
 from .kvkk import KvkkClient
 from .aihm import AihmClient
@@ -117,6 +118,18 @@ class _SayistayClient(SayistayClient):
     ]
 
 
+class _MevzuatGovClient(MevzuatGovClient):
+    _capability_status = SourceStatus.PARTIAL
+    _known_limitations: list[str] = [
+        "Numaralandırma TÜR BAZINDA: 7589 hem 2026 tarihli bir Kanun hem 1998 "
+        "tarihli bir Üniversite Yönetmeliğidir. Tür verilmezse KANUN varsayılır.",
+        "Tek seferde tek tür aranabilir; çok türlü filtre desteklenmez.",
+        "Değiştirici kanunların maddeleri 'yerine işlenmiştir' diye kısaltılmış "
+        "gelir; değişikliğin lafzı için resmigazete kaynağını kullanın.",
+        "Değişikliklerin hedef kanunun konsolide metnine işlenmesi gecikir.",
+    ]
+
+
 class _ResmiGazeteClient(ResmiGazeteClient):
     _capability_status = SourceStatus.PARTIAL
     _known_limitations: list[str] = [
@@ -178,6 +191,7 @@ def registry() -> dict[str, Any]:
         "rekabet": _RekabetClient(),
         "sayistay": _SayistayClient(),
         "resmigazete": _ResmiGazeteClient(),
+        "mevzuatgov": _MevzuatGovClient(),
         "kvkk": _KvkkClient(),
         "aihm": _AihmClient(),
         "btk": _BtkClient(),

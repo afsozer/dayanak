@@ -31,3 +31,5 @@ crawl_logs/
 .stversions/
 .stignore
 purged_fixtures_backup.json
+_tfidf_job.py
+tfidf_build.*

@@ -153,6 +153,56 @@ class FastEmbedProvider(EmbeddingProvider):
 
 # ── M-95: Multilingual provider (Turkish-native, 100+ languages) ─────
 
+# fastembed does NOT ship ``intfloat/multilingual-e5-small`` as a built-in
+# model (verified against fastembed 0.4.2 through 0.8.0 — its native E5
+# roster is only ``intfloat/multilingual-e5-large``, 1024 dims, 2.24GB).
+# We register the community ONNX export instead, which IS the small model's
+# weights, just pre-converted to ONNX by Xenova (used by transformers.js).
+# The quantized file is the ~120MB download the deployment plan expects.
+_E5_SMALL_MODEL_NAME = "intfloat/multilingual-e5-small"
+_E5_SMALL_HF_REPO = "Xenova/multilingual-e5-small"
+_E5_SMALL_ONNX_FILE = "onnx/model_quantized.onnx"
+
+
+def _register_e5_small_custom_model() -> None:
+    """Register the multilingual-e5-small ONNX export with fastembed.
+
+    ``TextEmbedding.add_custom_model`` was added in fastembed 0.6.0 and
+    raises ``ValueError`` if a model of the same name is already
+    registered — so this checks first and is safe to call repeatedly
+    (once per process is enough; cheap no-op afterwards).
+    """
+    from fastembed import TextEmbedding  # type: ignore[import-untyped]
+    from fastembed.common.model_description import (  # type: ignore[import-untyped]
+        ModelSource,
+        PoolingType,
+    )
+
+    already = any(
+        m["model"].lower() == _E5_SMALL_MODEL_NAME.lower()
+        for m in TextEmbedding.list_supported_models()
+    )
+    if already:
+        return
+    try:
+        TextEmbedding.add_custom_model(
+            model=_E5_SMALL_MODEL_NAME,
+            pooling=PoolingType.MEAN,
+            normalization=True,
+            sources=ModelSource(hf=_E5_SMALL_HF_REPO),
+            dim=384,
+            model_file=_E5_SMALL_ONNX_FILE,
+            description=(
+                "Community ONNX export (quantized) of intfloat/multilingual-e5-small, "
+                "via Xenova/multilingual-e5-small on HuggingFace."
+            ),
+            size_in_gb=0.12,
+        )
+    except ValueError:
+        # Lost a registration race (e.g. concurrent threads) — fine, it's
+        # registered now either way.
+        pass
+
 
 class FastEmbedMultilingualProvider(FastEmbedProvider):
     """Fastembed multilingual provider — Turkish-native model (M-95).
@@ -162,7 +212,10 @@ class FastEmbedMultilingualProvider(FastEmbedProvider):
     MiniLM, so drop-in compatible with existing indices.
 
     ID: fastembed-multilingual-e5, Dims: 384
-    Model: intfloat/multilingual-e5-small
+    Model: intfloat/multilingual-e5-small (loaded from the Xenova ONNX
+    export — see ``_register_e5_small_custom_model`` — because fastembed
+    does not bundle this model natively; requires fastembed>=0.6 for the
+    ``add_custom_model`` API used to register it).
 
     Gracefully falls back to ``LocalHashProvider`` when ``fastembed`` is
     not installed (invariant #6 — core stdlib+sqlite3 preserved).
@@ -176,6 +229,16 @@ class FastEmbedMultilingualProvider(FastEmbedProvider):
     # to signal the model whether the text is a query or document.
     _QUERY_PREFIX = "query: "
     _DOC_PREFIX = "passage: "
+
+    def _get_model(self) -> Any:
+        if self._model is None:
+            try:
+                _register_e5_small_custom_model()
+            except ImportError:
+                raise RuntimeError(
+                    "fastembed not installed. Run: pip install fastembed"
+                )
+        return super()._get_model()
 
     def embed_query(self, text: str) -> list[float]:
         """Embed a search query with the E5 query prefix."""

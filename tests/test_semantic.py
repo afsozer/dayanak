@@ -11,6 +11,7 @@ Covers:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -21,8 +22,11 @@ pytestmark = [pytest.mark.integration]
 from emsal_mcp.models import ContentStatus, Document
 from emsal_mcp.semantic import (
     SEMANTIC_VERSION,
+    _compute_tfidf_vectors,
     _expand_query,
     _generate_snippet,
+    _load_corpus_idf,
+    _load_query_idf,
     _rrf_fusion,
     _strip_turkish_suffix,
     build_semantic_index,
@@ -2052,5 +2056,160 @@ class TestHybridSearchRRF:
             # Method markers differ
             assert rrf["method"] == "rrf"
             assert lin["method"] == "hybrid"
+        finally:
+            cache.close()
+
+
+# ===================================================================
+# TestTfidfIdfConsistency (M-108 fix: frozen, shared IDF snapshot)
+# ===================================================================
+
+
+class TestTfidfIdfConsistency:
+    """Vectors written across separate _compute_tfidf_vectors() calls must
+    share one IDF basis, and search_vectors must never be silently wiped by
+    a bounded batch. This pins the bug found live: a single
+    `_compute_tfidf_vectors(db, limit=1000)` call had been deleting the
+    entire search_vectors table (112,692 rows) before writing back only its
+    own batch-local-IDF vectors.
+    """
+
+    def _docs_with_shared_term(self) -> list[dict]:
+        # "sözleşme" appears in every doc so its DF/IDF depends on the WHOLE
+        # corpus size, not on whichever subset a given batch happens to see.
+        return [
+            {
+                "source": "yargitay",
+                "document_id": f"batch-doc-{i}",
+                "title": f"Sözleşme Kararı {i}",
+                "content_status": ContentStatus.FULL_TEXT,
+                "full_text": f"sözleşme sözleşme madde {i} tazminat",
+            }
+            for i in range(6)
+        ]
+
+    def test_two_batches_share_idf_basis(self, tmp_path: Path) -> None:
+        """A doc written in batch 1 and a doc written in batch 2 must use
+        the identical IDF for a term they both contain."""
+        cache = Cache(tmp_path / "two_batches.sqlite3")
+        try:
+            _populate_docs(cache, docs=self._docs_with_shared_term())
+            db = cache.db
+
+            written_first = _compute_tfidf_vectors(db, limit=2)
+            assert written_first == 2
+            first_stats = _load_corpus_idf(db)
+            assert first_stats is not None
+            idf_after_batch1, n_docs_after_batch1 = first_stats
+
+            written_second = _compute_tfidf_vectors(db, limit=0)
+            assert written_second == 4  # the remaining 4 docs
+            second_stats = _load_corpus_idf(db)
+            assert second_stats is not None
+            idf_after_batch2, n_docs_after_batch2 = second_stats
+
+            # The IDF snapshot itself must not have been recomputed between
+            # calls — same n_docs, same idf values (batch 2 reused it).
+            assert n_docs_after_batch1 == n_docs_after_batch2
+            assert idf_after_batch1 == idf_after_batch2
+
+            rows = {
+                doc_id: (vjson, norm)
+                for doc_id, vjson, norm in db.execute(
+                    "SELECT document_id, vector_json, norm FROM search_vectors"
+                ).fetchall()
+            }
+            assert len(rows) == 6  # nothing was deleted between batches
+
+            vec_batch1 = json.loads(rows["batch-doc-0"][0])
+            vec_batch2 = json.loads(rows["batch-doc-5"][0])
+            term = "sözleşme"
+            assert term in vec_batch1 and term in vec_batch2
+
+            # tf(sözleşme) is identical in both docs (2 occurrences / 5 tokens)
+            # so if the two vectors' weight for this shared term differs,
+            # the IDF used to write them differed too.
+            assert vec_batch1[term] == pytest.approx(vec_batch2[term])
+
+        finally:
+            cache.close()
+
+    def test_bounded_batch_never_deletes_existing_vectors(self, tmp_path: Path) -> None:
+        """Calling _compute_tfidf_vectors with a small limit repeatedly must
+        accumulate vectors, never wipe previously-written ones."""
+        cache = Cache(tmp_path / "no_wipe.sqlite3")
+        try:
+            _populate_docs(cache, docs=self._docs_with_shared_term())
+            db = cache.db
+
+            total_written = 0
+            for _ in range(10):  # more calls than needed; extra calls are no-ops
+                total_written += _compute_tfidf_vectors(db, limit=1)
+                count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
+                assert count == total_written  # monotonic, never shrinks
+
+            final_count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
+            assert final_count == 6
+        finally:
+            cache.close()
+
+    def test_query_idf_matches_write_time_snapshot(self, tmp_path: Path) -> None:
+        """_load_query_idf() must return the exact snapshot vectors were
+        written under, not an approximation reconstructed from the table."""
+        cache = Cache(tmp_path / "query_idf.sqlite3")
+        try:
+            _build_and_populate(cache, docs=self._docs_with_shared_term())
+            db = cache.db
+            snapshot = _load_corpus_idf(db)
+            assert snapshot is not None
+            query_idf = _load_query_idf(db)
+            assert query_idf == snapshot[0]
+        finally:
+            cache.close()
+
+    def test_legacy_vectors_without_stats_are_healed(self, tmp_path: Path) -> None:
+        """A search_vectors table populated by the OLD batch-scoped code
+        (rows present, no tfidf_corpus_stats snapshot) is exactly the
+        signature of the live incident. The next call must not mix those
+        untrustworthy rows with newly-written ones — it should wipe and
+        rebuild cleanly under one snapshot."""
+        cache = Cache(tmp_path / "legacy_heal.sqlite3")
+        try:
+            _populate_docs(cache, docs=self._docs_with_shared_term())
+            db = cache.db
+
+            # Simulate the legacy state directly: a stray, bogus vector row
+            # with NO tfidf_corpus_stats table/row backing it.
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS search_vectors ("
+                "document_id TEXT NOT NULL, source TEXT NOT NULL, "
+                "vector_json TEXT NOT NULL, norm REAL DEFAULT 0.0, "
+                "indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "PRIMARY KEY (document_id, source))"
+            )
+            db.execute(
+                "INSERT INTO search_vectors(document_id, source, vector_json, norm) "
+                "VALUES ('bogus-legacy-doc', 'yargitay', '{\"x\": 99.0}', 99.0)"
+            )
+            db.commit()
+            stats_exists_before = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='tfidf_corpus_stats'"
+            ).fetchone()
+            assert stats_exists_before is None
+
+            written = _compute_tfidf_vectors(db, limit=0)
+            assert written == 6  # all 6 real docs, freshly written
+
+            remaining_ids = {
+                r[0] for r in db.execute("SELECT document_id FROM search_vectors").fetchall()
+            }
+            assert "bogus-legacy-doc" not in remaining_ids
+            assert len(remaining_ids) == 6
+
+            stats_row = db.execute(
+                "SELECT n_docs FROM tfidf_corpus_stats WHERE id = 1"
+            ).fetchone()
+            assert stats_row is not None
+            assert stats_row[0] == 6
         finally:
             cache.close()

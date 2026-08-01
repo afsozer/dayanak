@@ -337,13 +337,24 @@ class TestListEmbeddingProviders:
         assert local[0]["status"] == "available"
         assert local[0]["is_default"] is True
 
-    def test_fastembed_shows_unavailable(self) -> None:
-        """fastembed shows as unavailable when not installed."""
+    def test_fastembed_status_tracks_installation(self) -> None:
+        """fastembed's reported status must follow whether it is importable.
+
+        This used to hard-code "unavailable", which only held because the
+        package happened to be missing; installing it broke the test even
+        though the reporting was correct.  Assert the invariant instead: the
+        status matches reality, and an unavailable provider is flagged as
+        needing a download.
+        """
+        import importlib.util
+
+        installed = importlib.util.find_spec("fastembed") is not None
         providers = list_embedding_providers()
         fast = [p for p in providers if p["id"] == "fastembed-minilm-l6-v2"]
         assert len(fast) == 1
-        assert fast[0]["status"] == "unavailable"
-        assert fast[0]["needs_download"] is True
+        assert fast[0]["status"] == ("available" if installed else "unavailable")
+        if not installed:
+            assert fast[0]["needs_download"] is True
 
     def test_selected_field(self) -> None:
         """Each provider has a 'selected' field."""

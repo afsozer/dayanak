@@ -21,7 +21,14 @@ from typing import Any
 
 import httpx
 
-from .base import SourceClient, check_http_response, client, html_to_text, sha
+from .base import (
+    SourceClient,
+    check_http_response,
+    client,
+    decode_turkish_html,
+    html_to_text,
+    sha,
+)
 from emsal_mcp.models import (
     ContentStatus,
     Document,
@@ -50,17 +57,10 @@ def _fold(text: str) -> str:
 def _decode(resp: httpx.Response) -> str:
     """Decode a gazette page using its declared charset.
 
-    The server omits ``charset`` from Content-Type, so ``resp.text`` would
-    apply httpx's UTF-8 guess and mangle every Turkish character.  Read the
-    ``<meta>`` declaration from the raw bytes instead; windows-1254 is the
-    site's long-standing default when nothing is declared.
+    Thin alias over the shared helper — mevzuat.gov.tr has the same
+    windows-1254-without-a-header quirk, so the logic lives in ``base``.
     """
-    m = _META_CHARSET_RE.search(resp.content[:4096])
-    charset = m.group(1).decode("ascii", "ignore") if m else "windows-1254"
-    try:
-        return resp.content.decode(charset, errors="replace")
-    except LookupError:
-        return resp.content.decode("windows-1254", errors="replace")
+    return decode_turkish_html(resp)
 
 
 def _parse_item_id(document_id: str) -> tuple[str, str] | None:

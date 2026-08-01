@@ -434,6 +434,26 @@ def _save_schema_sigs(sigs: dict[str, str]) -> None:
         pass
 
 
+_META_CHARSET_RE = re.compile(rb"charset=[\"']?([\w-]+)", re.I)
+
+
+def decode_turkish_html(resp: Any, default: str = "windows-1254") -> str:
+    """Decode an HTML response using the charset it declares in its markup.
+
+    Both resmigazete.gov.tr and mevzuat.gov.tr serve legacy ``windows-1254``
+    pages while omitting ``charset`` from the Content-Type header.  httpx then
+    guesses UTF-8 and ``resp.text`` comes back with every Turkish character
+    mangled — silently, since replacement characters are not an error.  Read
+    the declaration from the raw bytes instead.
+    """
+    m = _META_CHARSET_RE.search(resp.content[:4096])
+    charset = m.group(1).decode("ascii", "ignore") if m else default
+    try:
+        return resp.content.decode(charset, errors="replace")
+    except LookupError:
+        return resp.content.decode(default, errors="replace")
+
+
 def html_to_text(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
     for tag in soup(["script", "style"]):

@@ -16,6 +16,7 @@ from emsal_mcp.citation_graph import (
     find_cited_documents,
     find_citing_documents,
     get_citation_graph,
+    get_citation_graph_build_progress,
     get_citation_graph_stats,
 )
 from emsal_mcp.models import ContentStatus, Document
@@ -976,3 +977,386 @@ class TestEmptyGraphWordingMatchesHistory:
         assert total == 1
         assert warnings == [] and recs == []
         c.close()
+
+
+# ---------------------------------------------------------------------------
+# Perf fix (in-memory corpus index replacing per-candidate SQL LIKE scans):
+# prove the new matching mechanism produces IDENTICAL edges to the old one,
+# and that DB query count no longer scales with candidate count.
+# ---------------------------------------------------------------------------
+#
+# Background: build_citation_graph() used to run one SQL query per citation
+# candidate (`esas_no LIKE '%...%'` etc.) — a leading '%' wildcard defeats
+# the esas_no/karar_no indexes, forcing a full documents_v2 table scan per
+# candidate. Profiled against a 20k-row real-corpus subset, that was >90%
+# of build time and made a full 208k-document build take an estimated ~29
+# days. The fix replaces per-candidate SQL with a _CorpusIndex built once
+# per build (one full pass over documents_v2's metadata columns), matched
+# via dict lookups / a k-way merge instead of queries.
+
+def _old_algorithm_edges(cache: Cache, limit_docs: int = 1000) -> set[tuple]:
+    """Replica of the pre-fix matching algorithm using the still-present,
+    unmodified ``_search_cache_for_match`` (the original per-candidate SQL
+    LIKE query) and ``_classify_match`` (unmodified). Exists only so tests
+    can prove the new ``_CorpusIndex``-based algorithm in
+    ``build_citation_graph`` produces the exact same edges — same
+    candidate extraction, same classifiers, only the lookup mechanism
+    differs.
+    """
+    from emsal_mcp.citation import extract_citation_candidates
+    from emsal_mcp.citation_graph import _classify_match, _search_cache_for_match
+
+    rows = cache.db.execute(
+        """SELECT document_id, source, full_text, markdown FROM documents_v2
+           WHERE full_text IS NOT NULL OR markdown IS NOT NULL
+           ORDER BY last_accessed_at DESC LIMIT ?""",
+        (limit_docs,),
+    ).fetchall()
+    edges: set[tuple] = set()
+    for row in rows:
+        doc_id, source = row["document_id"], row["source"]
+        text = row["full_text"] or row["markdown"] or ""
+        if not text or len(text.strip()) < 20:
+            continue
+        for cand in extract_citation_candidates(text, limit=10):
+            for match_doc in _search_cache_for_match(cache, cand, exclude=(doc_id, source)):
+                result = _classify_match(cand, match_doc)
+                if result is None:
+                    continue
+                confidence, match_type = result
+                edges.add((doc_id, source, match_doc["document_id"], match_doc["source"], confidence, match_type))
+    return edges
+
+
+def _edges_from_table(cache: Cache) -> set[tuple]:
+    rows = cache.db.execute(
+        "SELECT citing_doc_id, citing_source, cited_doc_id, cited_source, confidence, match_type "
+        "FROM citation_edges"
+    ).fetchall()
+    return {
+        (r["citing_doc_id"], r["citing_source"], r["cited_doc_id"], r["cited_source"], r["confidence"], r["match_type"])
+        for r in rows
+    }
+
+
+class TestIndexMatchesSqlReference:
+    """Proves the in-memory index produces the same edges as the original
+    per-candidate SQL scan, across every match type and the tricky corners:
+    a shared common court across many documents (stresses the k-way merge
+    / bucket dedup), the 20-result cap, and self-citation exclusion."""
+
+    def _seed_rich_corpus(self, cache: Cache) -> None:
+        docs = []
+
+        # (1) exact esas+karar+court -> high confidence
+        docs.append(_make_doc(
+            document_id="A-CITING", source="s", title="Dilekçe A", court="Yargıtay",
+            chamber="3. Hukuk Dairesi", decision_date="2025-01-01",
+            esas_no="2025/1", karar_no="2025/2",
+            full_text="Yargıtay 3. Hukuk Dairesi Esas No: 2023/500, Karar No: 2024/600 kararına atıf.",
+        ))
+        docs.append(_make_doc(
+            document_id="A-CITED", source="s", title="Yargıtay Kararı", court="Yargıtay",
+            chamber="3. Hukuk Dairesi", decision_date="2024-06-15",
+            esas_no="2023/500", karar_no="2024/600",
+            full_text="Yargıtay 3. Hukuk Dairesi Esas No: 2023/500 Karar No: 2024/600",
+        ))
+
+        # (2) karar_no only -> medium confidence
+        docs.append(_make_doc(
+            document_id="B-CITING", source="s", title="Dilekçe B", court="Yargıtay",
+            chamber="4. Hukuk Dairesi", decision_date="2025-01-01",
+            esas_no="2025/3", karar_no="2025/4",
+            full_text="Yargıtay 4. Hukuk Dairesi Esas No: 2099/1, Karar No: 2024/700 kararına atıf.",
+        ))
+        docs.append(_make_doc(
+            document_id="B-CITED", source="s", title="Yargıtay Kararı B", court="Yargıtay",
+            chamber="4. Hukuk Dairesi", decision_date="2024-07-01",
+            esas_no="2023/999", karar_no="2024/700",
+            full_text="Yargıtay 4. Hukuk Dairesi Esas No: 2023/999 Karar No: 2024/700",
+        ))
+
+        # (3) court+date only (Danıştay, distinct court from the Yargıtay
+        # crowd) -> medium confidence via court_date_match
+        docs.append(_make_doc(
+            document_id="C-CITING", source="s", title="Dilekçe C", court="Danıştay",
+            chamber="5. Daire", decision_date="2025-01-01",
+            esas_no="2025/5", karar_no="2025/6",
+            full_text="Danıştay 5. Daire 15.03.2024 tarihli kararına atıf.",
+        ))
+        docs.append(_make_doc(
+            document_id="C-CITED", source="s", title="Danıştay Kararı", court="Danıştay",
+            chamber="5. Daire", decision_date="2024-03-01",
+            esas_no="2024/111", karar_no="2024/222",
+            full_text="Danıştay 5. Daire Esas No: 2024/111 Karar No: 2024/222",
+        ))
+
+        # (4) title-fuzzy only: court name appears in the target's TITLE,
+        # not its court field or esas/karar
+        docs.append(_make_doc(
+            document_id="D-CITING", source="s", title="Dilekçe D", court="Sayıştay",
+            chamber=None, decision_date="2025-01-01",
+            esas_no="2025/7", karar_no="2025/8",
+            full_text="Sayıştay kararına atıfta bulunulmuştur.",
+        ))
+        docs.append(_make_doc(
+            document_id="D-CITED", source="s", title="Sayıştay Genel Kurulu Kararı Özeti",
+            court="Bilinmeyen Kurum", chamber=None, decision_date="2010-01-01",
+            esas_no="2010/1", karar_no="2010/2",
+            full_text="Bu belgenin metninde Sayıştay geçer.",
+        ))
+
+        # (5) self-citation: must not produce an edge
+        docs.append(_make_doc(
+            document_id="E-SELF", source="s", title="Tek Başına", court="Yargıtay",
+            chamber="2. Hukuk Dairesi", decision_date="2024-01-01",
+            esas_no="2024/50", karar_no="2024/60",
+            full_text="Yargıtay 2. Hukuk Dairesi Esas No: 2024/50 Karar No: 2024/60",
+        ))
+
+        # (6) orphan reference: no cached doc matches
+        docs.append(_make_doc(
+            document_id="F-ORPHAN", source="s", title="Yalnız", court="Yargıtay",
+            chamber="1. Hukuk Dairesi", decision_date="2024-01-01",
+            esas_no="2024/70", karar_no="2024/80",
+            full_text="Yargıtay 1. Hukuk Dairesi Esas No: 9999/99999 Karar No: 9999/99999 kararına atıf.",
+        ))
+
+        # Filler: 25 documents that all share the "Yargıtay" court so the
+        # court/title bucket for "Yargıtay" is large — stresses the k-way
+        # merge and the 20-result cap identically for both algorithms.
+        for i in range(25):
+            docs.append(_make_doc(
+                document_id=f"FILLER-{i}", source="s", title=f"Yargıtay Kararı {i}",
+                court="Yargıtay", chamber=f"{i % 9 + 1}. Hukuk Dairesi",
+                decision_date=f"202{i % 5}-0{i % 9 + 1}-01",
+                esas_no=f"20{i:02d}/{i}", karar_no=f"20{i:02d}/{i + 1000}",
+                full_text=f"Yargıtay {i % 9 + 1}. Hukuk Dairesi kararı, sıra {i}.",
+            ))
+
+        _seed_cache_with_docs(cache, docs)
+
+    def test_edges_identical_old_vs_new(self):
+        cache, path = _temp_cache()
+        try:
+            self._seed_rich_corpus(cache)
+
+            old = _old_algorithm_edges(cache, limit_docs=1000)
+
+            result = build_citation_graph(cache=cache, limit_docs=1000)
+            assert result["ok"] is True
+            new = _edges_from_table(cache)
+
+            assert new == old, (
+                f"only in old: {old - new}\nonly in new: {new - old}"
+            )
+            # Sanity: the fixture actually exercises all four match types,
+            # not just the trivial empty-set case.
+            match_types = {e[5] for e in new}
+            assert match_types >= {
+                "exact_esas_karar", "karar_no_match", "court_date_match", "title_fuzzy",
+            }
+            # Self-citation must not appear on either side.
+            assert not any(e[0] == e[2] and e[1] == e[3] for e in new)
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+
+class TestQueryCountDoesNotScaleWithCandidates:
+    """Spy assertion (not wall-clock, which is flaky): the number of SQL
+    statements build_citation_graph() issues must not grow with the number
+    of citation candidates extracted — that per-candidate scaling was
+    exactly the bug. A wall-clock assertion would pass or fail depending on
+    machine load; counting statements via sqlite3's trace callback does
+    not."""
+
+    def _select_count(self, cache: Cache) -> int:
+        queries: list[str] = []
+        cache.db.set_trace_callback(lambda sql: queries.append(sql))
+        try:
+            result = build_citation_graph(cache=cache)
+            assert result["ok"] is True
+        finally:
+            cache.db.set_trace_callback(None)
+        return sum(1 for q in queries if q.strip().upper().startswith("SELECT"))
+
+    def test_select_count_independent_of_candidate_count(self):
+        # One document, one citation candidate.
+        cache_few, path_few = _temp_cache()
+        # Many documents, ten citation candidates in one document (the cap
+        # extract_citation_candidates applies) — none of which match
+        # anything else in the (otherwise unrelated) corpus, isolating the
+        # matching mechanism's own query cost from edge-insert cost.
+        cache_many, path_many = _temp_cache()
+        try:
+            doc_few = _make_doc(
+                document_id="FEW", source="s",
+                full_text="Yargıtay 3. Hukuk Dairesi Esas No: 2023/1 Karar No: 2024/1 tarihli karara atıf.",
+            )
+            _seed_cache_with_docs(cache_few, [doc_few])
+            select_count_few = self._select_count(cache_few)
+
+            lines = [
+                f"Yargıtay {i}. Hukuk Dairesi Esas No: 2023/{i} Karar No: 2024/{i} tarihli karara atıf."
+                for i in range(10)
+            ]
+            doc_many = _make_doc(document_id="MANY", source="s", full_text="\n".join(lines))
+            _seed_cache_with_docs(cache_many, [doc_many])
+            select_count_many = self._select_count(cache_many)
+
+            assert select_count_many == select_count_few, (
+                f"SELECT count scaled with candidate count ({select_count_few} -> "
+                f"{select_count_many}); matching should be O(1) SQL queries via the "
+                "in-memory index, not one query per candidate"
+            )
+        finally:
+            cache_few.close()
+            path_few.unlink(missing_ok=True)
+            cache_many.close()
+            path_many.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Resumability (resume=True): a full-corpus build that dies partway through
+# must not restart from zero, and progress must be observable mid-run.
+# ---------------------------------------------------------------------------
+
+class TestResumableBuild:
+    def _seed_docs(self, cache: Cache, n: int) -> None:
+        docs = []
+        for i in range(n):
+            docs.append(_make_doc(
+                document_id=f"DOC-{i}", source="s", title=f"Karar {i}",
+                court="Yargıtay", chamber="3. Hukuk Dairesi",
+                decision_date="2024-01-01", esas_no=f"2024/{i}", karar_no=f"2024/{i + 1000}",
+                full_text=f"Yargıtay 3. Hukuk Dairesi Esas No: 2024/{i} Karar No: 2024/{i + 1000}",
+            ))
+        _seed_cache_with_docs(cache, docs)
+
+    def test_resume_false_ignores_checkpoint_state(self):
+        """Default (resume=False) behaviour must be untouched by this
+        feature: no checkpoint table writes, same single-commit contract
+        as before."""
+        cache, path = _temp_cache()
+        try:
+            self._seed_docs(cache, 5)
+            result = build_citation_graph(cache=cache)
+            assert result["ok"] is True
+            exists = cache.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='citation_graph_build_state'"
+            ).fetchone()
+            # The table may exist (created lazily elsewhere) but must have
+            # no row, since resume=False never touches it.
+            if exists:
+                row = cache.db.execute("SELECT * FROM citation_graph_build_state").fetchone()
+                assert row is None
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_resume_picks_up_where_it_left_off(self):
+        """Two small resumable calls (limit_docs=3 each) over a 6-document
+        corpus must process disjoint documents and, combined, produce the
+        same edges as a single resume=True call over the whole corpus."""
+        cache_incremental, path_incremental = _temp_cache()
+        cache_full, path_full = _temp_cache()
+        try:
+            self._seed_docs(cache_incremental, 6)
+            self._seed_docs(cache_full, 6)
+
+            r1 = build_citation_graph(cache=cache_incremental, resume=True, limit_docs=3)
+            assert r1["ok"] is True
+            assert r1["docs_processed"] == 3
+            assert r1["last_rowid"] > 0
+
+            progress_mid = get_citation_graph_build_progress(cache=cache_incremental)
+            assert progress_mid["ok"] is True
+            assert progress_mid["status"] == "running"
+            assert progress_mid["docs_processed"] == 3
+
+            r2 = build_citation_graph(cache=cache_incremental, resume=True, limit_docs=3)
+            assert r2["ok"] is True
+            # Cumulative total across both calls, not just this call's slice.
+            assert r2["docs_processed"] == 6
+            assert r2["remaining_docs"] == 0
+
+            progress_final = get_citation_graph_build_progress(cache=cache_incremental)
+            assert progress_final["status"] == "completed"
+            assert progress_final["docs_processed"] == 6
+
+            r_full = build_citation_graph(cache=cache_full, resume=True, limit_docs=None)
+            assert r_full["ok"] is True
+            assert r_full["docs_processed"] == 6
+
+            assert _edges_from_table(cache_incremental) == _edges_from_table(cache_full)
+        finally:
+            cache_incremental.close()
+            path_incremental.unlink(missing_ok=True)
+            cache_full.close()
+            path_full.unlink(missing_ok=True)
+
+    def test_resume_does_not_reprocess_committed_documents(self):
+        """Simulates a crash: a resumable call that only got partway (here,
+        forced via limit_docs) must not redo work already committed to
+        citation_edges when the next call resumes — total edges after two
+        partial calls must equal edges from a single full call, never
+        doubled."""
+        cache, path = _temp_cache()
+        try:
+            self._seed_docs(cache, 6)
+            build_citation_graph(cache=cache, resume=True, limit_docs=4)
+            edges_after_first = cache.db.execute("SELECT COUNT(*) FROM citation_edges").fetchone()[0]
+
+            build_citation_graph(cache=cache, resume=True, limit_docs=4)
+            edges_after_second = cache.db.execute("SELECT COUNT(*) FROM citation_edges").fetchone()[0]
+
+            cache_full, path_full = _temp_cache()
+            try:
+                self._seed_docs(cache_full, 6)
+                build_citation_graph(cache=cache_full, resume=True, limit_docs=None)
+                edges_full = cache_full.db.execute("SELECT COUNT(*) FROM citation_edges").fetchone()[0]
+            finally:
+                cache_full.close()
+                path_full.unlink(missing_ok=True)
+
+            assert edges_after_second == edges_full
+            assert edges_after_second >= edges_after_first
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_progress_not_started_before_any_resumable_build(self):
+        cache, path = _temp_cache()
+        try:
+            progress = get_citation_graph_build_progress(cache=cache)
+            assert progress["ok"] is True
+            assert progress["status"] == "not_started"
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_progress_callback_invoked(self):
+        cache, path = _temp_cache()
+        try:
+            self._seed_docs(cache, 5)
+            calls = []
+            build_citation_graph(
+                cache=cache, resume=True, limit_docs=None, commit_every=2,
+                progress_callback=lambda p: calls.append(p),
+            )
+            assert len(calls) >= 1
+            assert all(c["ok"] for c in calls)
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_resumable_build_bounded_memory_uses_cursor_not_full_fetch(self):
+        """Documentation-as-test: the resumable path must select full_text
+        via cursor iteration (M-51 idiom), not fetchall() of every row's
+        full_text at once. Inspects the source rather than measuring RSS,
+        which would be flaky."""
+        import inspect
+        from emsal_mcp import citation_graph
+        src = inspect.getsource(citation_graph._build_citation_graph_resumable)
+        assert "fetchall()" not in src
