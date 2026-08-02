@@ -13,13 +13,13 @@ The server exposes two tool profiles to control which MCP tools are registered:
 <!-- drift:core-tools-start -->
 | `core` | 14 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `research_topic`, `citation_check`, `prepare_petition`, `export_document`, `read_legal_file`, `list_sources`, `legal_research_guide`, `load_extended_tools`, `health_check`. |
 <!-- drift:core-tools-end -->
-| `full` | 82 | Core + all extended categories + legacy (facade-absorbed) tool names. |
+| `full` | 50 | Core + all extended categories. |
 
 Select via the `EMSAL_TOOL_PROFILE` environment variable:
 
 ```
 EMSAL_TOOL_PROFILE=core   # default — 14 tools
-EMSAL_TOOL_PROFILE=full   # all 82 tools
+EMSAL_TOOL_PROFILE=full   # all 50 tools
 ```
 
 ### `load_extended_tools`
@@ -39,7 +39,7 @@ Dynamically loads extended tool categories into the running server (core profile
 | `privacy` | privacy_scan, privacy_redact, privacy_audit |
 | `chambers` | chamber_overview, profile_chamber, chamber_timeline, find_similar_chambers |
 | `indexing` | index_status |
-| `drafting_advanced` | inspect_petition_pack, build_multi_issue_pack, inspect_multi_issue_pack, list_petition_templates, get_petition_template, build_argument_chain, score_argument, get_argument_strength_report, draft_document, build_input_pack, prepare_drafting_input_pack |
+| `drafting_advanced` | inspect_petition_pack, build_multi_issue_pack, inspect_multi_issue_pack, list_petition_templates, get_petition_template, build_argument_chain, score_argument, get_argument_strength_report, draft_document, export_bundle |
 | `udf_admin` | udf_toolkit_status, udf_authoring_instructions, pdf_toolkit_status, promote_pdf_to_full_text |
 <!-- drift:categories-end -->
 
@@ -50,6 +50,48 @@ Dynamically loads extended tool categories into the running server (core profile
 > **M-105 (v5.0.0):** cache yönetimi, routing, dedup, index kurma ve taslak
 > sürümleme araçları MCP yüzeyinden kaldırıldı; CLI'da yaşamaya devam ederler
 > (`emsal-mcp cache/router/dedup/semantic ...`).
+
+> **M-110:** Bir core facade'ın zaten kapsadığı 33 araç tamamen silindi
+> (83 → 50). Bunlar `full` profilde bile artık kayıtlı değil. Eski ad →
+> yeni çağrı eşlemesi `emsal_mcp.tool_profile.RETIRED_TOOLS` içindedir;
+> aşağıdaki tablo da aynı bilgiyi verir.
+
+### Emekliye ayrılan araçlar (M-110)
+
+| Eski araç | Yerine |
+|-----------|--------|
+| `search_local_cache` | `search_local_corpus(mode="lexical")` |
+| `semantic_search` | `search_local_corpus(mode="semantic")` |
+| `hybrid_search` | `search_local_corpus(mode="hybrid")` |
+| `hybrid_search_rrf` | `search_local_corpus(mode="rrf")` |
+| `embedding_search` | `search_local_corpus(mode="semantic", provider=...)` |
+| `search_legislation_articles` | `search_legislation(scope="article")` |
+| `get_legislation_document` | `get_legislation(part="document")` |
+| `get_legislation_article_tree` | `get_legislation(part="article_tree")` |
+| `get_legislation_gerekce` | `get_legislation(part="gerekce")` |
+| `verify_legal_citation` | `citation_check(action="verify")` |
+| `format_legal_citation` | `citation_check(action="format")` |
+| `format_legislation_citation` | `citation_check(action="format_legislation")` |
+| `citation_safety` | `citation_check(action="safety")` |
+| `build_input_pack`, `prepare_drafting_input_pack` | `prepare_petition(step="input_pack")` |
+| `prepare_petition_outline` | `prepare_petition(step="outline")` |
+| `prepare_controlled_petition_draft` | `prepare_petition(step="controlled_draft")` |
+| `get_export_capabilities` | `export_document(format="capabilities")` |
+| `prepare_docx_export` | `export_document(format="docx")` |
+| `export_to_format` | `export_document(format="pdf")` |
+| `export_plain_text` | `export_document(format="plain")` |
+| `prepare_export_package_bundle` | `export_document(format="bundle")` |
+| `write_udf` | `export_document(format="udf", text=...)` |
+| `convert_docx_to_udf` | `export_document(format="udf", docx_path=...)` |
+| `convert_udf_to_docx_tool` | `export_document(format="docx", udf_path=...)` |
+| `convert_udf_to_pdf_tool` | `export_document(format="pdf", udf_path=...)` |
+| `read_udf` | `read_legal_file(path=...udf)` |
+| `extract_pdf_text` | `read_legal_file(path=...pdf)` |
+| `source_capabilities` | `list_sources()` |
+| `list_birim_codes` | `list_sources(detail="birim_codes")` |
+| `get_legislation_types` | `list_sources(detail="legislation_types")` |
+| `legislation_source_status` | `health_check()` |
+| `research_topic_tool` | `research_topic()` (birebir kopyaydı) |
 
 ## Core Tools (v0.1–0.4)
 

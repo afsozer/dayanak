@@ -410,9 +410,11 @@ class TestToolDocstrings:
         critical_tools = [
             "search_decisions",
             "get_document",
-            "hybrid_search",
-            "build_input_pack",
-            "citation_safety",
+            # M-110: hybrid_search/build_input_pack/citation_safety retired —
+            # covered by these facades.
+            "search_local_corpus",
+            "prepare_petition",
+            "citation_check",
             # M-105: error_catalog, active_requests_count removed from MCP
         ]
         for name in critical_tools:

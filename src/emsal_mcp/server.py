@@ -44,20 +44,16 @@ def main() -> None:
     from .cache import Cache
     from .server_utils import (
         # M-105: get_active_requests, get_error_codes removed (tools removed from MCP)
-        validate_is_dict_with_keys,
         validate_non_empty,
         validate_positive_int,
-        validate_range,
         validate_tool_input,
     )
     from .citation import format_legal_citation as format_legal_citation_impl, verify_legal_citation as verify_legal_citation_impl
     from .document import controlled_draft, export_bundle as export_bundle_impl
     from .legislation import (
-        format_legislation_citation as format_legislation_citation_impl,
         get_legislation_article_tree as get_legislation_article_tree_impl,
         get_legislation_document as get_legislation_document_impl,
         get_legislation_gerekce as get_legislation_gerekce_impl,
-        get_legislation_source_status as get_legislation_source_status_impl,
         get_legislation_types as get_legislation_types_impl,
         search_legislation as search_legislation_impl,
         search_legislation_articles as search_legislation_articles_impl,
@@ -120,11 +116,9 @@ def main() -> None:
         prepare_export_package_bundle as prepare_export_package_bundle_impl,
     )
     from .research import research_topic as research_topic_impl
-    from .safety import build_input_pack as build_input_pack_impl, citation_check as citation_check_impl
+    from .safety import citation_check as citation_check_impl
     from .sources.registry import capabilities, get_source, smoke_all_sync
     from .udf import (
-        convert_docx_to_udf as convert_docx_to_udf_impl,
-        convert_udf_to_docx,
         convert_udf_to_pdf,
         get_udf_authoring_instructions,
         get_udf_toolkit_status,
@@ -167,7 +161,6 @@ def main() -> None:
         "load_extended_tools":        "core",
         "health_check":               "core",
         # ── Extended: cache_admin ───────────────────────────────────────
-        "search_local_cache":         "extended",
         # M-105: cache_admin tools removed from MCP (CLI-only)
         # M-103: release tools removed from MCP surface
         # M-105: routing tools removed from MCP (search_decisions handles routing)
@@ -203,18 +196,10 @@ def main() -> None:
         # ── Extended: indexing ──────────────────────────────────────────
         # M-105: indexing tools removed from MCP except index_status
         "index_status":               "extended",
-        "semantic_search":            "extended",
-        "hybrid_search":              "extended",
-        "hybrid_search_rrf":          "extended",
-        "embedding_search":           "extended",
         # ── Extended: drafting_advanced ─────────────────────────────────
-        "build_input_pack":           "extended",
         "draft_document":             "extended",
         "export_bundle":              "extended",
-        "prepare_drafting_input_pack":"extended",
         "inspect_petition_pack":      "extended",
-        "prepare_petition_outline":   "extended",
-        "prepare_controlled_petition_draft": "extended",
         "build_multi_issue_pack":     "extended",
         "inspect_multi_issue_pack":   "extended",
         "list_petition_templates":    "extended",
@@ -225,39 +210,15 @@ def main() -> None:
         "score_argument":             "extended",
         "get_argument_strength_report":"extended",
         # ── Extended: legislation ──────────────────────────────────────
-        "get_legislation_document":   "extended",
-        "search_legislation_articles":"extended",
-        "get_legislation_article_tree":"extended",
-        "get_legislation_gerekce":    "extended",
-        "legislation_source_status":  "extended",
-        "format_legislation_citation":"extended",
-        "get_legislation_types":      "extended",
         # ── Extended: citation ──────────────────────────────────────────
-        "citation_safety":            "extended",
-        "format_legal_citation":      "extended",
-        "verify_legal_citation":      "extended",
         # ── Extended: udf_admin ─────────────────────────────────────────
-        "read_udf":                   "extended",
-        "write_udf":                  "extended",
         "udf_toolkit_status":         "extended",
         # M-105: install_udf_toolkit_tool removed from MCP (CLI-only)
         "udf_authoring_instructions":  "extended",
-        "convert_udf_to_docx_tool":   "extended",
-        "convert_udf_to_pdf_tool":    "extended",
-        "convert_docx_to_udf":        "extended",
-        "extract_pdf_text":           "extended",
         "pdf_toolkit_status":         "extended",
         "promote_pdf_to_full_text":   "extended",
         # ── Extended: export ────────────────────────────────────────────
-        "prepare_docx_export":        "extended",
-        "prepare_export_package_bundle":"extended",
-        "export_plain_text":          "extended",
-        "export_to_format":           "extended",
-        "get_export_capabilities":    "extended",
         # ── Extended: discovery ─────────────────────────────────────────
-        "source_capabilities":        "extended",
-        "list_birim_codes":           "extended",
-        "research_topic_tool":         "extended",
     }
 
     _TOOL_CATEGORIES: dict[str, str] = {
@@ -267,7 +228,6 @@ def main() -> None:
         "search_legislation":           "legislation",
         "get_legislation":              "legislation",
         "research_topic":               "research",
-        "research_topic_tool":          "research",
         "citation_check":               "citation",
         "prepare_petition":             "petition",
         "export_document":              "export",
@@ -277,7 +237,6 @@ def main() -> None:
         "load_extended_tools":          "admin",
         "health_check":                 "admin",
         # Extended categories
-        "search_local_cache":           "cache_admin",
         # M-105: cache_admin tools removed from MCP surface
         # M-103: release category removed
         # M-105: routing tools removed from MCP surface
@@ -306,18 +265,10 @@ def main() -> None:
         "chamber_timeline":             "chambers",
         "find_similar_chambers":        "chambers",
         # M-105: indexing tools removed from MCP except index_status
-        "semantic_search":              "indexing",
-        "hybrid_search":                "indexing",
-        "hybrid_search_rrf":            "indexing",
         "index_status":                 "indexing",
-        "embedding_search":             "indexing",
-        "build_input_pack":             "drafting_advanced",
         "draft_document":               "drafting_advanced",
         "export_bundle":               "drafting_advanced",
-        "prepare_drafting_input_pack":  "drafting_advanced",
         "inspect_petition_pack":        "drafting_advanced",
-        "prepare_petition_outline":     "drafting_advanced",
-        "prepare_controlled_petition_draft": "drafting_advanced",
         "build_multi_issue_pack":       "drafting_advanced",
         "inspect_multi_issue_pack":     "drafting_advanced",
         "list_petition_templates":      "drafting_advanced",
@@ -327,34 +278,11 @@ def main() -> None:
         "build_argument_chain":         "drafting_advanced",
         "score_argument":               "drafting_advanced",
         "get_argument_strength_report": "drafting_advanced",
-        "get_legislation_document":     "legislation",
-        "search_legislation_articles":  "legislation",
-        "get_legislation_article_tree": "legislation",
-        "get_legislation_gerekce":      "legislation",
-        "legislation_source_status":    "legislation",
-        "format_legislation_citation":  "legislation",
-        "get_legislation_types":        "legislation",
-        "citation_safety":              "citation",
-        "format_legal_citation":        "citation",
-        "verify_legal_citation":        "citation",
-        "read_udf":                     "udf_admin",
-        "write_udf":                    "udf_admin",
         "udf_toolkit_status":           "udf_admin",
         # M-105: install_udf_toolkit_tool removed from MCP
         "udf_authoring_instructions":   "udf_admin",
-        "convert_udf_to_docx_tool":     "udf_admin",
-        "convert_udf_to_pdf_tool":      "udf_admin",
-        "convert_docx_to_udf":          "udf_admin",
-        "extract_pdf_text":             "udf_admin",
         "pdf_toolkit_status":           "udf_admin",
         "promote_pdf_to_full_text":     "udf_admin",
-        "prepare_docx_export":          "export",
-        "prepare_export_package_bundle":"export",
-        "export_plain_text":            "export",
-        "export_to_format":             "export",
-        "get_export_capabilities":      "export",
-        "source_capabilities":          "discovery",
-        "list_birim_codes":             "discovery",
     }
 
     # Extended tool functions collected for dynamic loading (M-99)
@@ -375,7 +303,7 @@ def main() -> None:
             _EXTENDED_TOOLS[name] = fn
             return fn
 
-    def _attach_corpus_hint(result: dict) -> dict:
+    def _attach_corpus_hint(result: dict, query: str = "") -> dict:
         """Runtime safety net: steer the model back to live search_decisions.
 
         Local search tools only search already-fetched documents. When they
@@ -383,17 +311,59 @@ def main() -> None:
         ``hint`` (and ``cache_document_count``) telling the caller to use the
         live `search_decisions` tool instead of trusting these results or
         falling back to web search.
+
+        Also attaches ``related_quotes`` per result and ``corpus_coverage``.
+        M-110: the docstring of ``search_local_corpus`` had promised both for
+        two releases while only a dead parallel module implemented them.
         """
         if not isinstance(result, dict):
             return result
+        corpus = None
+        coverage = None
         try:
             c = Cache()
             try:
                 corpus = c.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+                if corpus:
+                    row = c.db.execute(
+                        "SELECT MIN(decision_date), MAX(decision_date) "
+                        "FROM documents_v2 WHERE decision_date IS NOT NULL"
+                    ).fetchone()
+                    if row and row[0] and row[1]:
+                        coverage = f"{row[0]} — {row[1]}"
             finally:
                 c.close()
         except Exception:
             corpus = None
+
+        if query:
+            from .snippet import extract_query_terms, make_snippet
+
+            terms = extract_query_terms(query)
+            # Dedup by document_id: collect every matched passage per decision
+            # instead of returning the same decision once per hit.
+            by_doc: dict[str, dict] = {}
+            ordered: list[str] = []
+            for r in result.get("results") or []:
+                if not isinstance(r, dict):
+                    continue
+                did = r.get("document_id") or r.get("documentId") or ""
+                text = r.get("snippet") or r.get("text") or ""
+                quote = make_snippet(text, terms, max_length=280) if text else ""
+                if did in by_doc:
+                    if quote:
+                        by_doc[did].setdefault("related_quotes", []).append(quote)
+                else:
+                    r.setdefault("related_quotes", [])
+                    if quote:
+                        r["related_quotes"].append(quote)
+                    by_doc[did] = r
+                    ordered.append(did)
+            if by_doc:
+                result["results"] = [by_doc[d] for d in ordered]
+        if coverage:
+            result["corpus_coverage"] = coverage
+
         total = result.get("total_matches", len(result.get("results") or []))
         hint = None
         if total == 0:
@@ -440,81 +410,53 @@ def main() -> None:
 
         HARD RULES — no exceptions, no interpretation:
         - Do NOT answer case-law questions from memory, training data, or web search.
-        - Do NOT use hybrid_search / semantic_search / embedding_search /
-          search_local_cache to FIND decisions — those search ONLY the small
-          local cache and only RE-RANK what THIS tool has already fetched.
-          They cannot discover any decision that was not fetched here first.
+        - Do NOT use search_local_corpus to FIND decisions — it searches ONLY
+          the local corpus and cannot discover anything not fetched here first.
         - Every esas/karar number, date, and chamber you cite MUST come from a
           document returned by THIS tool and verified via get_document full text.
         - If you have not called this tool yet, you have NO case law to cite.
 
-        Fetched results are cached so the local re-ranking tools can operate on
-        them afterward within the same session.
-
         --- QUERY HYGIENE (CRITICAL) ---
-        - Do NOT paste the user's full question into the query string. The Bedesten
-          Solr engine matches tokens, not natural language. Reduce the question to
-          2–5 precise legal keywords.  Good: "işçi alacağı zamanaşımı" (3 terms).
-          Bad: "işçinin fazla mesai ve kıdem tazminatı konusunda zamanaşımı süresi"
-          (verbatim user question, too many noise tokens).
-        - Preserve Turkish diacritics exactly. The Solr index is Turkish-aware;
-          stripping diacritics silently drops matches. Use "kararı" ✓ not "karari" ✗,
-          "geçici iş göremezlik" ✓ not "gecici is goremezlik" ✗.
+        - Do NOT paste the user's question in. Solr matches tokens, not natural
+          language. Reduce it to 2–5 legal keywords: "işçi alacağı zamanaşımı" ✓,
+          not "işçinin fazla mesai ve kıdem tazminatı konusunda zamanaşımı süresi".
+        - Preserve Turkish diacritics exactly; stripping them silently drops
+          matches. "kararı" ✓ not "karari" ✗.
 
         --- BEDESTEN SOLR OPERATOR COOKBOOK ---
-        The Bedesten backend runs Apache Solr with StandardQueryParser.
-        ⚠️ The DEFAULT OPERATOR IS OR — whitespace between bare terms means
-        UNION, not intersection.  `tahliye taahhüdü geçerlilik` returns any
-        decision containing ANY of the three words (rarely what you want).
+        ⚠️ THE DEFAULT OPERATOR IS OR — whitespace between bare terms means
+        UNION.  `tahliye taahhüdü geçerlilik` matches ANY of the three words.
+        To require all, prefix each with `+` or join with UPPERCASE `AND`.
 
-        To REQUIRE multiple concepts, mark EACH term with `+` or join with
-        UPPERCASE `AND`.  Available operators inside the `query` string:
+        +required  must appear (+tazminat)   -excluded  must not (-bölge)
+        "exact"    phrase ("iş kazası")      AND/OR/NOT UPPERCASE only
+        (grouping) sub-expressions           *          suffix wildcard
 
-        +required    Prefix + forces the term to appear (MUST match).  +tazminat
-        -excluded    Prefix - excludes documents containing the term.  -bölge
-        "exact"      Double quotes for phrase/exact match.  "iş kazası"
-        AND / OR     UPPERCASE boolean operators (lowercase and/or are treated
-                     as plain terms).  tazminat AND zamanaşımı
-        NOT          UPPERCASE exclusion.  tazminat NOT manevi
-        (grouping)   Parentheses for sub-expressions.  (+işçi OR +memur) +tazminat
-        * wildcard   Suffix wildcard (use sparingly).  tazmin*
+        ⚠️ THE INDEX IS NOT STEMMED — each inflected form is its own token:
+        `+taahhüdü` ≈ 16 700 hits vs `+taahhüt` ≈ 43 800.  Prefer noun stems or
+        quoted phrases, and keep the diacritics (`+taahhut` ≈ 10 hits).
 
-        ⚠️ THE INDEX IS NOT STEMMED.  Bedesten indexes surface forms, so each
-        inflected form is its own token: `+taahhüdü` ≈ 16 700 hits while
-        `+taahhüt` ≈ 43 800.  A required term only matches documents carrying
-        that exact form.  Prefer noun stems or quoted phrases over inflected
-        single words, and keep Turkish diacritics (`+taahhut` ≈ 10 hits).
-
-        TWO-PASS BEHAVIOUR: If you submit a plain multi-word query with NO
-        operators (no +, -, ", AND, OR, NOT, parens), emsal-mcp first tries it
-        with every term required (`+t1 +t2 ...`) for precision.  If that pass
-        cannot fill the requested `limit` — the normal outcome for 3+ inflected
-        terms on an unstemmed index — it automatically re-runs your ORIGINAL
-        query as OR and returns Solr's relevance ranking.  Nothing is lost: an
-        OR query is a superset of the AND query and Solr ranks documents
-        matching more terms higher, so real conjunction matches stay on top.
-        The fallback is reported in `warnings` and as `fallback_to_or` on each
-        result, so a starved AND pass never masquerades as "no such precedent".
+        TWO-PASS BEHAVIOUR: A plain multi-word query with NO operators is first
+        tried with every term required (`+t1 +t2 ...`).  If that pass cannot
+        fill `limit` — normal for 3+ inflected terms on an unstemmed index — the
+        ORIGINAL query re-runs as OR.  Nothing is lost (OR is a superset, and
+        Solr ranks multi-term matches higher).  Reported in `warnings` and as
+        `fallback_to_or`, so a starved AND pass never looks like "no precedent".
 
         Worked examples (query string → what it does):
-          +işçi +tazminat                    → docs with BOTH "işçi" AND "tazminat"
-          +"iş kazası" +tazminat             → exact phrase "iş kazası" AND "tazminat"
-          (+işçi OR +memur) +tazminat -manevi → (işçi OR memur) AND tazminat, exclude "manevi"
-          kıdem AND ihbar AND tazminat       → all three terms required
+          +işçi +tazminat                    → BOTH "işçi" AND "tazminat"
+          +"iş kazası" +tazminat             → phrase "iş kazası" AND "tazminat"
+          (+işçi OR +memur) +tazminat -manevi → (işçi OR memur) AND tazminat, not "manevi"
 
-        ⚠️ Multi-concept queries: quote each concept instead of listing bare
-        inflected words.  `+"tahliye taahhüdü" +"adli tatil"` expresses the
-        intent; `tahliye taahhüdü adli tatil` makes the engine (and the
-        fallback) guess.  If a `+`-joined query returns 0, that is a real
-        finding about the phrasing — retry with fewer/broader terms or with
-        the stem, not with more terms.
+        ⚠️ Quote each concept rather than listing bare inflected words:
+        `+"tahliye taahhüdü" +"adli tatil"` ✓.  A `+`-joined query returning 0
+        is a real finding about the phrasing — retry broader or with the stem,
+        not with more terms.
 
         Notes:
-        - Overly broad queries (single common term like "karar") return noise; add
-          at least one specific legal-term constraint.
-        - At least ONE search criterion is required (query, esas_no, karar_no,
-          birimAdi, or a date range). court_types alone is rejected — it is a
-          filter, not a search.
+        - A single common term ("karar") returns noise; add a specific constraint.
+        - At least ONE criterion is required (query, esas_no, karar_no, birimAdi,
+          or a date range). court_types alone is rejected — it is a filter.
 
         Args:
             source: Optional source identifier. Available sources:
@@ -840,29 +782,7 @@ def main() -> None:
 
         return payload
 
-    @_tool
-    def source_capabilities() -> list[dict]:
-        """Return capability matrix for all registered sources."""
-        return capabilities()
 
-    @_tool
-    def list_birim_codes(court: str | None = None) -> list[dict]:
-        """Return the 79 validated birimAdi (chamber/unit) codes.
-
-        Use these codes as the ``birimAdi`` parameter in ``search_decisions``
-        to filter results by a specific Yargitay/Danistay chamber or assembly.
-
-        Each entry includes the code, Turkish description, English description,
-        and the parent court (Yargitay, Danistay, or Askeri).
-
-        Args:
-            court: Optional filter — "Yargitay", "Danistay", or "Askeri".
-                   Returns all 79 codes when omitted.
-
-        Returns:
-            List of ``{code, description_tr, description_en, court}`` dicts.
-        """
-        return _list_birim_codes(court=court)
 
     @_tool
     def source_smoke(online: bool = False) -> dict:
@@ -875,39 +795,7 @@ def main() -> None:
             "sources": results,
         }
 
-    @_tool
-    @validate_tool_input(document=validate_is_dict_with_keys("document_id", "source"))
-    def citation_safety(document: dict) -> dict:
-        """Check citation safety of a document.
 
-        Verifies full text availability, content status, and minimum provenance
-        metadata. Returns ok=True only if the document is safe for quoting.
-
-        Args:
-            document: Document dict with document_id, source, and metadata fields.
-
-        Returns:
-            Dict with ok, quoteUsable, draftUsable, reasons, safety_state.
-        """
-        return citation_check_impl(Document.model_validate(document)).model_dump(mode="json")
-
-    @_tool
-    @validate_tool_input(matter=validate_non_empty, issue=validate_non_empty)
-    def build_input_pack(matter: str, issue: str, documents: list[dict]) -> dict:
-        """Build a citation-safe input pack for petition drafting.
-
-        Filters unsafe documents and builds an InputPack with stable pack_id.
-
-        Args:
-            matter: Legal matter description (must not be empty).
-            issue: Legal issue description (must not be empty).
-            documents: List of Document dicts to classify.
-
-        Returns:
-            Dict with matter, issue, documents, safe_citations, excluded, warnings.
-        """
-        docs = [Document.model_validate(d) for d in documents]
-        return build_input_pack_impl(matter, issue, docs).model_dump(mode="json")
 
     @_tool
     def draft_document(title: str, body: str, documents: list[dict]) -> dict:
@@ -918,14 +806,7 @@ def main() -> None:
     def export_bundle(out_dir: str, matter: str, issue: str, documents: list[dict]) -> dict:
         return export_bundle_impl(out_dir, matter=matter, issue=issue, docs=[Document.model_validate(d) for d in documents])
 
-    @_tool
-    def read_udf(path: str) -> dict:
-        return {"text": read_udf_impl(path), "probe": probe_udf(path)}
 
-    @_tool
-    def write_udf(text: str, out_path: str, title_centered: bool = False) -> dict:
-        """Write plain text as UDF; Turkish petition formatting is applied automatically."""
-        return {"out_path": str(write_udf_impl(text, out_path, title_centered=title_centered))}
 
     @_tool
     def udf_toolkit_status() -> dict:
@@ -943,214 +824,23 @@ def main() -> None:
         """
         return get_udf_authoring_instructions(format=format)
 
-    @_tool
-    def convert_udf_to_docx_tool(file_path: str, out_path: str | None = None) -> dict:
-        """Convert UDF to DOCX using LibreOffice (requires toolkit).
 
-        Returns structured error dict if toolkit is unavailable.
-        """
-        return convert_udf_to_docx(file_path, out_path)
 
-    @_tool
-    def convert_udf_to_pdf_tool(file_path: str, out_path: str | None = None) -> dict:
-        """Convert UDF to PDF using LibreOffice (requires toolkit).
-
-        Returns structured error dict if toolkit is unavailable.
-        """
-        return convert_udf_to_pdf(file_path, out_path)
-
-    @_tool
-    def convert_docx_to_udf(
-        file_path: str, out_path: str | None = None,
-    ) -> dict:
-        """Convert DOCX to UDF, preserving bold/alignment/indent formatting.
-
-        Uses a native converter (no external tools required).
-        """
-        return convert_docx_to_udf_impl(file_path, out_path)
 
     # ── Cache v2 MCP tools ────────────────────────────────────────────
 
-    @_tool
-    def search_local_cache(
-        query: str = "",
-        source: str | None = None,
-        court: str | None = None,
-        chamber: str | None = None,
-        date: str | None = None,
-        esas_no: str | None = None,
-        karar_no: str | None = None,
-        document_id: str | None = None,
-        content_status: str | None = None,
-        draft_usable: bool | None = None,
-        quote_usable: bool | None = None,
-        sort: str = "relevance",
-        limit: int = 20,
-    ) -> list[dict]:
-        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
-
-        Filters/looks up documents ALREADY fetched via `search_decisions`. It
-        cannot find any decision that was not fetched first; the cache is small
-        by design (not a crawler, not a full corpus).
-
-        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
-        (live, online) first — it is the primary, mandatory entry point. Use
-        this tool only to filter/inspect already-fetched results. Never
-        web-search, never cite esas/karar numbers not from a fetched full-text
-        document.
-
-        Supports filters: source, court, chamber, date, esas_no, karar_no,
-        document_id, content_status, draft_usable, quote_usable.
-        Sort options: relevance, decision_date_desc, decision_date_asc,
-        fetched_at_desc, fetched_at_asc.
-        Returns snippets around matching text.
-        """
-        cache = Cache()
-        try:
-            return cache.search_local(
-                query=query, source=source, court=court, chamber=chamber,
-                date=date, esas_no=esas_no, karar_no=karar_no,
-                document_id=document_id, content_status=content_status,
-                draft_usable=draft_usable, quote_usable=quote_usable,
-                sort=sort, limit=limit,
-            )
-        finally:
-            cache.close()
 
     # M-105: cache_admin MCP tools removed (CLI-only: emsal-mcp cache ...)
 
     # ── Research v0.5 MCP tools ────────────────────────────────────────
 
-    @_tool
-    def research_topic_tool(
-        query: str,
-        sources: list[str] | None = None,
-        fetch_count: int = 5,
-        filters: dict | None = None,
-        output_dir: str | None = None,
-    ) -> dict:
-        """Search sources, fetch documents, and build a research bundle.
-
-        Returns bundle metadata with query, sources, result_count, fetched_count,
-        content_status_summary, citation_safe_count, generated_files, warnings,
-        and recommended_next_steps.
-        """
-        return research_topic_impl(
-            query=query,
-            sources=sources,
-            fetch_count=fetch_count,
-            filters=filters or {},
-            output_dir=output_dir,
-        )
 
     # ── Citation v0.6 MCP tools ──────────────────────────────────────────
 
-    @_tool
-    def format_legal_citation(
-        source: dict | None = None,
-        document_id: str | None = None,
-        style: str = "petition",
-    ) -> dict:
-        """Format a legal citation from document metadata.
 
-        Args:
-            source: Document dict with metadata fields.
-            document_id: Document ID to look up from cache.
-            style: 'petition', 'parenthetical', or 'short'.
-
-        Returns:
-            Dict with formatted_citation, warnings, confidence, usability flags.
-        """
-        return format_legal_citation_impl(
-            source=source,
-            document_id=document_id,
-            style=style,  # type: ignore[arg-type]
-        )
-
-    @_tool
-    def verify_legal_citation(
-        text: str | None = None,
-        file_path: str | None = None,
-        source: str | None = None,
-        limit: int = 5,
-        fetch: int = 3,
-        no_live: bool = True,
-        live_only: bool = False,
-        min_score: float = 1.0,
-    ) -> dict:
-        """Verify legal citations in text or file.
-
-        Pipeline: extract candidates → search local cache → live search →
-        rank by metadata match score → return structured result.
-
-        Args:
-            text: Text content to verify.
-            file_path: Path to file to read.
-            source: Filter to specific source.
-            limit: Max candidates to extract.
-            fetch: Max docs to fetch.
-            no_live: Skip live search.
-            live_only: Skip local cache search.
-            min_score: Minimum match score threshold.
-
-        Returns:
-            Dict with candidates, matched_documents, formatted_citations,
-            verification_findings, warnings, recommended_next_steps.
-        """
-        return verify_legal_citation_impl(
-            text=text,
-            file_path=file_path,
-            source=source,
-            limit=limit,
-            fetch=fetch,
-            no_live=no_live,
-            live_only=live_only,
-            min_score=min_score,
-        )
 
     # ── Petition Pack v0.7 MCP tools ────────────────────────────────────────
 
-    @_tool
-    def prepare_drafting_input_pack(
-        matter: str,
-        issue: str,
-        documents: list[dict] | None = None,
-        research_bundle_dir: str | None = None,
-        out_dir: str | None = None,
-        strict: bool = True,
-        template_name: str | None = None,
-    ) -> dict:
-        """Prepare a petition drafting input pack.
-
-        Classifies authorities as petition_ready, citation_only,
-        research_lead_only, or excluded.  Generates a structured pack
-        directory with petition-brief.json, citation-bank.md, argument-map.md,
-        petition-instructions.md, draft-skeleton.md, petition-pack.json,
-        and source-documents/*.md.
-
-        Args:
-            matter: Legal matter description.
-            issue: Legal issue description.
-            documents: Optional list of Document dicts to classify.
-            research_bundle_dir: Optional research bundle directory path.
-            out_dir: Output directory for the pack.
-            strict: If True, exclude hash-mismatch docs.
-            template_name: Optional template name for the draft skeleton.
-
-        Returns:
-            Dict with ok, out_dir, draft_safe, counts, classifications,
-            files, warnings, hash_manifest.
-        """
-        docs = [Document.model_validate(d) for d in (documents or [])]
-        return prepare_drafting_input_pack_impl(
-            matter=matter,
-            issue=issue,
-            documents=docs,
-            research_bundle_dir=research_bundle_dir,
-            out_dir=out_dir,
-            strict=strict,
-            template_name=template_name,
-        )
 
     @_tool
     def inspect_petition_pack(pack_dir: str) -> dict:
@@ -1170,52 +860,7 @@ def main() -> None:
 
     # ── Petition v0.8 MCP tools ──────────────────────────────────────────
 
-    @_tool
-    def prepare_petition_outline(
-        pack_dir: str,
-        out_dir: str | None = None,
-    ) -> dict:
-        """Generate a structured petition outline from a petition pack.
 
-        Reads petition-pack.json and produces an outline.json with sections,
-        placeholders, and authority classification for each section.
-        Only petition_ready authorities may supply direct content;
-        citation_only appear only in bibliography with warning.
-
-        Args:
-            pack_dir: Path to petition pack directory.
-            out_dir: Output directory for outline.json.
-
-        Returns:
-            Dict with ok, outline_path, sections, placeholder_total,
-            citation_only_bibliography_count, petition_ready_count.
-        """
-        return prepare_petition_outline_impl(pack_dir=pack_dir, out_dir=out_dir)
-
-    @_tool
-    def prepare_controlled_petition_draft(
-        pack_dir: str,
-        outline_path: str | None = None,
-        out_dir: str | None = None,
-    ) -> dict:
-        """Generate a controlled petition draft from a petition pack.
-
-        Produces draft.md, draft.json, footnotes.json, and warnings.json.
-        Only petition_ready authorities supply direct quotes; citation_only
-        appear in bibliography warnings only.  Placeholders are preserved.
-
-        Args:
-            pack_dir: Path to petition pack directory.
-            outline_path: Optional pre-computed outline.json.
-            out_dir: Output directory for draft files.
-
-        Returns:
-            Dict with ok, out_dir, draft_md_path, draft_json_path,
-            footnotes_path, warnings_path, draft_metadata.
-        """
-        return prepare_controlled_petition_draft_impl(
-            pack_dir=pack_dir, outline_path=outline_path, out_dir=out_dir,
-        )
 
     # ── Multi-Issue Petition Pack MCP tools (M-13) ──────────────────────
 
@@ -1270,127 +915,12 @@ def main() -> None:
         """
         return inspect_multi_issue_pack_impl(pack_dir)
 
-    @_tool
-    def prepare_docx_export(
-        draft_path: str | None = None,
-        draft_json: dict | None = None,
-        out_path: str | None = None,
-        pack_dir: str | None = None,
-    ) -> dict:
-        """Create a validated DOCX export from a controlled draft.
 
-        Accepts draft.md path or draft.json dict.  Creates DOCX with
-        disclaimer, footnotes, and placeholder preservation.
-
-        Args:
-            draft_path: Path to draft.md.
-            draft_json: Draft metadata dict (with files.draft_md reference).
-            out_path: Output DOCX path.
-            pack_dir: Pack directory for footnotes.
-
-        Returns:
-            Dict with checksum_sha256, file_size, validation dict.
-        """
-        return prepare_docx_export_impl(
-            draft_path=draft_path,
-            draft_json=draft_json,
-            out_path=out_path,
-            pack_dir=pack_dir,
-        )
-
-    @_tool
-    def prepare_export_package_bundle(
-        pack_dir: str,
-        draft_dir: str | None = None,
-        docx_path: str | None = None,
-        out_dir: str | None = None,
-    ) -> dict:
-        """Create a complete export package bundle with verification.
-
-        Bundles draft files, petition pack, source documents, manifest,
-        hash-manifest, and verification.txt.  Verifies integrity after
-        creation.
-
-        Args:
-            pack_dir: Path to petition pack directory.
-            draft_dir: Draft output directory.
-            docx_path: Path to draft.docx.
-            out_dir: Output bundle directory.
-
-        Returns:
-            Dict with ok, bundle_dir, manifest, hash_manifest,
-            verification, files, post_verification.
-        """
-        return prepare_export_package_bundle_impl(
-            pack_dir=pack_dir, draft_dir=draft_dir,
-            docx_path=docx_path, out_dir=out_dir,
-        )
 
     # ── Export Format Expansion MCP tools (M-15) ─────────────────────────
 
-    @_tool
-    def export_plain_text(draft_path: str, out_path: str | None = None) -> dict:
-        """Export a draft.md to plain-text format.
 
-        Strips markdown formatting (headers → uppercase, bold/italic → plain,
-        links → text).  Preserves disclaimer header and {{PLACEHOLDER}} tokens.
-        Always available — no toolkit required.
 
-        Args:
-            draft_path: Path to the draft.md file.
-            out_path: Optional output .txt file path.
-
-        Returns:
-            Dict with ok, out_path, text_length, disclaimer_present,
-            placeholders_preserved.
-        """
-        return export_plain_text_impl(draft_path=draft_path, out_path=out_path)
-
-    @_tool
-    def export_to_format(
-        draft_path: str,
-        format: str = "docx",
-        out_path: str | None = None,
-        pack_dir: str | None = None,
-    ) -> dict:
-        """Unified export dispatcher supporting multiple formats.
-
-        Formats:
-            - docx: validated DOCX export (always available)
-            - txt: plain-text export (always available)
-            - pdf: PDF via LibreOffice (requires toolkit)
-            - udf: UYAP UDF (always available, preserves formatting)
-
-        Returns structured error dict if toolkit is unavailable or format
-        is invalid.
-
-        Args:
-            draft_path: Path to the draft.md file.
-            format: Export format (docx, txt, pdf, udf).
-            out_path: Optional output file path.
-            pack_dir: Optional pack directory for footnotes.
-
-        Returns:
-            Format-specific result dict or structured error.
-        """
-        return export_to_format_impl(
-            draft_path=draft_path,
-            format=format,
-            out_path=out_path,
-            pack_dir=pack_dir,
-        )
-
-    @_tool
-    def get_export_capabilities() -> dict:
-        """Report which export formats are currently available.
-
-        Shows availability of docx, txt, pdf, udf formats based on
-        toolkit presence (LibreOffice).
-
-        Returns:
-            Dict with ok, formats list, toolkit_available, toolkit_status.
-        """
-        return get_export_capabilities_impl()
 
     # ── Petition Template Library MCP tools (M-11) ─────────────────────────
 
@@ -1524,8 +1054,14 @@ def main() -> None:
             Dict with ok, query, results, total_results, warnings, etc.
         """
         if scope == "article":
+            if not document_id:
+                return build_error(
+                    "INVALID_INPUT",
+                    "scope='article' requires document_id. Find it first with "
+                    "scope='law' (or mevzuat_no / mevzuat_adi).",
+                )
             return search_legislation_articles_impl(
-                document_id=document_id or "",
+                document_id=document_id,
                 article_query=query,
                 source=sources[0] if sources else None,
             )
@@ -1540,222 +1076,18 @@ def main() -> None:
             mevzuat_tur_list=mevzuat_tur_list,
         )
 
-    @_tool
-    def get_legislation_document(
-        document_id: str,
-        source: str | None = None,
-    ) -> dict:
-        """Get a full legislation document from the Mevzuat source.
 
-        Args:
-            document_id: Mevzuat document ID.
-            source: Source ID (default: "mevzuat").
 
-        Returns:
-            Dict with ok, title, citation_check, article_count, etc.
-        """
-        return get_legislation_document_impl(
-            document_id=document_id,
-            source=source,
-        )
 
-    @_tool
-    def search_legislation_articles(
-        document_id: str,
-        article_number: str | None = None,
-        article_query: str | None = None,
-        source: str | None = None,
-    ) -> dict:
-        """Search articles within a legislation document.
 
-        Args:
-            document_id: Mevzuat document ID.
-            article_number: Optional specific article number.
-            article_query: Optional keyword search in article text.
-            source: Source ID (default: "mevzuat").
 
-        Returns:
-            Dict with ok, matching_articles, total_articles_found, etc.
-        """
-        return search_legislation_articles_impl(
-            document_id=document_id,
-            article_number=article_number,
-            article_query=article_query,
-            source=source,
-        )
 
-    @_tool
-    def get_legislation_article_tree(
-        document_id: str,
-        source: str | None = None,
-    ) -> dict:
-        """Build part/section/article hierarchy from legislation document.
-
-        Args:
-            document_id: Mevzuat document ID.
-            source: Source ID (default: "mevzuat").
-
-        Returns:
-            Dict with ok, article_count, part_count, section_count, tree, etc.
-        """
-        return get_legislation_article_tree_impl(
-            document_id=document_id,
-            source=source,
-        )
-
-    @_tool
-    def get_legislation_gerekce(
-        document_id: str,
-        source: str | None = None,
-    ) -> dict:
-        """Extract GENEL GEREKCE and MADDE GEREKCELERI from legislation.
-
-        Args:
-            document_id: Mevzuat document ID.
-            source: Source ID (default: "mevzuat").
-
-        Returns:
-            Dict with ok, found, genel_gerekce, madde_gerekceleri, etc.
-        """
-        return get_legislation_gerekce_impl(
-            document_id=document_id,
-            source=source,
-        )
-
-    @_tool
-    def legislation_source_status() -> dict:
-        """Check Mevzuat source health via smoke tests.
-
-        Returns:
-            Dict with ok, overall_ok, healthy_sources, degraded_sources, etc.
-        """
-        return get_legislation_source_status_impl()
-
-    @_tool
-    def format_legislation_citation(
-        document: dict | None = None,
-        style: str = "full",
-    ) -> dict:
-        """Format a legislation citation from document metadata.
-
-        Args:
-            document: Document dict with title, legislation_no, gazette_date.
-            style: 'full', 'short', or 'article'.
-
-        Returns:
-            Dict with formatted_citation, style, warnings, etc.
-        """
-        return format_legislation_citation_impl(
-            document=document or {},
-            style=style,  # type: ignore[arg-type]
-        )
-
-    @_tool
-    def get_legislation_types() -> list[dict]:
-        """Return known Turkish legislation types.
-
-        Returns:
-            List of {type_id, display_name} dicts.
-        """
-        return get_legislation_types_impl()
 
     # ── Semantic v0.11 MCP tools ──────────────────────────────────────────
 
     # M-105: build_semantic_index removed from MCP (CLI-only)
 
-    @_tool
-    def semantic_search(
-        query: str,
-        limit: int = 10,
-        filters: dict | None = None,
-    ) -> dict:
-        """Concept DISCOVERY over the local corpus (TF-IDF cosine).
 
-        Use this to find precedent for a legal CONCEPT when the exact wording
-        is unknown — write a focused natural-language phrase, not operators.
-        The corpus is the set of decisions already fetched this session / via
-        the corpus crawl; it is NOT a live mirror and may lag.
-
-        ✅ Good query: `işçinin haklı nedenle feshinde kıdem tazminatı hakkı`
-        ❌ Bad query: `tahliye` (single word, too broad) or the user's entire
-           question pasted verbatim.
-
-        Complementary roles: THIS tool = concept discovery over the local
-        corpus; `search_decisions` = live current search + citation
-        verification. Always confirm any decision you cite via
-        `search_decisions` + `get_document`.
-
-        Pure term-frequency (TF-IDF cosine) search over the cache.
-        Uses Turkish suffix stripping for query expansion — stemmed
-        variants of query terms are generated automatically.
-
-        Snippets include **highlighted** matching terms.
-
-        Args:
-            query: Natural-language legal concept (no Solr operators).
-            limit: Max results (default 10).
-            filters: Optional dict with source, court, chamber, content_status,
-                     quote_usable, draft_usable.
-
-        Returns:
-            Dict with ok, query, results (score + snippet), total_matches, method,
-            expanded_query_terms, snippet_highlighted.
-        """
-        return _attach_corpus_hint(semantic_search_impl(
-            query=query, limit=limit, filters=filters,
-        ))
-
-    @_tool
-    @validate_tool_input(limit=validate_positive_int, hybrid_weight=validate_range(0.0, 1.0))
-    def hybrid_search(
-        query: str,
-        limit: int = 10,
-        filters: dict | None = None,
-        hybrid_weight: float = 0.6,
-        rerank: bool = False,
-    ) -> dict:
-        """Concept DISCOVERY over the local corpus (hybrid BM25 + TF-IDF).
-
-        Use this to find precedent for a legal CONCEPT when the exact wording
-        is unknown.  Write a focused natural-language phrase (no operators).
-        The corpus is the set of decisions already fetched this session / via
-        the corpus crawl; it is NOT a live mirror and may lag.  Empty/limited
-        results here mean the corpus is small or stale — fetch fresh via
-        `search_decisions`, then re-run.
-
-        Complementary roles: THIS tool = concept discovery + re-ranking over
-        the local corpus; `search_decisions` = live current search + citation
-        verification.  Always confirm any decision you cite via
-        `search_decisions` + `get_document`.
-
-        Balances exact keyword matching (FTS5 BM25) with semantic similarity
-        (TF-IDF cosine).  hybrid_weight controls the balance: higher = more
-        keyword-oriented, lower = more semantic.
-
-        Uses Turkish suffix stripping for query expansion — stemmed
-        variants of query terms are generated automatically for FTS5.
-        Snippets include **highlighted** matching terms.
-
-        hybrid_weight must be between 0.0 and 1.0.
-
-        Args:
-            query: Natural-language legal concept (no Solr operators).
-            limit: Max results (default 10).
-            filters: Optional dict with source, court, chamber, content_status,
-                     quote_usable, draft_usable.
-            hybrid_weight: Balance 0.0-1.0 (0.0 = pure semantic, 1.0 = pure BM25).
-            rerank: Cross-encoder reranking of top results (optional, requires fastembed).
-
-        Returns:
-            Dict with ok, query, results (bm25/cosine/hybrid scores + snippet),
-            total_matches, method, hybrid_weight, reranked, expanded_query_terms,
-            snippet_highlighted.
-        """
-        return _attach_corpus_hint(hybrid_search_impl(
-            query=query, limit=limit, filters=filters,
-            hybrid_weight=hybrid_weight,
-            rerank=rerank,
-        ))
 
     @_tool
     def index_status() -> dict:
@@ -1773,39 +1105,6 @@ def main() -> None:
 
     # M-105: build_embedding_index removed from MCP (CLI-only)
 
-    @_tool
-    def embedding_search(
-        query: str,
-        limit: int = 10,
-        provider: str | None = None,
-    ) -> dict:
-        """Concept DISCOVERY over the local corpus (dense embeddings).
-
-        Use this to find precedent for a legal CONCEPT when the exact wording
-        is unknown — write a focused natural-language phrase.  The corpus is
-        the set of decisions already fetched this session / via the corpus
-        crawl; it is NOT a live mirror and may lag.
-
-        Complementary roles: THIS tool = concept discovery over the local
-        corpus; `search_decisions` = live current search + citation
-        verification.  Always confirm any decision you cite via
-        `search_decisions` + `get_document`.
-
-        Uses brute-force cosine similarity over indexed embeddings.
-        No approximate nearest-neighbor (ANN) — exact but slower for large
-        corpora.
-
-        Args:
-            query: Natural-language legal concept (no Solr operators).
-            limit: Max results (default 10).
-            provider: Optional provider ID.
-
-        Returns:
-            Dict with ok, results (scored), total_matches, method, provider.
-        """
-        from .semantic import embedding_search as _emb_search
-
-        return _attach_corpus_hint(_emb_search(query=query, limit=limit, provider=provider))
 
     # M-105: embedding_index_status, list_embedding_providers, update_indexes,
     #        index_sync_status removed from MCP (CLI-only)
@@ -2090,21 +1389,6 @@ def main() -> None:
 
     # ── PDF Extraction MCP tools (M-27) ──────────────────────────────────
 
-    @_tool
-    def extract_pdf_text(file_path: str, ocr_enabled: bool = False) -> dict:
-        """Extract text layer from a PDF file.
-
-        Uses pypdf for text-layer extraction. OCR is opt-in only.
-        Never modifies the original file.
-
-        Args:
-            file_path: Path to the PDF file.
-            ocr_enabled: Enable OCR extraction (opt-in, produces low confidence warning).
-
-        Returns:
-            Dict with ok, text, text_length, method, warnings.
-        """
-        return extract_pdf_text_impl(file_path, ocr_enabled=ocr_enabled)
 
     @_tool
     def pdf_toolkit_status() -> dict:
@@ -2250,41 +1534,6 @@ def main() -> None:
 
     # ── RRF M-69 tool ────────────────────────────────────────────────────
 
-    @_tool
-    def hybrid_search_rrf(
-        query: str,
-        limit: int = 10,
-        filters: dict | None = None,
-        include_dense: bool = False,
-    ) -> dict:
-        """⛔ NOT A RESEARCH TOOL. LOCAL CACHE ONLY — NEVER QUERIES ANY SOURCE.
-
-        Re-ranks documents ALREADY fetched via `search_decisions` using
-        Reciprocal Rank Fusion. Cannot find decisions that were not fetched
-        first; the local cache is small by design (not a crawler, not a full
-        corpus).
-
-        HARD RULE: To find case law on ANY topic you MUST call `search_decisions`
-        (live, online) first — it is the primary, mandatory entry point. Use
-        this tool only to re-rank already-fetched results. Never web-search,
-        never cite esas/karar numbers not from a fetched full-text document.
-
-        RRF merges BM25, TF-IDF, and optionally dense embedding results
-        by rank position only — no score normalization required.
-
-        Args:
-            query: Search query.
-            limit: Max results (default 10).
-            filters: Optional dict with source, court, chamber, content_status.
-            include_dense: Whether to include dense embeddings (needs built index).
-
-        Returns:
-            Dict with ok, results (with rrf_score), method="rrf".
-        """
-        from .semantic import hybrid_search_rrf as _hybrid_search_rrf
-        return _attach_corpus_hint(_hybrid_search_rrf(
-            query=query, limit=limit, filters=filters, include_dense=include_dense,
-        ))
 
     # ── M-98: Core profile facade tools ──────────────────────────────────
 
@@ -2318,6 +1567,17 @@ def main() -> None:
         limit: int = 20,
         filters: dict | None = None,
         provider: str | None = None,
+        source: str | None = None,
+        court: str | None = None,
+        chamber: str | None = None,
+        date: str | None = None,
+        esas_no: str | None = None,
+        karar_no: str | None = None,
+        document_id: str | None = None,
+        content_status: str | None = None,
+        draft_usable: bool | None = None,
+        quote_usable: bool | None = None,
+        sort: str = "relevance",
     ) -> dict:
         """Concept DISCOVERY over the local corpus.
 
@@ -2346,32 +1606,58 @@ def main() -> None:
             limit: Max results.
             filters: Optional dict with source, court, chamber, content_status.
             provider: Embedding provider name for semantic modes (ignored for lexical).
+            source/court/chamber/date/esas_no/karar_no/document_id: Flat
+                  filters — equivalent to putting them in ``filters``.
+            content_status/draft_usable/quote_usable: Content filters.
+            sort: 'relevance' (default) or 'date' — lexical mode only.
         """
+        # Flat kwargs are merged into `filters` so a caller never has to know
+        # which of the two spellings a given mode expects.
+        merged = dict(filters or {})
+        for _key, _val in (
+            ("source", source), ("court", court), ("chamber", chamber),
+            ("date", date), ("esas_no", esas_no), ("karar_no", karar_no),
+            ("document_id", document_id), ("content_status", content_status),
+            ("draft_usable", draft_usable), ("quote_usable", quote_usable),
+        ):
+            if _val is not None:
+                merged[_key] = _val
+
         if mode == "lexical":
             cache = Cache()
             try:
-                results = cache.search_local(query=query, limit=limit, **(filters or {}))
+                results = cache.search_local(
+                    query=query, limit=limit, sort=sort, **merged,
+                )
             finally:
                 cache.close()
             return _attach_corpus_hint({
+                "ok": True,
                 "results": results,
                 "total_matches": len(results),
                 "method": "bm25_fts5",
-            })
+            }, query)
         elif mode == "semantic":
             if provider:
                 from .semantic import embedding_search as _emb
-                result = _emb(query=query, limit=limit, provider=provider, filters=filters)
+                result = _emb(query=query, limit=limit, provider=provider, filters=merged)
             else:
-                result = semantic_search_impl(query=query, limit=limit, filters=filters)
-            return _attach_corpus_hint(result)
+                result = semantic_search_impl(query=query, limit=limit, filters=merged)
+            return _attach_corpus_hint(result, query)
         elif mode == "hybrid":
-            result = hybrid_search_impl(query=query, limit=limit, filters=filters)
-            return _attach_corpus_hint(result)
-        else:  # rrf (default)
+            result = hybrid_search_impl(query=query, limit=limit, filters=merged)
+            return _attach_corpus_hint(result, query)
+        elif mode == "rrf":
             from .semantic import hybrid_search_rrf as _rrf
-            result = _rrf(query=query, limit=limit, filters=filters)
-            return _attach_corpus_hint(result)
+            result = _rrf(query=query, limit=limit, filters=merged)
+            return _attach_corpus_hint(result, query)
+        # M-110: an unrecognised mode used to fall through to rrf — the
+        # SLOWEST path — so a typo cost minutes and looked like a hang.
+        return build_error(
+            "INVALID_INPUT",
+            f"Unknown mode: {mode!r}. Valid: lexical, semantic, hybrid, rrf.",
+            valid_modes=["lexical", "semantic", "hybrid", "rrf"],
+        )
 
     @_tool
     def get_legislation(
@@ -2405,7 +1691,6 @@ def main() -> None:
             )
 
     @_tool
-    @validate_tool_input(document=validate_is_dict_with_keys("document_id", "source"))
     def citation_check(
         action: str = "verify",
         source: dict | None = None,
@@ -2424,14 +1709,17 @@ def main() -> None:
 
         Args:
             action: 'verify' (default) — verify citations in text/file.
-                    'format' — format a legal citation from metadata.
+                    'format' — format a court-decision citation from metadata.
+                    'format_legislation' — format a legislation citation.
                     'safety' — check if a document is safe for quoting/drafting.
-            document: Document dict (required for 'safety' action).
+            document: Document dict (required for 'safety' and
+                    'format_legislation').
             source: Document dict with metadata (for 'format').
             document_id: Document ID to look up from cache (for 'format').
             text: Citation text to verify (for 'verify', optional).
             file_path: Path to file to verify citations in (for 'verify', optional).
-            style: Citation style ('petition', 'parenthetical', 'short').
+            style: Citation style ('petition', 'parenthetical', 'short';
+                    'article' for legislation).
             limit: Max results for verify.
             fetch: Documents to fetch for verify.
             no_live: Skip live source checks for verify.
@@ -2439,8 +1727,17 @@ def main() -> None:
             min_score: Minimum confidence score for verify.
         """
         if action == "safety":
+            # M-110: this used to be a @validate_tool_input decorator requiring
+            # document_id+source on EVERY action, which made the legislation
+            # formatter (whose input has neither) permanently unreachable.
             if not document:
                 return build_error("INVALID_INPUT", "document required for safety check")
+            missing = [k for k in ("document_id", "source") if not document.get(k)]
+            if missing:
+                return build_error(
+                    "INVALID_INPUT",
+                    f"document: missing required fields: {', '.join(missing)}",
+                )
             return citation_check_impl(Document.model_validate(document)).model_dump(mode="json")
         elif action == "format":
             return format_legal_citation_impl(
@@ -2448,6 +1745,17 @@ def main() -> None:
                 document_id=document_id,
                 style=style,  # type: ignore[arg-type]
             )
+        elif action == "format_legislation":
+            # M-110: replaces the retired format_legislation_citation tool.
+            from .legislation import format_legislation_citation as _fmt_leg
+
+            doc = document or source
+            if not doc:
+                return build_error(
+                    "INVALID_INPUT",
+                    "document required for format_legislation",
+                )
+            return _fmt_leg(document=doc, style=style)  # type: ignore[arg-type]
         else:  # verify
             return verify_legal_citation_impl(
                 text=text,
@@ -2471,6 +1779,7 @@ def main() -> None:
         out_dir: str | None = None,
         strict: bool = True,
         template_name: str | None = None,
+        outline_path: str | None = None,
     ) -> dict:
         """Prepare petition drafting materials step by step.
 
@@ -2489,6 +1798,7 @@ def main() -> None:
             out_dir: Output directory.
             strict: If True, exclude hash-mismatch docs.
             template_name: Optional template name for draft skeleton.
+            outline_path: Optional pre-computed outline.json (controlled_draft).
         """
         if step == "outline":
             return prepare_petition_outline_impl(
@@ -2498,6 +1808,7 @@ def main() -> None:
         elif step == "controlled_draft":
             return prepare_controlled_petition_draft_impl(
                 pack_dir=pack_dir or "",
+                outline_path=outline_path,
                 out_dir=out_dir,
             )
         else:  # input_pack
@@ -2523,6 +1834,7 @@ def main() -> None:
         pack_dir: str | None = None,
         draft_dir: str | None = None,
         docx_path: str | None = None,
+        udf_path: str | None = None,
         title_centered: bool = False,
         title: str | None = None,
         body: str | None = None,
@@ -2541,9 +1853,11 @@ def main() -> None:
             out_dir: Output directory (for bundle).
             pack_dir: Pack directory (for bundle).
             draft_dir: Draft output directory (for bundle).
-            docx_path: Path to a .docx (for pdf/bundle; for udf this is the
+            docx_path: Path to a .docx (for bundle; for udf this is the
                   PREFERRED input — converts DOCX directly to UDF preserving
                   bold, alignment, indent and line spacing).
+            udf_path: Path to a .udf — converts it to docx or pdf via
+                  LibreOffice (replaces convert_udf_to_docx/pdf).
             title_centered: Center the title in UDF output.
             title: Document title (for legacy export_bundle).
             body: Document body (for legacy export_bundle).
@@ -2561,14 +1875,32 @@ def main() -> None:
                 if result.get("ok"):
                     return {**result, "path": result["out_path"], "format": "udf"}
                 return result
-            udf_path = write_udf_impl(
+            written = write_udf_impl(
                 text=text or "",
                 out_path=out_path or "",
                 title_centered=title_centered,
             )
-            return {"ok": True, "path": str(udf_path), "format": "udf"}
+            return {"ok": True, "path": str(written), "format": "udf"}
+        elif format == "docx" and udf_path:
+            # M-110: replaces the retired convert_udf_to_docx_tool.
+            from .udf import convert_udf_to_docx as _udf_to_docx
+
+            return _udf_to_docx(udf_path, out_path)
         elif format == "pdf":
-            return convert_udf_to_pdf(docx_path or "", out_path=out_path)
+            # M-110: this branch used to hand ``docx_path`` to a UDF converter,
+            # so md→pdf was unreachable and docx→pdf was silently wrong.
+            if udf_path:
+                return convert_udf_to_pdf(udf_path, out_path=out_path)
+            if draft_path:
+                return export_to_format_impl(
+                    draft_path=draft_path, format="pdf",
+                    out_path=out_path, pack_dir=pack_dir,
+                )
+            return build_error(
+                "INVALID_INPUT",
+                "pdf export requires draft_path (markdown) or udf_path (UDF).",
+                supported_inputs=["draft_path", "udf_path"],
+            )
         elif format == "plain":
             return export_plain_text_impl(
                 draft_path=draft_path or "",
@@ -2617,7 +1949,23 @@ def main() -> None:
             ocr_enabled: Enable OCR for PDF extraction (opt-in).
         """
         if file_path.lower().endswith(".udf"):
-            return {"text": read_udf_impl(file_path), "probe": probe_udf(file_path)}
+            try:
+                return {
+                    "ok": True,
+                    "text": read_udf_impl(file_path),
+                    "probe": probe_udf(file_path),
+                    "path": file_path,
+                    "format": "udf",
+                }
+            except Exception as exc:
+                # M-110: a corrupt UDF used to raise out of the tool, which the
+                # MCP layer renders as a bare traceback rather than an error dict.
+                return build_error(
+                    "FILE_READ_ERROR",
+                    f"UDF dosyası okunamadı: {exc}",
+                    path=file_path,
+                    format="udf",
+                )
         elif file_path.lower().endswith(".pdf"):
             return extract_pdf_text_impl(file_path, ocr_enabled=ocr_enabled)
         else:
@@ -2630,23 +1978,35 @@ def main() -> None:
     @_tool
     def list_sources(
         detail: str | None = None,
-    ) -> dict | list[dict]:
+        court: str | None = None,
+    ) -> dict:
         """List registered sources with capabilities and optional detail views.
 
         Args:
-            detail: None (default) returns full source capabilites list.
+            detail: None (default) returns the full source capability matrix.
                     'birim_codes' returns validated chamber/unit codes.
-                    'legislation_types' returns legislation type taxonomy.
+                    'legislation_types' returns the legislation type taxonomy.
+            court: Filter for birim_codes ('Yargitay', 'Danistay', 'Askeri').
 
         Returns:
-            Source capabilities list, or detail-specific output.
+            Dict with ok plus 'sources', 'codes' or 'types' depending on detail.
         """
+        # M-110: always a dict.  This used to return a bare list for the
+        # default view and a list for birim_codes, so a caller could not tell
+        # an empty result from a failure.
         if detail == "birim_codes":
-            return _list_birim_codes()
+            return {
+                "ok": True,
+                "detail": "birim_codes",
+                "codes": _list_birim_codes(court=court),
+            }
         elif detail == "legislation_types":
-            return get_legislation_types_impl()
-        else:
-            return capabilities()
+            return {
+                "ok": True,
+                "detail": "legislation_types",
+                "types": get_legislation_types_impl(),
+            }
+        return {"ok": True, "sources": capabilities()}
 
     @_tool
     def legal_research_guide(
@@ -2775,9 +2135,8 @@ def main() -> None:
         without restarting the server.
 
         Valid categories:
-          cache_admin, analytics, routing, health_admin, citation_graph,
-          dedup, watch, privacy, chambers, indexing, drafting_advanced,
-          udf_admin, research_admin, query_tools
+          chambers, citation_graph, drafting_advanced, health_admin,
+          indexing, privacy, udf_admin, watch
 
         Args:
             categories: List of category names to load.
@@ -2786,11 +2145,10 @@ def main() -> None:
             Dict with ok, loaded tools, already_loaded, invalid_categories,
             and a note if the MCP client may need to refresh its tool list.
         """
+        # Derived from the category table so the two can never drift apart.
         valid_categories = {
-            # M-105: cache_admin, analytics, routing, dedup removed from MCP
-            "health_admin",
-            "citation_graph", "watch", "privacy", "chambers", "indexing",
-            "drafting_advanced", "udf_admin", "research_admin", "query_tools",
+            cat for name, cat in _TOOL_CATEGORIES.items()
+            if _TOOL_PROFILES.get(name, "extended") != "core"
         }
         invalid = [c for c in categories if c not in valid_categories]
         if invalid:

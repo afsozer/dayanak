@@ -90,3 +90,48 @@ def fresh_cache(tmp_path):
     cache = Cache(tmp_path / "test.sqlite3")
     yield cache
     cache.db.close()
+
+
+def capture_registered_tools(profile: str = "full") -> dict:
+    """Return ``{tool_name: fn}`` for the tools ``server.main()`` registers.
+
+    Deliberately does NOT purge ``emsal_mcp.*`` from ``sys.modules`` first.
+    A purge re-creates every class object, so a Pydantic model imported by an
+    earlier test no longer passes ``isinstance`` against the reloaded one —
+    which silently broke unrelated test modules that happened to run after.
+    It also throws away any monkeypatch a caller just applied, so patches must
+    be installed BEFORE calling this.
+    """
+    import os
+    import sys
+    from unittest.mock import MagicMock, patch
+
+    registered: dict = {}
+    mock_mcp = MagicMock()
+    mock_mcp._tool_manager = MagicMock()
+    mock_mcp._tool_manager._tools = {}
+
+    def capture_tool(name=None, **kw):
+        def decorator(fn):
+            registered[name or getattr(fn, "__name__", "unknown")] = fn
+            return fn
+        return decorator
+
+    mock_mcp.tool = capture_tool
+    mock_mcp.run = MagicMock()
+
+    prev = os.environ.get("EMSAL_TOOL_PROFILE")
+    os.environ["EMSAL_TOOL_PROFILE"] = profile
+    try:
+        with patch(
+            "mcp.server.fastmcp.FastMCP", return_value=mock_mcp
+        ), patch.object(sys.stdin, "isatty", return_value=False):
+            import emsal_mcp.server
+
+            emsal_mcp.server.main()
+    finally:
+        if prev is None:
+            os.environ.pop("EMSAL_TOOL_PROFILE", None)
+        else:
+            os.environ["EMSAL_TOOL_PROFILE"] = prev
+    return registered

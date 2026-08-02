@@ -14,6 +14,8 @@ vendor/UDF-Toolkit/
 *.sqlite3
 *.sqlite
 .emsal_research/
+.emsal_petition/
+sample_docs.json
 
 # DeepSeek crawl scratch/debug dosyaları
 check_*.py

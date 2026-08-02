@@ -49,41 +49,44 @@ def test_server_main_registers_tools():
         from emsal_mcp.server import main
         main()
 
-    # Verify core tools are registered
+    # Verify tools are registered.  M-110 deleted every name a core facade
+    # already covered (see tool_profile.RETIRED_TOOLS) — this list only names
+    # tools that survive.
     expected_tools = [
-        "search_decisions", "get_document", "source_capabilities", "source_smoke",
-        "citation_safety", "build_input_pack", "draft_document", "export_bundle",
-        "read_udf", "write_udf", "udf_toolkit_status",
-        # M-105: install_udf_toolkit_tool removed from MCP
-        "search_local_cache",
-        # M-105: get_cache_stats, list_cached_documents removed from MCP
-        "format_legal_citation", "verify_legal_citation",
-        "search_legislation", "get_legislation_document",
-        # M-105: build_semantic_index, rebuild_search_index removed from MCP
-        "semantic_search",
-        "hybrid_search", "index_status",
+        "search_decisions", "get_document", "search_local_corpus",
+        "search_legislation", "get_legislation", "citation_check",
+        "prepare_petition", "export_document", "read_legal_file",
+        "list_sources", "research_topic", "health_check",
+        "source_smoke", "draft_document", "export_bundle",
+        "udf_toolkit_status", "index_status",
         "chamber_overview", "profile_chamber", "chamber_timeline",
         "find_similar_chambers",
     ]
     for tool_name in expected_tools:
         assert tool_name in registered_tools, f"Tool '{tool_name}' not registered"
 
+    # And the retired duplicates really are gone.
+    from emsal_mcp.tool_profile import RETIRED_TOOLS
+
+    leftovers = sorted(set(RETIRED_TOOLS) & set(registered_tools))
+    assert not leftovers, f"Retired tools still registered: {leftovers}"
+
     # Verify run was called
     mock_mcp.run.assert_called_once()
 
 
-def test_server_source_capabilities_tool():
-    """Test source_capabilities MCP tool returns expected structure."""
+def test_server_list_sources_tool():
+    """list_sources() replaces the retired source_capabilities tool."""
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
         from emsal_mcp.server import main
         main()
 
-    result = registered_tools["source_capabilities"]()
-    assert isinstance(result, list)
-    assert len(result) > 0
-    for cap in result:
+    result = registered_tools["list_sources"]()
+    assert result["ok"] is True
+    assert len(result["sources"]) > 0
+    for cap in result["sources"]:
         assert "source_id" in cap
 
 
@@ -124,40 +127,41 @@ def test_server_udf_toolkit_status_tool():
     assert "ok" in result
 
 
-def test_server_get_legislation_types_tool():
-    """Test get_legislation_types MCP tool returns expected structure."""
+def test_server_legislation_types_via_list_sources():
+    """list_sources(detail="legislation_types") replaces get_legislation_types."""
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
         from emsal_mcp.server import main
         main()
 
-    result = registered_tools["get_legislation_types"]()
-    assert isinstance(result, list)
-    assert len(result) > 0
+    result = registered_tools["list_sources"](detail="legislation_types")
+    assert result["ok"] is True
+    assert len(result["types"]) > 0
 
 
-def test_server_legislation_source_status_tool():
-    """Test legislation_source_status MCP tool returns expected structure."""
+def test_server_health_check_tool():
+    """health_check() replaces the retired legislation_source_status tool."""
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
         from emsal_mcp.server import main
         main()
 
-    result = registered_tools["legislation_source_status"]()
+    result = registered_tools["health_check"]()
     assert "ok" in result
 
 
-def test_server_format_legislation_citation_tool():
-    """Test format_legislation_citation MCP tool returns expected structure."""
+def test_server_format_legislation_citation_via_citation_check():
+    """citation_check(action="format_legislation") replaces the retired tool."""
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
         from emsal_mcp.server import main
         main()
 
-    result = registered_tools["format_legislation_citation"](
+    result = registered_tools["citation_check"](
+        action="format_legislation",
         document={"title": "Test Kanun", "legislation_no": "7456", "gazette_date": "2023-07-15"},
         style="full",
     )

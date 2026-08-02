@@ -176,21 +176,66 @@ class TestCoreProfile:
 
 
 class TestFullProfile:
-    """Full profile: all tools (>= 82, M-105 post-cut snapshot)."""
+    """Full profile: exactly 50 tools (M-110 post-consolidation snapshot)."""
 
-    FULL_TOOL_COUNT_SNAPSHOT = 82
+    FULL_TOOL_COUNT_SNAPSHOT = 50
 
-    def test_full_profile_count_meets_snapshot(self) -> None:
+    def test_full_profile_count_matches_snapshot(self) -> None:
+        # Exact, not >=.  A `>=` bound let the surface drift from 82 to 83
+        # unnoticed; growth has to be a deliberate snapshot bump.
         tools = _capture_tools("full")
-        assert len(tools) >= self.FULL_TOOL_COUNT_SNAPSHOT, (
-            f"Expected >= {self.FULL_TOOL_COUNT_SNAPSHOT} tools in full profile, "
-            f"got {len(tools)}"
+        assert len(tools) == self.FULL_TOOL_COUNT_SNAPSHOT, (
+            f"Expected exactly {self.FULL_TOOL_COUNT_SNAPSHOT} tools in full "
+            f"profile, got {len(tools)}.  If this is intentional, update the "
+            f"snapshot AND docs/MCP_CONTRACTS.md."
         )
 
     def test_full_profile_includes_all_core_tools(self) -> None:
         tools = _capture_tools("full")
         for name in CORE_TOOLS:
             assert name in tools, f"Core tool '{name}' missing from full profile"
+
+
+class TestProfileTableDrift:
+    """``tool_profile.py`` must describe the tools ``server.py`` registers."""
+
+    def test_category_tools_match_registered_tools(self) -> None:
+        from emsal_mcp.tool_profile import CATEGORY_TOOLS, CORE_TOOLS as _CORE
+
+        registered = set(_capture_tools("full"))
+        declared = set(_CORE)
+        for names in CATEGORY_TOOLS.values():
+            declared.update(names)
+        assert declared == registered, (
+            f"tool_profile.py out of sync with server.py.\n"
+            f"  Declared but not registered: {sorted(declared - registered)}\n"
+            f"  Registered but undeclared:   {sorted(registered - declared)}"
+        )
+
+    def test_core_tools_lists_agree(self) -> None:
+        from emsal_mcp.tool_profile import CORE_TOOLS as _CORE
+
+        assert sorted(_CORE) == sorted(CORE_TOOLS)
+
+    def test_retired_tools_are_actually_gone(self) -> None:
+        from emsal_mcp.tool_profile import RETIRED_TOOLS
+
+        registered = set(_capture_tools("full"))
+        still_there = sorted(set(RETIRED_TOOLS) & registered)
+        assert not still_there, (
+            f"Retired tools are still registered: {still_there}"
+        )
+
+    def test_every_retired_tool_points_at_a_live_tool(self) -> None:
+        from emsal_mcp.tool_profile import RETIRED_TOOLS
+
+        registered = set(_capture_tools("full"))
+        for old, replacement in RETIRED_TOOLS.items():
+            target = replacement.split("(")[0]
+            assert target in registered, (
+                f"RETIRED_TOOLS[{old!r}] points at {target!r}, which is not a "
+                f"registered tool"
+            )
 
 
 class TestProfileEnvVar:

@@ -1,8 +1,13 @@
-"""Tests for semantic search as discovery tool (Yargı-MCP parity Görev 7).
+"""Tests for local-corpus search as a discovery tool (Yargı-MCP parity Görev 7).
 
 - related_quotes attached to results
 - corpus_coverage metadata
 - discovery (not forbidden) positioning
+
+M-110: these used to exercise ``emsal_mcp.facades``, a parallel module that
+``server.py`` never imported.  The features were implemented there and nowhere
+else, so the tests passed while the live MCP tool returned neither field.  They
+now run against the tool the server actually registers.
 """
 from __future__ import annotations
 
@@ -11,9 +16,15 @@ import pytest
 pytestmark = [pytest.mark.integration]
 
 
+def _search_local_corpus():
+    """Return the live ``search_local_corpus`` tool from server.main()."""
+    from tests.conftest import capture_registered_tools
+
+    return capture_registered_tools("core")["search_local_corpus"]
+
+
 class TestEnrichRelatedQuotes:
-    """Exercise the _enrich logic indirectly via the facade with lexical mode
-    over a tiny pre-populated cache."""
+    """Exercise the enrichment logic via lexical mode over a tiny cache."""
 
     def test_related_quotes_attached(self, tmp_path, monkeypatch):
         # Point the cache to an isolated DB and populate it with one doc.
@@ -33,8 +44,7 @@ class TestEnrichRelatedQuotes:
         cache.store_document(doc)
         cache.close()
 
-        from emsal_mcp.facades import search_local_corpus
-        result = search_local_corpus(
+        result = _search_local_corpus()(
             query="kıdem tazminatı hakkı",
             mode="lexical",
             limit=5,
@@ -61,16 +71,14 @@ class TestEnrichRelatedQuotes:
             ))
         cache.close()
 
-        from emsal_mcp.facades import search_local_corpus
-        result = search_local_corpus(query="kıdem", mode="lexical", limit=5)
+        result = _search_local_corpus()(query="kıdem", mode="lexical", limit=5)
         # coverage should be populated from min/max decision_date
         assert result.get("corpus_coverage") is not None
         assert "2023" in result["corpus_coverage"]
 
     def test_discovery_docstring_no_forbidden(self):
-        """The docstrings no longer forbid semantic search as research."""
-        from emsal_mcp.facades import search_local_corpus
-        ds = search_local_corpus.__doc__ or ""
+        """The docstrings no longer forbid local search as research."""
+        ds = _search_local_corpus().__doc__ or ""
         # positioning is now "DISCOVERY", not "NOT A RESEARCH TOOL"
         assert "DISCOVERY" in ds.upper()
         assert "⛔" not in ds

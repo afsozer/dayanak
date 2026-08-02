@@ -2,9 +2,10 @@
 
 Defines tool categories, profile membership, and filtering logic so that
 ``server.py`` can register only the 14-tool core surface by default (or all
-119 tools with ``EMSAL_TOOL_PROFILE=full``).
+50 tools with ``EMSAL_TOOL_PROFILE=full``).
 
-This module is pure data — no business logic, no I/O.
+This module is pure data — no business logic, no I/O.  ``tests/test_tool_surface``
+asserts it stays in sync with the ``@_tool`` registrations in ``server.py``.
 """
 
 from __future__ import annotations
@@ -41,6 +42,8 @@ CORE_TOOLS: list[str] = [
 CATEGORY_TOOLS: dict[str, list[str]] = {
     # M-105: cache_admin removed (CLI-only: emsal-mcp cache ...)
     # M-105: routing removed (search_decisions handles routing)
+    # M-110: every tool a core facade already covered was deleted outright —
+    # see RETIRED_TOOLS below for the old name → replacement mapping.
     "health_admin": [
         "circuit_breaker_status",
         "source_health",
@@ -86,8 +89,7 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
         "score_argument",
         "get_argument_strength_report",
         "draft_document",
-        "build_input_pack",
-        "prepare_drafting_input_pack",
+        "export_bundle",
     ],
     "udf_admin": [
         "udf_toolkit_status",
@@ -98,87 +100,62 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
 }
 
 # ── Extended-only tools (single-source from server.py) ──────────────────
-# These are the original server.py tools that are NOT part of the core 14.
-# Built automatically from CATEGORY_TOOLS for reverse lookups.
+# Every tool that is NOT part of the core 14.  Built from CATEGORY_TOOLS.
 
 EXTENDED_TOOLS: set[str] = set()
 for _cat_tools in CATEGORY_TOOLS.values():
     EXTENDED_TOOLS.update(_cat_tools)
 
-# Also include tools that appear in server.py but aren't in categories
-# (search_local_cache, semantic_search, hybrid_search, etc. — absorbed by
-# facades in M-98 but still present as legacy names in full profile).
-# fmt: off
-_LEGACY_ABSORBED: set[str] = {
-    "search_local_cache", "semantic_search", "hybrid_search",
-    "hybrid_search_rrf", "embedding_search",
-    "search_legislation_articles",
-    "get_legislation_document", "get_legislation_article_tree",
-    "get_legislation_gerekce",
-    "research_topic_tool",
-    "citation_safety", "format_legal_citation", "verify_legal_citation",
-    "format_legislation_citation",
-    "prepare_petition_outline", "prepare_controlled_petition_draft",
-    "prepare_docx_export", "prepare_export_package_bundle",
-    "export_plain_text", "export_to_format",
-    "read_udf", "write_udf", "extract_pdf_text",
-    "source_capabilities", "list_birim_codes", "get_legislation_types",
-    "convert_udf_to_docx_tool", "convert_udf_to_pdf_tool",
-    "convert_docx_to_udf",
-    "export_bundle",
-    "get_export_capabilities",
-    "legislation_source_status",
-}
-# fmt: on
-EXTENDED_TOOLS.update(_LEGACY_ABSORBED)
+# ── Retired tools → replacement call (M-110) ────────────────────────────
+# These names were registered as separate MCP tools until M-110.  Each was
+# fully covered by a core facade, so they were deleted rather than kept as
+# aliases.  The mapping stays here so an agent (or a human) that remembers an
+# old name gets pointed at the surviving call instead of a bare KeyError.
+# The underlying implementations still live in their modules and are still
+# reachable from the CLI — only the duplicate MCP registrations are gone.
 
-# ── Legacy absorbed tools → category mapping ─────────────────────────────
-# These tools are replaced by facades in core profile but still exist in full
-# profile.  They are assigned to the same categories as their facade wrappers.
-
-_LEGACY_CATEGORIES: dict[str, str] = {
-    # Absorbed by search_local_corpus
-    "search_local_cache": "search",
-    "semantic_search": "search",
-    "hybrid_search": "search",
-    "hybrid_search_rrf": "search",
-    "embedding_search": "search",
-    # Absorbed by search_legislation (scope="article")
-    "search_legislation_articles": "legislation",
-    # Absorbed by get_legislation
-    "get_legislation_document": "legislation",
-    "get_legislation_article_tree": "legislation",
-    "get_legislation_gerekce": "legislation",
-    "legislation_source_status": "legislation",
-    "format_legislation_citation": "legislation",
-    "get_legislation_types": "legislation",
-    # Absorbed by citation_check
-    "citation_safety": "citation",
-    "format_legal_citation": "citation",
-    "verify_legal_citation": "citation",
-    # Absorbed by prepare_petition
-    "prepare_petition_outline": "petition",
-    "prepare_controlled_petition_draft": "petition",
-    # Absorbed by export_document
-    "prepare_docx_export": "export",
-    "prepare_export_package_bundle": "export",
-    "export_plain_text": "export",
-    "export_to_format": "export",
-    "get_export_capabilities": "export",
-    # Absorbed by read_legal_file
-    "read_udf": "udf_admin",
-    "write_udf": "udf_admin",
-    "extract_pdf_text": "udf_admin",
-    "convert_udf_to_docx_tool": "udf_admin",
-    "convert_udf_to_pdf_tool": "udf_admin",
-    "convert_docx_to_udf": "udf_admin",
-    # Absorbed by list_sources
-    "source_capabilities": "discovery",
-    "list_birim_codes": "discovery",
-    # Absorbed by research_topic (renamed from research_topic_tool)
-    "research_topic_tool": "research",
-    # Renamed / absorbed
-    "export_bundle": "drafting_advanced",
+RETIRED_TOOLS: dict[str, str] = {
+    # → search_local_corpus(mode=...)
+    "search_local_cache": 'search_local_corpus(mode="lexical")',
+    "semantic_search": 'search_local_corpus(mode="semantic")',
+    "hybrid_search": 'search_local_corpus(mode="hybrid")',
+    "hybrid_search_rrf": 'search_local_corpus(mode="rrf")',
+    "embedding_search": 'search_local_corpus(mode="semantic", provider=...)',
+    # → search_legislation / get_legislation
+    "search_legislation_articles": 'search_legislation(scope="article")',
+    "get_legislation_document": 'get_legislation(part="document")',
+    "get_legislation_article_tree": 'get_legislation(part="article_tree")',
+    "get_legislation_gerekce": 'get_legislation(part="gerekce")',
+    # → citation_check(action=...)
+    "verify_legal_citation": 'citation_check(action="verify")',
+    "format_legal_citation": 'citation_check(action="format")',
+    "format_legislation_citation": 'citation_check(action="format_legislation")',
+    "citation_safety": 'citation_check(action="safety")',
+    # → prepare_petition(step=...)
+    "build_input_pack": 'prepare_petition(step="input_pack")',
+    "prepare_drafting_input_pack": 'prepare_petition(step="input_pack")',
+    "prepare_petition_outline": 'prepare_petition(step="outline")',
+    "prepare_controlled_petition_draft": 'prepare_petition(step="controlled_draft")',
+    # → export_document(format=...)
+    "get_export_capabilities": 'export_document(format="capabilities")',
+    "prepare_docx_export": 'export_document(format="docx")',
+    "export_to_format": 'export_document(format="pdf")',
+    "export_plain_text": 'export_document(format="plain")',
+    "prepare_export_package_bundle": 'export_document(format="bundle")',
+    "write_udf": 'export_document(format="udf", text=...)',
+    "convert_docx_to_udf": 'export_document(format="udf", docx_path=...)',
+    "convert_udf_to_docx_tool": 'export_document(format="docx", udf_path=...)',
+    "convert_udf_to_pdf_tool": 'export_document(format="pdf", udf_path=...)',
+    # → read_legal_file(path=...)
+    "read_udf": "read_legal_file(path=...udf)",
+    "extract_pdf_text": "read_legal_file(path=...pdf)",
+    # → list_sources
+    "source_capabilities": "list_sources()",
+    "list_birim_codes": 'list_sources(detail="birim_codes")',
+    "get_legislation_types": 'list_sources(detail="legislation_types")',
+    # → health_check / research_topic
+    "legislation_source_status": "health_check()",
+    "research_topic_tool": "research_topic()",
 }
 
 # ── Per-tool → category reverse mapping ──────────────────────────────────
@@ -187,9 +164,6 @@ TOOL_CATEGORY: dict[str, str] = {}
 for _cat, _names in CATEGORY_TOOLS.items():
     for _name in _names:
         TOOL_CATEGORY[_name] = _cat
-
-# Add legacy absorbed categories
-TOOL_CATEGORY.update(_LEGACY_CATEGORIES)
 
 # Core facade tools don't belong to any extended category.
 for _name in CORE_TOOLS:
