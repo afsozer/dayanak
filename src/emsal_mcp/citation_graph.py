@@ -10,7 +10,9 @@ from __future__ import annotations
 import heapq
 import json
 import logging
+import os
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .cache import Cache
@@ -61,6 +63,19 @@ _GRAPH_BUILT_BUT_EMPTY_WARNING = (
     "boş (0 kayıt) — o çalışma hiç atıf eşleştirememiş. Aşağıdaki sonuç 'atıf "
     "bulunamadı' değil, 'graf kullanılabilir durumda değil' anlamına gelir."
 )
+_GRAPH_SPARSE_WARNING = (
+    "Atıf grafı kurulu ama korpusun neredeyse tamamını kapsamıyor: {edges} kenar, "
+    "{docs} belge ({pct:.2f}%), toplam {corpus} belge. Bu araçtan gelen 'atıf yok' "
+    "cevabı, kararın hiç atıf almadığı ANLAMINA GELMEZ — büyük olasılıkla atıf "
+    "yapılan karar yerel korpusta yok. Atıf iddiasında bulunmadan önce "
+    "search_decisions ile canlı kaynakta doğrulayın."
+)
+_GRAPH_SPARSE_RECOMMENDATION = (
+    "Bu graf üzerinden 'şu karar hiç atıf almamış' sonucuna VARMAYIN; "
+    "kapsam yetersiz."
+)
+# Below this share of the corpus the graph cannot support a negative answer.
+_GRAPH_SPARSE_RATIO = 0.01
 _GRAPH_NEVER_BUILT_RECOMMENDATION = (
     "build_citation_graph() çağırarak atıf grafını oluşturun."
 )
@@ -104,6 +119,28 @@ def _graph_build_state(cache: Cache) -> tuple[int, list[str], list[str]]:
             if last_built else _GRAPH_NEVER_BUILT_WARNING
         )
         return 0, [warning], [_GRAPH_NEVER_BUILT_RECOMMENDATION]
+
+    # A non-empty graph is not automatically a usable one.  After removing the
+    # rules that matched on a court name or a bare karar number, a full build
+    # over 287k documents left ~2 verifiable edges: real citations mostly point
+    # at decisions the corpus does not contain.  Without this warning a caller
+    # reads "no citing documents" as "never cited", which is the same silent
+    # zero the empty-graph warnings above exist to prevent.
+    docs_in_graph = cache.db.execute(
+        "SELECT COUNT(*) FROM ("
+        "  SELECT citing_doc_id AS d FROM citation_edges "
+        "  UNION SELECT cited_doc_id FROM citation_edges)"
+    ).fetchone()[0]
+    total_docs = cache.db.execute(
+        "SELECT COUNT(*) FROM documents_v2"
+    ).fetchone()[0]
+    if total_docs and docs_in_graph / total_docs < _GRAPH_SPARSE_RATIO:
+        return total_edges, [
+            _GRAPH_SPARSE_WARNING.format(
+                edges=total_edges, docs=docs_in_graph, corpus=total_docs,
+                pct=100 * docs_in_graph / total_docs,
+            )
+        ], [_GRAPH_SPARSE_RECOMMENDATION]
     return total_edges, [], []
 
 
@@ -142,13 +179,37 @@ def _match_exact_esas_karar(
     return True
 
 
+def _normalize_chamber(value: Any) -> str | None:
+    """Lowercase, whitespace-collapsed chamber name, or None."""
+    if not value:
+        return None
+    text = " ".join(str(value).split()).lower()
+    return text or None
+
+
 def _match_karar_only(candidate: CitationCandidate, doc: dict[str, Any]) -> bool:
-    """Medium-confidence match: karar_no matches (esas may differ)."""
+    """Medium-confidence match: karar_no matches AND the chamber matches.
+
+    The chamber requirement is not optional.  Turkish karar numbers restart
+    per chamber each year, so "2026/505" exists in *every* daire: matching on
+    the number alone linked one decision to one unrelated decision per
+    chamber.  On the real corpus 37 of 56 such edges joined different
+    chambers, and several came from the extractor reading a document's OWN
+    esas number as a cited karar number.
+
+    A candidate with no chamber is not evidence — return False rather than
+    falling back to the number alone.
+    """
     c_karar = _normalize_no(candidate.karar_no)
     d_karar = _normalize_no(doc.get("karar_no"))
-    if not c_karar or not d_karar:
+    if not c_karar or not d_karar or c_karar != d_karar:
         return False
-    return c_karar == d_karar
+
+    c_chamber = _normalize_chamber(candidate.chamber)
+    d_chamber = _normalize_chamber(doc.get("chamber"))
+    if not c_chamber or not d_chamber:
+        return False
+    return c_chamber == d_chamber
 
 
 def _match_court_date(
@@ -178,28 +239,38 @@ def _match_court_date(
     return False
 
 
-def _match_title_keyword(candidate: CitationCandidate, doc: dict[str, Any]) -> bool:
-    """Low-confidence match: title keyword overlap."""
-    title = doc.get("title") or ""
-    if not title or not candidate.court:
-        return False
-    # Simple check: court name appears in title
-    return candidate.court.lower() in title.lower()
+# REMOVED: _match_title_keyword / the "title_fuzzy" rule.
+#
+# It returned True when the candidate's court name appeared anywhere in the
+# target document's title — i.e. it asserted a citation whenever two documents
+# were merely from the same court.  On the real corpus that produced
+# 5,796,749 of 5,796,807 edges (99.999%), with single documents "cited" by
+# 143,769 others, while the number-based rules produced 58 edges total.
+#
+# This is not a threshold to tune: the rule carries no information about
+# whether one decision actually cites another, and a graph made of it answers
+# "does A cite B?" with a confident yes for almost any pair.  For a tool whose
+# whole point is not fabricating citations, that is the worst possible output.
+# Removed rather than down-weighted.  If title evidence is ever revisited it
+# needs the *cited decision's own identifiers* in the title, not the court name.
 
 
 def _classify_match(
     candidate: CitationCandidate,
     doc: dict[str, Any],
 ) -> tuple[str, str] | None:
-    """Try matching strategies in priority order. Returns (confidence, match_type) or None."""
+    """Try matching strategies in priority order. Returns (confidence, match_type) or None.
+
+    Every surviving rule keys on the cited decision's OWN identifiers
+    (esas/karar number, or court+date).  A rule that can fire on generic
+    boilerplate does not belong here — see the note above.
+    """
     if _match_exact_esas_karar(candidate, doc):
         return ("high", "exact_esas_karar")
     if _match_karar_only(candidate, doc):
         return ("medium", "karar_no_match")
     if _match_court_date(candidate, doc):
         return ("medium", "court_date_match")
-    if _match_title_keyword(candidate, doc):
-        return ("low", "title_fuzzy")
     return None
 
 
@@ -442,6 +513,30 @@ def _save_build_state(cache: Cache, **fields: Any) -> None:
     cache.db.commit()
 
 
+def _checkpoint_age_seconds(updated_at: Any) -> float | None:
+    """Seconds since *updated_at*, or None if it cannot be read as an age.
+
+    ``_save_build_state`` writes ``time.strftime(...)`` — LOCAL time, no
+    timezone suffix — so a naive value is compared against local now.  Reading
+    it as UTC put the checkpoint in the future here (UTC+3) and produced a
+    negative age, which silently disabled the staleness check.
+
+    A negative age means the clock moved or the format changed; return None
+    ("cannot tell") rather than a number the caller would treat as fresh.
+    """
+    if not updated_at:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(updated_at))
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        age = (datetime.now() - ts).total_seconds()
+    else:
+        age = (datetime.now(timezone.utc) - ts).total_seconds()
+    return age if age >= 0 else None
+
+
 def get_citation_graph_build_progress(cache: Cache | None = None) -> dict[str, Any]:
     """Report progress of a resumable build_citation_graph(resume=True) run.
 
@@ -468,7 +563,25 @@ def get_citation_graph_build_progress(cache: Cache | None = None) -> dict[str, A
         percent = None
         if state.get("target_docs"):
             percent = round(100 * state["docs_processed"] / state["target_docs"], 1)
-        return {"ok": True, **state, "percent_complete": percent}
+        result = {"ok": True, **state, "percent_complete": percent}
+
+        # A build that is killed (or dies on a lock) never gets to write a
+        # terminal status, so the checkpoint keeps saying "running" forever.
+        # Reading that as "still working" cost us a build we thought was live.
+        # Treat a checkpoint that has not advanced in a long time as stalled.
+        if state.get("status") == "running":
+            stale_after = int(os.environ.get("EMSAL_GRAPH_STALE_SECONDS", "600"))
+            age = _checkpoint_age_seconds(state.get("updated_at"))
+            if age is not None and age > stale_after:
+                result["status"] = "stalled"
+                result["stalled_for_seconds"] = int(age)
+                result["warnings"] = [
+                    f"Checkpoint {int(age)} saniyedir ilerlemedi ({state.get('updated_at')}). "
+                    f"Build muhtemelen öldü; 'running' değeri son yazılan durumdur, "
+                    f"canlı olduğunun kanıtı DEĞİLDİR. "
+                    f"build_citation_graph(resume=True) ile kaldığı yerden devam ettirin."
+                ]
+        return result
     except Exception as exc:
         return build_error("GRAPH_PROGRESS_FAILED", f"İlerleme okunamadı: {exc}")
     finally:

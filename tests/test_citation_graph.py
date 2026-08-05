@@ -1150,11 +1150,12 @@ class TestIndexMatchesSqlReference:
             assert new == old, (
                 f"only in old: {old - new}\nonly in new: {new - old}"
             )
-            # Sanity: the fixture actually exercises all four match types,
-            # not just the trivial empty-set case.
+            # Sanity: the fixture actually exercises every match type, not
+            # just the trivial empty-set case.  ("title_fuzzy" was removed —
+            # see TestNoCourtNameOnlyMatching.)
             match_types = {e[5] for e in new}
             assert match_types >= {
-                "exact_esas_karar", "karar_no_match", "court_date_match", "title_fuzzy",
+                "exact_esas_karar", "karar_no_match", "court_date_match",
             }
             # Self-citation must not appear on either side.
             assert not any(e[0] == e[2] and e[1] == e[3] for e in new)
@@ -1360,3 +1361,336 @@ class TestResumableBuild:
         from emsal_mcp import citation_graph
         src = inspect.getsource(citation_graph._build_citation_graph_resumable)
         assert "fetchall()" not in src
+
+
+class TestStalledBuildDetection:
+    """A killed build leaves status='running' forever — report it as stalled.
+
+    Cost this for real: a full-corpus build died on a lock at 11.9% while
+    ``graph progress`` kept answering ``"status": "running"``, so the run
+    looked alive for as long as nobody read the exit payload.
+    """
+
+    def test_fresh_checkpoint_still_reads_as_running(self):
+        from emsal_mcp.citation_graph import (
+            _ensure_build_state_table,
+            _save_build_state,
+        )
+
+        cache, path = _temp_cache()
+        try:
+            _ensure_build_state_table(cache)
+            _save_build_state(cache, docs_processed=10, target_docs=100)
+            result = get_citation_graph_build_progress(cache=cache)
+            assert result["status"] == "running"
+            assert "stalled_for_seconds" not in result
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_old_checkpoint_reads_as_stalled(self, monkeypatch):
+        import time as _time
+
+        from emsal_mcp.citation_graph import (
+            _ensure_build_state_table,
+            _save_build_state,
+        )
+
+        cache, path = _temp_cache()
+        try:
+            _ensure_build_state_table(cache)
+            # Write a checkpoint stamped an hour ago, exactly as a build that
+            # was killed an hour ago would have left it.
+            old = _time.strftime(
+                "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() - 3600)
+            )
+            monkeypatch.setattr(
+                _time, "strftime", lambda *a, **kw: old,
+            )
+            _save_build_state(cache, docs_processed=10, target_docs=100)
+            monkeypatch.undo()
+
+            result = get_citation_graph_build_progress(cache=cache)
+            assert result["status"] == "stalled"
+            assert result["stalled_for_seconds"] >= 3000
+            assert result["warnings"]
+            # The payload must still carry the checkpoint so a caller can
+            # resume from it rather than restarting.
+            assert result["docs_processed"] == 10
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_completed_build_is_never_relabelled_stalled(self, monkeypatch):
+        import time as _time
+
+        from emsal_mcp.citation_graph import (
+            _ensure_build_state_table,
+            _save_build_state,
+        )
+
+        cache, path = _temp_cache()
+        try:
+            _ensure_build_state_table(cache)
+            old = _time.strftime(
+                "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() - 3600)
+            )
+            monkeypatch.setattr(_time, "strftime", lambda *a, **kw: old)
+            _save_build_state(cache, docs_processed=100, target_docs=100,
+                              status="completed")
+            monkeypatch.undo()
+
+            result = get_citation_graph_build_progress(cache=cache)
+            assert result["status"] == "completed"
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+
+class TestCheckpointAge:
+    """``updated_at`` is written in LOCAL time; reading it as UTC produced a
+    negative age here (UTC+3) and silently disabled the staleness check."""
+
+    def test_local_naive_timestamp_gives_positive_age(self):
+        import time as _time
+
+        from emsal_mcp.citation_graph import _checkpoint_age_seconds
+
+        stamp = _time.strftime(
+            "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() - 120)
+        )
+        age = _checkpoint_age_seconds(stamp)
+        assert age is not None
+        assert 60 < age < 300
+
+    def test_future_timestamp_returns_none_not_a_fresh_looking_number(self):
+        import time as _time
+
+        from emsal_mcp.citation_graph import _checkpoint_age_seconds
+
+        stamp = _time.strftime(
+            "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() + 3600)
+        )
+        assert _checkpoint_age_seconds(stamp) is None
+
+    def test_unparseable_timestamp_returns_none(self):
+        from emsal_mcp.citation_graph import _checkpoint_age_seconds
+
+        assert _checkpoint_age_seconds("bir zaman") is None
+        assert _checkpoint_age_seconds(None) is None
+
+
+class TestBusyTimeout:
+    """SQLite's default busy timeout is 0: the first contended write raises
+    'database is locked' instead of waiting.  That killed a 40-minute build."""
+
+    def test_cache_sets_a_nonzero_busy_timeout(self):
+        cache, path = _temp_cache()
+        try:
+            timeout = cache.db.execute("PRAGMA busy_timeout").fetchone()[0]
+            assert timeout >= 10_000, (
+                f"busy_timeout is {timeout}ms — a competing writer will kill "
+                f"long builds instead of making them wait"
+            )
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+
+class TestNoCourtNameOnlyMatching:
+    """Two documents sharing a court is not a citation.
+
+    The removed ``title_fuzzy`` rule fired whenever the candidate's court name
+    appeared in the target's title.  On the real corpus that was 5,796,749 of
+    5,796,807 edges, with single documents "cited" by 143,769 others, while
+    every number-based rule combined produced 58.  A citation graph that
+    answers "does A cite B?" with yes for nearly any pair is worse than none.
+    """
+
+    def test_matching_court_alone_is_not_an_edge(self):
+        from emsal_mcp.citation import CitationCandidate
+        from emsal_mcp.citation_graph import _classify_match
+
+        cand = CitationCandidate(
+            raw_text="Yargıtay 9. Hukuk Dairesi kararı",
+            court="Yargıtay 9. Hukuk Dairesi",
+            esas_no=None, karar_no=None, date=None,
+        )
+        doc = {
+            "document_id": "d2", "source": "bedesten",
+            "title": "Yargıtay 9. Hukuk Dairesi Kararı",
+            "court": "Yargıtay 9. Hukuk Dairesi",
+            "esas_no": None, "karar_no": None, "decision_date": None,
+        }
+        assert _classify_match(cand, doc) is None
+
+    def test_title_fuzzy_match_type_can_no_longer_be_produced(self):
+        import inspect
+
+        from emsal_mcp import citation_graph
+
+        src = inspect.getsource(citation_graph._classify_match)
+        assert "title_fuzzy" not in src
+        assert not hasattr(citation_graph, "_match_title_keyword")
+
+    def test_number_match_still_produces_an_edge(self):
+        from emsal_mcp.citation import CitationCandidate
+        from emsal_mcp.citation_graph import _classify_match
+
+        cand = CitationCandidate(
+            raw_text="Yargıtay 9. HD 2023/123 E. 2023/456 K.",
+            court="Yargıtay 9. Hukuk Dairesi",
+            esas_no="2023/123", karar_no="2023/456", date=None,
+        )
+        doc = {
+            "document_id": "d2", "source": "bedesten",
+            "title": "Karar", "court": "Yargıtay 9. Hukuk Dairesi",
+            "esas_no": "2023/123", "karar_no": "2023/456",
+            "decision_date": None,
+        }
+        result = _classify_match(cand, doc)
+        assert result == ("high", "exact_esas_karar")
+
+    def test_no_rule_fires_on_identifier_free_boilerplate(self):
+        """Generic procedural wording must not link to anything."""
+        from emsal_mcp.citation import CitationCandidate
+        from emsal_mcp.citation_graph import _classify_match
+
+        cand = CitationCandidate(
+            raw_text="Bölge Adliye Mahkemesi kararı, Yargıtayca duruşma "
+                     "istemli olarak incelendi",
+            court="Yargıtay", esas_no=None, karar_no=None, date=None,
+        )
+        for title in ("Yargıtay Kararı", "Yargıtay 4. HD", "YARGITAY"):
+            doc = {
+                "document_id": "x", "source": "bedesten", "title": title,
+                "court": "Yargıtay", "esas_no": None, "karar_no": None,
+                "decision_date": None,
+            }
+            assert _classify_match(cand, doc) is None, title
+
+
+class TestKararNoRequiresChamber:
+    """Karar numbers restart per chamber, so the number alone is not evidence.
+
+    On the real corpus, matching karar_no alone produced 56 edges of which 37
+    joined *different* chambers — several because the extractor read a
+    document's own esas number as a cited karar number.
+    """
+
+    def _cand(self, **kw):
+        from emsal_mcp.citation import CitationCandidate
+
+        base = dict(
+            raw_text="K. 2026/505", court="Yargıtay", chamber=None,
+            esas_no=None, karar_no="2026/505", date=None,
+        )
+        base.update(kw)
+        return CitationCandidate(**base)
+
+    def _doc(self, **kw):
+        base = {
+            "document_id": "d2", "source": "bedesten", "title": "Karar",
+            "court": "Yargıtay Kararı", "chamber": None,
+            "esas_no": "2025/7080", "karar_no": "2026/505",
+            "decision_date": None,
+        }
+        base.update(kw)
+        return base
+
+    def test_same_karar_no_different_chamber_is_not_an_edge(self):
+        from emsal_mcp.citation_graph import _classify_match
+
+        result = _classify_match(
+            self._cand(chamber="12. Hukuk Dairesi"),
+            self._doc(chamber="8. Hukuk Dairesi"),
+        )
+        assert result is None
+
+    def test_same_karar_no_same_chamber_is_a_medium_edge(self):
+        from emsal_mcp.citation_graph import _classify_match
+
+        result = _classify_match(
+            self._cand(chamber="12. Hukuk Dairesi"),
+            self._doc(chamber="12. Hukuk Dairesi"),
+        )
+        assert result == ("medium", "karar_no_match")
+
+    def test_missing_chamber_on_either_side_is_not_an_edge(self):
+        from emsal_mcp.citation_graph import _classify_match
+
+        assert _classify_match(
+            self._cand(chamber=None), self._doc(chamber="12. Hukuk Dairesi")
+        ) is None
+        assert _classify_match(
+            self._cand(chamber="12. Hukuk Dairesi"), self._doc(chamber=None)
+        ) is None
+
+    def test_chamber_comparison_ignores_case_and_spacing(self):
+        from emsal_mcp.citation_graph import _classify_match
+
+        result = _classify_match(
+            self._cand(chamber="12.  HUKUK   Dairesi"),
+            self._doc(chamber="12. Hukuk Dairesi"),
+        )
+        assert result == ("medium", "karar_no_match")
+
+
+class TestSparseGraphWarning:
+    """A graph covering a sliver of the corpus cannot support 'never cited'."""
+
+    def _seed(self, cache, n_docs: int):
+        from emsal_mcp.citation_graph import _ensure_edge_table
+
+        _ensure_edge_table(cache)
+        for i in range(n_docs):
+            cache.store_document(_make_doc(
+                document_id=f"D{i}", source="s",
+                esas_no=f"2020/{i}", karar_no=f"2021/{i}",
+                full_text="metin " * 30,
+            ))
+
+    def test_sparse_graph_warns(self):
+        from emsal_mcp.citation_graph import _graph_build_state
+
+        cache, path = _temp_cache()
+        try:
+            self._seed(cache, 300)
+            cache.db.execute(
+                "INSERT INTO citation_edges (citing_doc_id, citing_source, "
+                "cited_doc_id, cited_source, confidence, match_type) "
+                "VALUES ('D0','s','D1','s','high','exact_esas_karar')"
+            )
+            cache.db.commit()
+
+            total, warnings, recs = _graph_build_state(cache)
+            assert total == 1
+            assert warnings, "1 edge over 300 docs must not look healthy"
+            assert "ANLAMINA GELMEZ" in warnings[0]
+            assert recs
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)
+
+    def test_well_covered_graph_is_warning_free(self):
+        from emsal_mcp.citation_graph import _graph_build_state
+
+        cache, path = _temp_cache()
+        try:
+            self._seed(cache, 20)
+            for i in range(0, 18, 2):
+                cache.db.execute(
+                    "INSERT INTO citation_edges (citing_doc_id, citing_source, "
+                    "cited_doc_id, cited_source, confidence, match_type) "
+                    "VALUES (?,'s',?,'s','high','exact_esas_karar')",
+                    (f"D{i}", f"D{i + 1}"),
+                )
+            cache.db.commit()
+
+            total, warnings, recs = _graph_build_state(cache)
+            assert total == 9
+            assert warnings == []
+            assert recs == []
+        finally:
+            cache.close()
+            path.unlink(missing_ok=True)

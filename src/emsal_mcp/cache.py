@@ -69,6 +69,11 @@ def _fts5_match_expr(query: str) -> str | None:
 # Schema version constant — bump when adding new migrations
 CACHE_SCHEMA_VERSION = 4
 
+# How long a write waits for a competing writer before giving up.  Override
+# with EMSAL_BUSY_TIMEOUT_MS.  Generous on purpose: the alternative is losing
+# hours of a resumable build to a lock another connection holds for a batch.
+_BUSY_TIMEOUT_MS = int(os.environ.get("EMSAL_BUSY_TIMEOUT_MS", "300000"))
+
 
 class Cache:
     # Legacy class attribute kept for backward compatibility; prefer CACHE_SCHEMA_VERSION.
@@ -80,6 +85,16 @@ class Cache:
         self.db = sqlite3.connect(self.path)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
+        # Python's sqlite3 defaults to a 5s busy timeout, which is far too
+        # short here: a resumable build holds the write lock for a whole
+        # commit batch (thousands of documents, easily minutes on a 14 GB
+        # corpus), and EVERY Cache() construction below issues DDL, so any
+        # concurrent CLI call or MCP tool call is a competing WRITER.  Five
+        # seconds cost us two full-corpus citation-graph builds, both killed
+        # with "database is locked" after ~40 minutes of work.
+        # WAL already lets readers run concurrently, so this only affects
+        # writer-vs-writer overlap, where waiting is exactly what we want.
+        self.db.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
         # M-50: in-memory query profiling (non-persistent)
         self._query_profile: dict[str, dict[str, Any]] = {}
         self._init_tables()
