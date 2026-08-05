@@ -1,6 +1,6 @@
 # docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
-> **emsal-mcp v5.0.0** — 14 core MCP tools (default) · 82 tools in full profile.
+> **emsal-mcp v5.0.0** — 14 core MCP tools (default) · 44 tools in full profile.
 > Input parameters use Python type hints; output shapes are documented per tool.
 > Source of truth for profiles/categories: `src/emsal_mcp/tool_profile.py`.
 
@@ -13,13 +13,13 @@ The server exposes two tool profiles to control which MCP tools are registered:
 <!-- drift:core-tools-start -->
 | `core` | 14 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `research_topic`, `citation_check`, `prepare_petition`, `export_document`, `read_legal_file`, `list_sources`, `legal_research_guide`, `load_extended_tools`, `health_check`. |
 <!-- drift:core-tools-end -->
-| `full` | 50 | Core + all extended categories. |
+| `full` | 44 | Core + all extended categories. |
 
 Select via the `EMSAL_TOOL_PROFILE` environment variable:
 
 ```
 EMSAL_TOOL_PROFILE=core   # default — 14 tools
-EMSAL_TOOL_PROFILE=full   # all 50 tools
+EMSAL_TOOL_PROFILE=full   # all 44 tools
 ```
 
 ### `load_extended_tools`
@@ -34,7 +34,6 @@ Dynamically loads extended tool categories into the running server (core profile
 | Category | Tools |
 |----------|-------|
 | `health_admin` | circuit_breaker_status, source_health, source_smoke, check_government_servers_health |
-| `citation_graph` | build_citation_graph, get_citation_graph, find_citing_documents, find_cited_documents, citation_graph_stats, export_citation_graph |
 | `watch` | watch_add, watch_list, watch_run, watch_remove |
 | `privacy` | privacy_scan, privacy_redact, privacy_audit |
 | `chambers` | chamber_overview, profile_chamber, chamber_timeline, find_similar_chambers |
@@ -55,6 +54,14 @@ Dynamically loads extended tool categories into the running server (core profile
 > (83 → 50). Bunlar `full` profilde bile artık kayıtlı değil. Eski ad →
 > yeni çağrı eşlemesi `emsal_mcp.tool_profile.RETIRED_TOOLS` içindedir;
 > aşağıdaki tablo da aynı bilgiyi verir.
+
+> **M-111:** Atıf grafının 6 aracı MCP yüzeyinden tamamen kaldırıldı
+> (50 → 44). Sebebi bir kod hatası değil: özellik bu korpusta çalışmıyor.
+> 287.391 belgede yalnızca 4 doğrulanabilir atıf bağlantısı kurulabildi,
+> çünkü kararların atıf yaptığı kararlar korpusta yok. Araçlar "atıf yok"
+> döndürüyordu ve bu "atıf almamış" diye okunuyordu. Modül ve CLI duruyor
+> (`emsal-mcp graph ...`); korpus büyürse yeniden değerlendirilir.
+> Eşleme: `emsal_mcp.tool_profile.REMOVED_TOOLS`.
 
 ### Emekliye ayrılan araçlar (M-110)
 

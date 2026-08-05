@@ -1,6 +1,6 @@
 # Emsal-mcp
 
-> **v5.0.0** — 14 core + 36 extended MCP tools (50 total) · 140 CLI commands · 67 test files · 42 source modules
+> **v5.0.0** — 14 core + 30 extended MCP tools (44 total) · 140 CLI commands · 67 test files · 42 source modules
 >
 > [![CI](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml)
 
@@ -66,8 +66,9 @@ emsal-mcp-server
 | **Chamber Profiling** | v0.12 | 4 | Daire analizi, profil, zaman çizelgesi, benzerlik |
 | **Release Management** | v0.13 | 4 | Komuta merkezi, sürüm, v1 hazırlık, özet |
 
-**Toplam:** 50 MCP tool (14 core + 36 extended) · 140 CLI komutu · 67 test dosyası
+**Toplam:** 44 MCP tool (14 core + 30 extended) · 140 CLI komutu · 67 test dosyası
 
 > Varsayılan profil `core` (14 araç). Geri kalanı `load_extended_tools` ile
 > kategori kategori yüklenir. Bir core facade'ın zaten kapsadığı 33 eski araç
-> M-110'da silindi — eşleme için `docs/MCP_CONTRACTS.md`.
+> M-110'da, atıf grafının 6 aracı M-111'de silindi — eşleme için
+> `docs/MCP_CONTRACTS.md`.

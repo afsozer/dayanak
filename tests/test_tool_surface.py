@@ -132,18 +132,18 @@ class TestCoreProfile:
         tools = _capture_tools("core")
         before = len(tools)
 
-        result = tools["load_extended_tools"](["citation_graph"])
+        result = tools["load_extended_tools"](["chambers"])
 
         assert result["ok"] is True
         assert len(tools) > before
-        assert "build_citation_graph" in tools
-        assert callable(tools["build_citation_graph"])
+        assert "chamber_overview" in tools
+        assert callable(tools["chamber_overview"])
         assert result["loaded_tools"]
 
-        second = tools["load_extended_tools"](["citation_graph"])
+        second = tools["load_extended_tools"](["chambers"])
 
         assert second["ok"] is True
-        assert "build_citation_graph" in second["already_loaded"]
+        assert "chamber_overview" in second["already_loaded"]
 
     def test_load_extended_tools_invalid_category_is_structured_error(self) -> None:
         tools = _capture_tools("core")
@@ -161,24 +161,24 @@ class TestCoreProfile:
 
         def failing_tool(*args, **kwargs):
             def decorator(fn):
-                if getattr(fn, "__name__", "") == "build_citation_graph":
+                if getattr(fn, "__name__", "") == "chamber_overview":
                     raise RuntimeError("registration failed")
                 return original_tool(*args, **kwargs)(fn)
             return decorator
 
         mcp.tool = failing_tool
 
-        result = tools["load_extended_tools"](["citation_graph"])
+        result = tools["load_extended_tools"](["chambers"])
 
         assert result["ok"] is False
-        assert {"tool": "build_citation_graph", "error": "registration failed"} in result["errors"]
-        assert "build_citation_graph" not in result["loaded_tools"]
+        assert {"tool": "chamber_overview", "error": "registration failed"} in result["errors"]
+        assert "chamber_overview" not in result["loaded_tools"]
 
 
 class TestFullProfile:
-    """Full profile: exactly 50 tools (M-110 post-consolidation snapshot)."""
+    """Full profile: exactly 44 tools (M-111 post-consolidation snapshot)."""
 
-    FULL_TOOL_COUNT_SNAPSHOT = 50
+    FULL_TOOL_COUNT_SNAPSHOT = 44
 
     def test_full_profile_count_matches_snapshot(self) -> None:
         # Exact, not >=.  A `>=` bound let the surface drift from 82 to 83
@@ -225,6 +225,27 @@ class TestProfileTableDrift:
         assert not still_there, (
             f"Retired tools are still registered: {still_there}"
         )
+
+    def test_removed_tools_are_not_registered(self) -> None:
+        from emsal_mcp.tool_profile import REMOVED_TOOLS
+
+        registered = set(_capture_tools("full"))
+        still_there = sorted(set(REMOVED_TOOLS) & registered)
+        assert not still_there, (
+            f"Tools removed with no replacement are still registered: "
+            f"{still_there}"
+        )
+
+    def test_removed_tools_explain_themselves(self) -> None:
+        from emsal_mcp.tool_profile import REMOVED_TOOLS, RETIRED_TOOLS
+
+        # A removed tool has no facade, so the note must say what to do
+        # instead — otherwise the name just vanishes with no trail.
+        for name, note in REMOVED_TOOLS.items():
+            assert len(note) > 40, name
+            assert name not in RETIRED_TOOLS, (
+                f"{name} is in both RETIRED_TOOLS and REMOVED_TOOLS"
+            )
 
     def test_every_retired_tool_points_at_a_live_tool(self) -> None:
         from emsal_mcp.tool_profile import RETIRED_TOOLS

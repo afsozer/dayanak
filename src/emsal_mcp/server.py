@@ -64,14 +64,6 @@ def main() -> None:
         get_chamber_overview as get_chamber_overview_impl,
         profile_chamber as profile_chamber_impl,
     )
-    from .citation_graph import (
-        build_citation_graph as build_citation_graph_impl,
-        export_graph as export_graph_impl,
-        find_cited_documents as find_cited_documents_impl,
-        find_citing_documents as find_citing_documents_impl,
-        get_citation_graph as get_citation_graph_impl,
-        get_citation_graph_stats as get_citation_graph_stats_impl,
-    )
     from .privacy import (
         scan_pii as scan_pii_impl,
         redact_pii as redact_pii_impl,
@@ -171,12 +163,6 @@ def main() -> None:
         "source_smoke":               "extended",
         "check_government_servers_health": "extended",
         # ── Extended: citation_graph ────────────────────────────────────
-        "build_citation_graph":       "extended",
-        "get_citation_graph":         "extended",
-        "find_citing_documents":      "extended",
-        "find_cited_documents":       "extended",
-        "citation_graph_stats":       "extended",
-        "export_citation_graph":      "extended",
         # ── Extended: dedup ─────────────────────────────────────────────
         # M-105: dedup tools removed from MCP (corpus_builder handles dedup)
         # ── Extended: watch ─────────────────────────────────────────────
@@ -246,12 +232,6 @@ def main() -> None:
         # M-105: reset_circuit, error_catalog, active_requests_count removed
         "source_smoke":                 "health_admin",
         "check_government_servers_health": "health_admin",
-        "build_citation_graph":         "citation_graph",
-        "get_citation_graph":           "citation_graph",
-        "find_citing_documents":        "citation_graph",
-        "find_cited_documents":         "citation_graph",
-        "citation_graph_stats":         "citation_graph",
-        "export_citation_graph":        "citation_graph",
         # M-105: dedup tools removed from MCP surface
         "watch_add":                    "watch",
         "watch_list":                   "watch",
@@ -1195,155 +1175,11 @@ def main() -> None:
 
     # ── Citation Graph v0.14 MCP tools ────────────────────────────────────
 
-    @_tool
-    def build_citation_graph(limit_docs: int = 100) -> dict:
-        """Build citation graph from cached documents.
 
-        Extracts court decision references, matches against cached documents,
-        and stores verified edges.  Never fabricates — only detectable,
-        verifiable references are graphed.
 
-        Args:
-            limit_docs: Maximum documents to process.
 
-        Returns:
-            Dict with ok, edges_created, docs_processed, citations_found,
-            matches_found, confidence_distribution, warnings.
-        """
-        return build_citation_graph_impl(limit_docs=limit_docs)
 
-    @_tool
-    def get_citation_graph(
-        document_id: str,
-        source: str,
-        direction: str = "both",
-        max_depth: int = 1,
-    ) -> dict:
-        """Get citation relationships for a document.
 
-        Args:
-            document_id: The document ID.
-            source: The source identifier.
-            direction: 'citing' (docs that cite this), 'cited' (docs this cites),
-                       or 'both'.
-            max_depth: Traversal depth (1 = direct only).
-
-        Returns:
-            Dict with ok, document, citing, cited_by, total_edges, warnings,
-            recommended_next_steps. warnings/recommended_next_steps are only
-            populated when the citation graph has never been built
-            (citation_edges table is empty overall) — naming
-            build_citation_graph() as the next step. A document that simply
-            has no citations in an already-built graph gets empty warnings.
-        """
-        return get_citation_graph_impl(
-            document_id=document_id,
-            source=source,
-            direction=direction,
-            max_depth=max_depth,
-        )
-
-    @_tool
-    def find_citing_documents(
-        document_id: str,
-        source: str,
-        limit: int = 20,
-    ) -> dict:
-        """Find documents that cite the given document.
-
-        Args:
-            document_id: The cited document ID.
-            source: The cited document source.
-            limit: Maximum results.
-
-        Returns:
-            Dict with ok, document, citing_documents list, warnings,
-            recommended_next_steps. warnings/recommended_next_steps are only
-            populated when the citation graph has never been built
-            (citation_edges table is empty overall) — naming
-            build_citation_graph() as the next step. A document that simply
-            has no citing documents in an already-built graph gets empty
-            warnings.
-        """
-        return find_citing_documents_impl(
-            document_id=document_id,
-            source=source,
-            limit=limit,
-        )
-
-    @_tool
-    def find_cited_documents(
-        document_id: str,
-        source: str,
-        limit: int = 20,
-    ) -> dict:
-        """Find documents that the given document cites.
-
-        Args:
-            document_id: The citing document ID.
-            source: The citing document source.
-            limit: Maximum results.
-
-        Returns:
-            Dict with ok, document, cited_documents list, warnings,
-            recommended_next_steps. warnings/recommended_next_steps are only
-            populated when the citation graph has never been built
-            (citation_edges table is empty overall) — naming
-            build_citation_graph() as the next step. A document that simply
-            has no cited documents in an already-built graph gets empty
-            warnings.
-        """
-        return find_cited_documents_impl(
-            document_id=document_id,
-            source=source,
-            limit=limit,
-        )
-
-    @_tool
-    def citation_graph_stats() -> dict:
-        """Get citation graph statistics.
-
-        Returns:
-            Dict with ok, total_edges, total_docs_with_citations,
-            most_cited_docs, avg_citations_per_doc, confidence_distribution,
-            total_cached_documents, documents_in_graph, graph_coverage_ratio,
-            last_built_at, warnings, recommended_next_steps. When
-            citation_edges is empty overall (graph never built),
-            ``warnings`` says so explicitly and ``recommended_next_steps``
-            names build_citation_graph() — do not read total_edges==0 as
-            "no citations exist in the corpus".
-        """
-        return get_citation_graph_stats_impl()
-
-    @_tool
-    def export_citation_graph(
-        format: str = "json",
-        document_id: str | None = None,
-        source: str | None = None,
-        max_depth: int = 2,
-    ) -> dict:
-        """Export citation graph in various formats.
-
-        Args:
-            format: Export format — 'json' (node-link), 'dot' (Graphviz),
-                    or 'mermaid' (Mermaid diagram).
-            document_id: Optional document_id to export sub-graph centered on this doc.
-            source: Optional source filter for sub-graph.
-            max_depth: For sub-graph, max traversal hops (default 2).
-
-        Returns:
-            Dict with ok, format, export_text, node_count, edge_count,
-            warnings, recommended_next_steps. warnings/recommended_next_steps
-            are only populated when the citation graph has never been built
-            (citation_edges table is empty overall) — naming
-            build_citation_graph() as the next step.
-        """
-        return export_graph_impl(
-            format=format,
-            document_id=document_id,
-            source=source,
-            max_depth=max_depth,
-        )
 
     # M-105: dedup tools removed from MCP (corpus_builder handles dedup)
 

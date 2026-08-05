@@ -50,14 +50,8 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
         "source_smoke",
         "check_government_servers_health",
     ],
-    "citation_graph": [
-        "build_citation_graph",
-        "get_citation_graph",
-        "find_citing_documents",
-        "find_cited_documents",
-        "citation_graph_stats",
-        "export_citation_graph",
-    ],
+    # M-111: citation_graph category removed from MCP entirely — see
+    # REMOVED_TOOLS.  The module and the `emsal-mcp graph ...` CLI remain.
     # M-105: dedup removed (corpus_builder handles dedup automatically)
     "watch": [
         "watch_add",
@@ -156,6 +150,30 @@ RETIRED_TOOLS: dict[str, str] = {
     # → health_check / research_topic
     "legislation_source_status": "health_check()",
     "research_topic_tool": "research_topic()",
+}
+
+# ── Removed with no MCP replacement (M-111) ─────────────────────────────
+# Unlike RETIRED_TOOLS these are not covered by another tool.  They were
+# pulled off the MCP surface because the feature does not work on this
+# corpus, and an agent calling them would be misled by the answer.
+
+REMOVED_TOOLS: dict[str, str] = {
+    name: (
+        "Atıf grafı MCP yüzeyinden kaldırıldı: 287.391 belgelik korpusta "
+        "yalnızca 4 doğrulanabilir atıf bağlantısı kuruldu, çünkü kararların "
+        "atıf yaptığı kararlar korpusta bulunmuyor. Araç 'atıf yok' derdi ve "
+        "bu 'atıf almamış' diye okunurdu. Atıf doğrulaması için "
+        "search_decisions + get_document kullanın. Grafın kendisi CLI'da "
+        "duruyor: emsal-mcp graph build/show/citing/cited/stats."
+    )
+    for name in (
+        "build_citation_graph",
+        "get_citation_graph",
+        "find_citing_documents",
+        "find_cited_documents",
+        "citation_graph_stats",
+        "export_citation_graph",
+    )
 }
 
 # ── Per-tool → category reverse mapping ──────────────────────────────────

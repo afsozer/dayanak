@@ -399,10 +399,15 @@ class TestToolDocstrings:
 
         return [(name, doc) for name, doc in captured_tools.items()]
 
-    def test_at_least_50_tools_registered(self):
-        """There should be 50+ tools registered."""
+    def test_tool_surface_is_not_empty(self):
+        """A floor, not a target — the exact count lives in test_tool_surface.
+
+        This used to assert ">= 50", which turned every deliberate cut into a
+        test failure and quietly rewarded growth.  Shrinking the surface is the
+        goal; only a collapse is a bug.
+        """
         tools = self._get_tool_names_and_docs()
-        assert len(tools) >= 50, f"Expected >= 50 tools, got {len(tools)}"
+        assert len(tools) >= 20, f"Tool surface collapsed to {len(tools)}"
 
     def test_all_critical_tools_have_docstrings(self):
         """Critical tools must have docstrings."""
