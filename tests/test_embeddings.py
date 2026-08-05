@@ -580,7 +580,10 @@ class TestEmbeddingSearch:
             result = embedding_search("sözleşme", cache=cache)
             assert result["ok"] is True
             assert result["total_matches"] >= 1
-            assert result["method"] == "dense"
+            # M-112: "dense" split into "dense_mmap" (sidecar matrix) and
+            # "dense_scan" (fallback), so a caller can tell a fast search
+            # from a slow one instead of both reporting the same thing.
+            assert result["method"] in ("dense_mmap", "dense_scan")
             assert result["provider"] == "local-hash-v1"
         finally:
             cache.close()

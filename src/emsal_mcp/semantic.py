@@ -11,12 +11,16 @@ and TF-IDF vector storage for enhanced search capabilities.
 """
 from __future__ import annotations
 
+import gc
 import json
 import math
+import os
 import re
 import sqlite3
+import time
 from collections import Counter
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from .cache import Cache
 from .embeddings import EMBEDDING_VERSION
@@ -1672,6 +1676,458 @@ def build_embedding_index(
 _EMBED_SCAN_BATCH = 50_000
 
 
+# ---------------------------------------------------------------------------
+# Memory-mapped vector matrix (sidecar files next to the cache DB)
+# ---------------------------------------------------------------------------
+#
+# Reading 1.3M vectors out of SQLite costs ~110s per query: every BLOB is a
+# separate row with its own header, so the scan is random-ish I/O over 2.6 GB.
+# The same numbers written once as a contiguous float32 matrix are a single
+# sequential read, and after the first query the OS page cache serves them.
+#
+# The matrix is memory-mapped rather than loaded: the file is ~2 GB and this
+# machine has ~1.8 GB free, but a read-only mmap can be evicted for free (it
+# is backed by the file, never by swap), whereas a Python-owned array of the
+# same size would not fit.
+#
+# Document ids are deliberately NOT stored alongside: 1.3M of them would be
+# tens of MB to parse on every query.  Rows are keyed by the SQLite rowid they
+# came from, and ids are resolved for the top-k only.
+
+
+#: Storage precision for the scan matrix.
+#:
+#: float16 was tried to halve the file (1944 MB → 972 MB) on the theory that
+#: disk I/O dominated.  Measured, it was the opposite: the file is served from
+#: the page cache either way, and numpy has no float16 BLAS kernel, so every
+#: query paid a 509M-element upcast.  Same hardware, 400k rows, minimum of 3:
+#:     float16 → float32 upcast + matmul   0.244 s
+#:     float32 matmul straight off the mmap 0.038 s
+#: 6.4x, and it scales linearly with corpus size.  Storage is cheap; the
+#: conversion is not.
+_MATRIX_DTYPE = "float32"
+#: Bumped when the sidecar layout changes so old files are rebuilt, not read.
+_MATRIX_FORMAT = 3
+#: Rows per matmul block: 384 float32 → ~150 MB at 100k.
+_MATMUL_BLOCK = 100_000
+#: Per-process memo of the expensive half of the freshness check, keyed by
+#: (meta path, build timestamp, max rowid).  Any of those changing re-verifies.
+_MATRIX_VERIFIED: dict[tuple, bool] = {}
+
+
+def _sidecar_stem(db_path: Path, provider_id: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", provider_id)
+    return db_path.parent / f"embed-{safe}"
+
+
+def _sidecar_meta_path(db_path: Path, provider_id: str) -> Path:
+    """Path of the small JSON file naming the current data generation."""
+    return _sidecar_stem(db_path, provider_id).with_suffix(".meta.json")
+
+
+def _sidecar_data_paths(
+    db_path: Path, provider_id: str, token: str,
+) -> dict[str, Path]:
+    """Paths of one generation of data files.
+
+    Data files are versioned by *token* and never overwritten.  Windows
+    refuses both an in-place write and an ``os.replace`` onto a file that any
+    process still has memory-mapped — a live search holds exactly that map, so
+    a rebuild against a fixed filename failed with OSError 22 / WinError 5 and
+    silently kept the old matrix.  Writing a new generation sidesteps the lock
+    entirely, and a reader mid-query keeps its own files until it reloads.
+    """
+    stem = _sidecar_stem(db_path, provider_id)
+    return {
+        "matrix": stem.with_suffix(f".{token}.vectors.npy"),
+        "rowids": stem.with_suffix(f".{token}.rowids.npy"),
+        "norms": stem.with_suffix(f".{token}.norms.npy"),
+    }
+
+
+def _sidecar_paths(db_path: Path, provider_id: str) -> dict[str, Path]:
+    """Meta path plus the data paths of the generation it points at."""
+    meta_path = _sidecar_meta_path(db_path, provider_id)
+    token = ""
+    if meta_path.exists():
+        try:
+            token = json.loads(meta_path.read_text(encoding="utf-8")).get("token", "")
+        except Exception:
+            token = ""
+    out: dict[str, Path] = {"meta": meta_path}
+    out.update(_sidecar_data_paths(db_path, provider_id, token or "0"))
+    return out
+
+
+def _purge_old_generations(
+    db_path: Path, provider_id: str, keep_token: str,
+) -> list[str]:
+    """Delete data files from superseded generations.
+
+    Best effort: a file another process still has mapped cannot be removed on
+    Windows, and that is fine — it will be collected on a later rebuild.
+    """
+    stem = _sidecar_stem(db_path, provider_id)
+    removed: list[str] = []
+    for path in stem.parent.glob(f"{stem.name}.*"):
+        if path.name.endswith(".meta.json"):
+            continue
+        parts = path.name[len(stem.name) + 1:].split(".")
+        if not parts or parts[0] in (keep_token, ""):
+            continue
+        try:
+            path.unlink()
+            removed.append(path.name)
+        except OSError:
+            pass
+    return removed
+
+
+def build_embedding_matrix(
+    provider_id: str,
+    cache: Cache | None = None,
+    *,
+    force: bool = False,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Write the contiguous vector matrix used by fast dense search.
+
+    Reads every vector for *provider_id* once and writes three sidecar arrays
+    plus a metadata file.  Rebuild after adding vectors — a stale sidecar is
+    detected and refused, never silently searched.
+    """
+    import json
+
+    import numpy as np
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        db = c.db
+        paths = _sidecar_paths(Path(c.path), provider_id)
+        _ensure_embedding_vectors(db)
+
+        row = db.execute(
+            "SELECT COUNT(*), COALESCE(MAX(rowid), 0), COALESCE(MIN(dim), 0) "
+            "FROM embedding_vectors WHERE provider_id=?",
+            (provider_id,),
+        ).fetchone()
+        count, max_rowid, dim = int(row[0]), int(row[1]), int(row[2])
+        if count == 0:
+            return build_error(
+                "NO_VECTORS",
+                f"'{provider_id}' için vektör yok; önce embedding üretin.",
+                provider=provider_id,
+            )
+
+        if not force and paths["meta"].exists():
+            try:
+                meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+                if meta.get("count") == count and meta.get("max_rowid") == max_rowid:
+                    return {
+                        "ok": True, "rebuilt": False, "reason": "güncel",
+                        "provider": provider_id, "count": count, "dim": dim,
+                        "path": str(paths["matrix"]),
+                    }
+            except Exception:
+                pass  # unreadable meta → rebuild
+
+        t0 = time.time()
+        # Write a NEW generation rather than overwriting the current one; see
+        # _sidecar_data_paths for why in-place rebuilds cannot work here.
+        db_path = Path(c.path)
+        # The token must be unique, not merely current: two rebuilds inside
+        # the same second collided, and deleting the colliding files first
+        # would defeat the point — those are exactly the files a live reader
+        # still has mapped.
+        base = time.strftime("%Y%m%d%H%M%S")
+        token, bump = base, 0
+        while any(
+            p.exists()
+            for p in _sidecar_data_paths(db_path, provider_id, token).values()
+        ):
+            bump += 1
+            token = f"{base}-{bump}"
+        new_paths = _sidecar_data_paths(db_path, provider_id, token)
+
+        mat = np.lib.format.open_memmap(
+            new_paths["matrix"], mode="w+", dtype=_MATRIX_DTYPE,
+            shape=(count, dim),
+        )
+        rowids = np.empty(count, dtype=np.int64)
+        norms = np.empty(count, dtype=np.float32)
+
+        cursor = db.execute(
+            "SELECT rowid, vector, norm FROM embedding_vectors "
+            "WHERE provider_id=? AND dim=? ORDER BY rowid",
+            (provider_id, dim),
+        )
+        n = 0
+        while n < count:
+            rows = cursor.fetchmany(_EMBED_SCAN_BATCH)
+            if not rows:
+                break
+            blob = b"".join(r["vector"][: dim * 4] for r in rows)
+            chunk = np.frombuffer(blob, dtype=np.float32).reshape(len(rows), dim)
+            mat[n:n + len(rows)] = chunk.astype(_MATRIX_DTYPE)
+            rowids[n:n + len(rows)] = [r["rowid"] for r in rows]
+            norms[n:n + len(rows)] = [r["norm"] or 0.0 for r in rows]
+            n += len(rows)
+            if progress_callback:
+                progress_callback({"ok": True, "written": n, "total": count})
+
+        mat.flush()
+        del mat
+        gc.collect()  # drop our own map before rewriting the file below
+
+        # A short read means rows with a different dim were skipped; trim so
+        # the arrays never contain uninitialised tail garbage.
+        if n < count:
+            full = np.load(new_paths["matrix"], mmap_mode="r")
+            trimmed = np.array(full[:n])
+            del full
+            gc.collect()
+            np.save(new_paths["matrix"], trimmed)
+        np.save(new_paths["rowids"], rowids[:n])
+        np.save(new_paths["norms"], norms[:n])
+
+        # Publish by rewriting the small metadata file — the only step that
+        # makes the new generation live.  Until this succeeds, readers keep
+        # using the previous generation, which is still on disk and intact.
+        meta_path = _sidecar_meta_path(db_path, provider_id)
+        meta_tmp = meta_path.with_suffix(".tmp.json")
+        meta_tmp.write_text(json.dumps({
+            "provider": provider_id, "token": token,
+            "dim": dim, "count": count, "written": n, "max_rowid": max_rowid,
+            "dtype": np.dtype(_MATRIX_DTYPE).name,
+            "format": _MATRIX_FORMAT,
+            "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }, ensure_ascii=False), encoding="utf-8")
+        os.replace(meta_tmp, meta_path)
+        _MATRIX_VERIFIED.clear()
+
+        removed = _purge_old_generations(db_path, provider_id, token)
+
+        return {
+            "ok": True, "rebuilt": True, "provider": provider_id,
+            "count": n, "dim": dim, "elapsed_s": round(time.time() - t0, 1),
+            "path": str(new_paths["matrix"]),
+            "size_mb": round(new_paths["matrix"].stat().st_size / 1024 / 1024, 1),
+            "superseded_files_removed": len(removed),
+        }
+    finally:
+        if own_cache:
+            c.close()
+
+
+def embedding_matrix_status(
+    provider_id: str, cache: Cache | None = None,
+) -> dict[str, Any]:
+    """Report whether the sidecar matrix exists and matches the database."""
+    import json
+
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        paths = _sidecar_paths(Path(c.path), provider_id)
+        # A database that has never embedded anything has no table at all;
+        # reporting that is the job here, so do not raise on it.
+        _ensure_embedding_vectors(c.db)
+        row = c.db.execute(
+            "SELECT COUNT(*), COALESCE(MAX(rowid), 0) FROM embedding_vectors "
+            "WHERE provider_id=?", (provider_id,),
+        ).fetchone()
+        db_count, db_max = int(row[0]), int(row[1])
+
+        if not paths["meta"].exists() or not paths["matrix"].exists():
+            return {
+                "ok": True, "exists": False, "fresh": False,
+                "provider": provider_id, "db_vector_count": db_count,
+                "recommended_next_steps": [
+                    "emsal-mcp semantic build-matrix ile hızlı arama matrisini kurun."
+                ],
+            }
+        meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+        current = meta.get("count") == db_count and meta.get("max_rowid") == db_max
+        # Layout matters as much as row count: a matrix written by an older
+        # format is refused by the search path, so reporting it as "fresh"
+        # would explain a slow query as a fast one.
+        compatible = meta.get("format") == _MATRIX_FORMAT
+        fresh = current and compatible
+        out = {
+            "ok": True, "exists": True, "fresh": fresh,
+            "provider": provider_id, "db_vector_count": db_count,
+            "matrix_vector_count": meta.get("written", meta.get("count")),
+            "dim": meta.get("dim"), "dtype": meta.get("dtype"),
+            "format": meta.get("format"), "expected_format": _MATRIX_FORMAT,
+            "built_at": meta.get("built_at"),
+            "path": str(paths["matrix"]),
+        }
+        warnings: list[str] = []
+        if not current:
+            warnings.append(
+                f"Matris bayat: veritabanında {db_count} vektör var, matris "
+                f"{meta.get('count')} vektörle kurulmuş."
+            )
+        if not compatible:
+            warnings.append(
+                f"Matris eski biçimde (format {meta.get('format')}, beklenen "
+                f"{_MATRIX_FORMAT}); arama bunu kullanmaz."
+            )
+        if warnings:
+            warnings.append(
+                "Arama yavaş yola düşecek. 'emsal-mcp semantic build-matrix "
+                "--force' ile yeniden kurun."
+            )
+            out["warnings"] = warnings
+            out["recommended_next_steps"] = [
+                "emsal-mcp semantic build-matrix --force"
+            ]
+        return out
+    finally:
+        if own_cache:
+            c.close()
+
+
+def best_dense_provider(cache: Cache | None = None) -> str | None:
+    """Provider id with the most vectors in this corpus, or None if empty.
+
+    The configured default is ``local-hash-v1`` — a dependency-free toy
+    provider — so a caller that omits ``provider`` was silently searching
+    8,547 hash vectors while 1.3M real embeddings sat unused in the same
+    table.  Picking by vector count makes the good index the default without
+    hard-coding a model name.
+    """
+    own_cache = cache is None
+    c = cache or Cache()
+    try:
+        _ensure_embedding_vectors(c.db)
+        row = c.db.execute(
+            "SELECT provider_id, COUNT(*) n FROM embedding_vectors "
+            "GROUP BY 1 ORDER BY n DESC LIMIT 1"
+        ).fetchone()
+        return row[0] if row and row[1] else None
+    except Exception:
+        return None
+    finally:
+        if own_cache:
+            c.close()
+
+
+def _score_vectors_mmap(
+    db: Any,
+    db_path: Path,
+    provider_id: str,
+    q_vec: list[float],
+    q_norm: float,
+    *,
+    limit: int,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]] | None:
+    """Score via the sidecar matrix, or None when it is missing or stale.
+
+    Returning None (rather than an empty list) matters: a stale index must
+    fall back to the slow-but-correct scan, never answer "no results".
+    """
+    import json
+
+    import numpy as np
+
+    paths = _sidecar_paths(db_path, provider_id)
+    if not (paths["matrix"].exists() and paths["meta"].exists()):
+        return None
+    try:
+        meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+    if meta.get("format") != _MATRIX_FORMAT or meta.get("dim") != len(q_vec):
+        return None
+
+    # Freshness: MAX(rowid) first — it is an index lookup, whereas COUNT(*)
+    # walks 1.3M rows and measured ~1s, which was a sixth of the whole query.
+    # Rows are only ever appended here, so a changed maximum already proves
+    # staleness; the count is confirmation, checked once per process.
+    max_row = int(db.execute(
+        "SELECT COALESCE(MAX(rowid), 0) FROM embedding_vectors "
+        "WHERE provider_id=?", (provider_id,),
+    ).fetchone()[0])
+    if meta.get("max_rowid") != max_row:
+        return None
+
+    fingerprint = (str(paths["meta"]), meta.get("built_at"), max_row)
+    if _MATRIX_VERIFIED.get(fingerprint) is None:
+        count = int(db.execute(
+            "SELECT COUNT(*) FROM embedding_vectors WHERE provider_id=?",
+            (provider_id,),
+        ).fetchone()[0])
+        _MATRIX_VERIFIED[fingerprint] = meta.get("count") == count
+    if not _MATRIX_VERIFIED[fingerprint]:
+        return None
+
+    mat = np.load(paths["matrix"], mmap_mode="r")
+    rowids = np.load(paths["rowids"], mmap_mode="r")
+    norms = np.load(paths["norms"], mmap_mode="r")
+
+    # Shortlist pass.  Blocked so a memmap wider than RAM is walked
+    # sequentially rather than faulted in all at once; each block is already
+    # float32, so this stays on the BLAS fast path.
+    q32 = np.asarray(q_vec, dtype=np.float32)
+    n_rows = mat.shape[0]
+    dots = np.empty(n_rows, dtype=np.float32)
+    for start in range(0, n_rows, _MATMUL_BLOCK):
+        stop = min(start + _MATMUL_BLOCK, n_rows)
+        dots[start:stop] = mat[start:stop] @ q32
+    denom = np.asarray(norms, dtype=np.float32) * np.float32(q_norm)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        sims = np.where(denom > 0, dots.astype(np.float32) / denom, np.float32(0.0))
+
+    keep = min(max(limit * 20, 200), sims.shape[0])
+    idx = np.argpartition(-sims, keep - 1)[:keep]
+    idx = [int(i) for i in idx if float(sims[i]) > 0]
+    if not idx:
+        return []
+
+    # Exact pass: re-score the shortlist against the ORIGINAL float32 vectors.
+    # The scan may be float16, but nothing float16 reaches the caller — the
+    # scores returned here match a full float32 scan.
+    want = [int(rowids[i]) for i in idx]
+    placeholders = ",".join("?" * len(want))
+    rows = db.execute(
+        "SELECT v.rowid AS rid, v.document_id, v.source, v.vector, v.norm, "
+        "       v.dim, d.title, d.content_status "
+        "FROM embedding_vectors v "
+        "LEFT JOIN documents_v2 d ON d.document_id = v.document_id "
+        "                        AND d.source = v.source "
+        "WHERE v.rowid IN (%s)" % placeholders,
+        want,
+    ).fetchall()
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        dim = int(r["dim"])
+        if dim != q32.shape[0]:
+            continue
+        vec = np.frombuffer(r["vector"][: dim * 4], dtype=np.float32)
+        d = float(np.dot(vec, q32))
+        denom_i = float(r["norm"] or 0.0) * q_norm
+        score = d / denom_i if denom_i > 0 else 0.0
+        if score <= 0:
+            continue
+        out.append({
+            "document_id": r["document_id"],
+            "source": r["source"],
+            "title": r["title"] or "",
+            "score": round(score, 6),
+            "content_status": r["content_status"] or "unknown",
+        })
+
+    out.sort(key=lambda x: x["score"], reverse=True)
+    if filters:
+        out = _apply_filters(out, filters)
+    return out
+
+
 def _score_vectors_batched(
     db: Any,
     provider_id: str,
@@ -1819,18 +2275,41 @@ def embedding_search(
         # positively-scoring row.  Batching keeps peak memory bounded (the full
         # matrix would be ~2 GB, and this machine has ~1.8 GB free) while
         # collapsing the arithmetic into a single matmul per batch.
-        scores = _score_vectors_batched(
-            db, prov.id, q_vec, q_norm, limit=limit, filters=filters,
+        # Fast path: the sidecar matrix, when it matches the database exactly.
+        # It returns None (not []) when absent or stale, so a stale index can
+        # never masquerade as "no matching decisions".
+        method = "dense_mmap"
+        warnings: list[str] = []
+        scores = _score_vectors_mmap(
+            db, Path(c.path), prov.id, q_vec, q_norm,
+            limit=limit, filters=filters,
         )
+        if scores is None:
+            method = "dense_scan"
+            status = embedding_matrix_status(prov.id, cache=c)
+            if status.get("exists") and not status.get("fresh"):
+                warnings.extend(status.get("warnings", []))
+            else:
+                warnings.append(
+                    "Hızlı arama matrisi kurulu değil; her sorgu tüm vektörleri "
+                    "veritabanından okuyor (büyük korpusta dakikalar sürer). "
+                    "'emsal-mcp semantic build-matrix' ile kurun."
+                )
+            scores = _score_vectors_batched(
+                db, prov.id, q_vec, q_norm, limit=limit, filters=filters,
+            )
 
-        return {
+        result = {
             "ok": True,
             "results": scores[:limit],
             "total_matches": len(scores),
-            "method": "dense",
+            "method": method,
             "provider": prov.id,
             "version": EMBEDDING_VERSION,
         }
+        if warnings:
+            result["warnings"] = warnings
+        return result
     except Exception as exc:
         return build_error(
             "EMBEDDING_SEARCH_FAILED",

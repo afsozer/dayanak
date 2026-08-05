@@ -2465,3 +2465,589 @@ class TestEmbeddingTableSupportsChunks:
             assert embedding_table_supports_chunks(cache.db) is False
         finally:
             cache.close()
+
+
+class TestEmbeddingMatrixSidecar:
+    """The sidecar matrix must be fast AND refuse to answer when stale.
+
+    Reading 1.3M vectors out of SQLite cost ~110s per query.  Written once as
+    a contiguous array it is a single sequential read.  The risk that buys is
+    a stale index quietly answering "no matching decisions" — so freshness is
+    checked against the database on every query, and a mismatch falls back to
+    the slow scan instead of returning.
+    """
+
+    def _seed(self, cache, n: int, dim: int = 8):
+        import random
+        import struct
+
+        from emsal_mcp.models import ContentStatus, Document
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        _ensure_embedding_vectors(cache.db)
+        for i in range(n):
+            cache.store_document(Document(
+                source="s", document_id=f"D{i}", title=f"Karar {i}",
+                content_status=ContentStatus.FULL_TEXT, full_text="metin",
+            ))
+            rng = random.Random(i)
+            vec = [rng.uniform(0.1, 1.0) for _ in range(dim)]
+            norm = sum(v * v for v in vec) ** 0.5
+            cache.db.execute(
+                "INSERT OR REPLACE INTO embedding_vectors "
+                "(document_id, source, provider_id, chunk_index, dim, vector, norm) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (f"D{i}", "s", "testprov", 0, dim,
+                 struct.pack(f"{dim}f", *vec), norm),
+            )
+        cache.db.commit()
+
+    def test_build_then_search_matches_the_scan(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _score_vectors_batched,
+            _score_vectors_mmap,
+            build_embedding_matrix,
+        )
+
+        cache = Cache(tmp_path / "mx.sqlite3")
+        try:
+            self._seed(cache, 400)
+            built = build_embedding_matrix("testprov", cache=cache)
+            assert built["ok"] is True and built["rebuilt"] is True
+
+            q_vec = [0.9, 0.1, 0.5, 0.2, 0.8, 0.3, 0.6, 0.4]
+            q_norm = sum(v * v for v in q_vec) ** 0.5
+
+            fast = _score_vectors_mmap(
+                cache.db, tmp_path / "mx.sqlite3", "testprov",
+                q_vec, q_norm, limit=10)
+            slow = _score_vectors_batched(
+                cache.db, "testprov", q_vec, q_norm, limit=10)
+
+            assert fast is not None
+            assert [r["document_id"] for r in fast[:10]] == \
+                   [r["document_id"] for r in slow[:10]]
+            # Scores are re-computed in float32 from the original blobs, so
+            # the float16 scan must not leak into the returned numbers.
+            for a, b in zip(fast[:10], slow[:10], strict=True):
+                assert abs(a["score"] - b["score"]) < 1e-5
+
+    
+
+        finally:
+            cache.close()
+
+    def test_stale_matrix_returns_none_not_empty(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _score_vectors_mmap, build_embedding_matrix
+
+        db_path = tmp_path / "stale.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache, 100)
+            build_embedding_matrix("testprov", cache=cache)
+
+            # Add vectors AFTER the matrix was built.
+            self._seed(cache, 120)
+
+            got = _score_vectors_mmap(
+                cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5)
+            assert got is None, (
+                "a stale matrix answered the query; an out-of-date index must "
+                "fall back, never report 'no results'"
+            )
+        finally:
+            cache.close()
+
+    def test_missing_matrix_returns_none(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _score_vectors_mmap
+
+        db_path = tmp_path / "none.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache, 20)
+            assert _score_vectors_mmap(
+                cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5) is None
+        finally:
+            cache.close()
+
+    def test_status_reports_staleness(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import build_embedding_matrix, embedding_matrix_status
+
+        cache = Cache(tmp_path / "st.sqlite3")
+        try:
+            before = embedding_matrix_status("testprov", cache=cache)
+            assert before["exists"] is False
+
+            self._seed(cache, 50)
+            build_embedding_matrix("testprov", cache=cache)
+            fresh = embedding_matrix_status("testprov", cache=cache)
+            assert fresh["exists"] is True and fresh["fresh"] is True
+            assert "warnings" not in fresh
+
+            self._seed(cache, 80)
+            stale = embedding_matrix_status("testprov", cache=cache)
+            assert stale["exists"] is True and stale["fresh"] is False
+            assert stale["warnings"]
+        finally:
+            cache.close()
+
+    def test_rebuild_is_skipped_when_already_current(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import build_embedding_matrix
+
+        cache = Cache(tmp_path / "idem.sqlite3")
+        try:
+            self._seed(cache, 40)
+            first = build_embedding_matrix("testprov", cache=cache)
+            second = build_embedding_matrix("testprov", cache=cache)
+            assert first["rebuilt"] is True
+            assert second["rebuilt"] is False
+            forced = build_embedding_matrix("testprov", cache=cache, force=True)
+            assert forced["rebuilt"] is True
+        finally:
+            cache.close()
+
+    def test_build_without_vectors_is_a_structured_error(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import build_embedding_matrix, _ensure_embedding_vectors
+
+        cache = Cache(tmp_path / "empty.sqlite3")
+        try:
+            _ensure_embedding_vectors(cache.db)
+            result = build_embedding_matrix("yokprov", cache=cache)
+            assert result["ok"] is False
+            assert result["errorCode"] == "NO_VECTORS"
+        finally:
+            cache.close()
+
+    def test_search_warns_when_no_matrix_exists(self, tmp_path, monkeypatch):
+        """A missing index must be visible, not just slow."""
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import embedding_search
+
+        cache = Cache(tmp_path / "warn.sqlite3")
+        try:
+            self._seed(cache, 30)
+
+            class _Prov:
+                id = "testprov"
+
+                def embed_text(self, text):
+                    return [0.5] * 8
+
+            monkeypatch.setattr(
+                "emsal_mcp.embeddings.get_embedding_provider",
+                lambda *a, **kw: _Prov(),
+            )
+            result = embedding_search(query="x", limit=5, cache=cache,
+                                      provider="testprov")
+            assert result["ok"] is True
+            assert result["method"] == "dense_scan"
+            assert any("matris" in w.lower() for w in result.get("warnings", []))
+        finally:
+            cache.close()
+
+
+class TestMatrixFreshnessCheck:
+    """The freshness check must be cheap AND must still catch staleness.
+
+    ``COUNT(*)`` over 1.3M vectors measured ~1s — a sixth of the whole query —
+    so it is memoised per process behind ``MAX(rowid)``, which is an index
+    lookup.  The memo must not survive a rebuild or an append.
+    """
+
+    def _seed(self, cache, n: int, dim: int = 8, start: int = 0):
+        import random
+        import struct
+
+        from emsal_mcp.models import ContentStatus, Document
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        _ensure_embedding_vectors(cache.db)
+        for i in range(start, start + n):
+            cache.store_document(Document(
+                source="s", document_id=f"D{i}", title=f"Karar {i}",
+                content_status=ContentStatus.FULL_TEXT, full_text="metin",
+            ))
+            rng = random.Random(i)
+            vec = [rng.uniform(0.1, 1.0) for _ in range(dim)]
+            cache.db.execute(
+                "INSERT OR REPLACE INTO embedding_vectors "
+                "(document_id, source, provider_id, chunk_index, dim, vector, norm) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (f"D{i}", "s", "testprov", 0, dim,
+                 struct.pack(f"{dim}f", *vec),
+                 sum(v * v for v in vec) ** 0.5),
+            )
+        cache.db.commit()
+
+    def test_appending_vectors_invalidates_the_memo(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _MATRIX_VERIFIED,
+            _score_vectors_mmap,
+            build_embedding_matrix,
+        )
+
+        _MATRIX_VERIFIED.clear()
+        db_path = tmp_path / "memo.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache, 50)
+            build_embedding_matrix("testprov", cache=cache)
+
+            first = _score_vectors_mmap(
+                cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5)
+            assert first is not None
+
+            self._seed(cache, 20, start=1000)
+            after = _score_vectors_mmap(
+                cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5)
+            assert after is None, "memo hid an appended vector"
+        finally:
+            cache.close()
+
+    def test_rebuild_makes_the_matrix_usable_again(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _MATRIX_VERIFIED,
+            _score_vectors_mmap,
+            build_embedding_matrix,
+        )
+
+        _MATRIX_VERIFIED.clear()
+        db_path = tmp_path / "rebuild.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache, 40)
+            build_embedding_matrix("testprov", cache=cache)
+            self._seed(cache, 15, start=500)
+            assert _score_vectors_mmap(
+                cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5) is None
+
+            build_embedding_matrix("testprov", cache=cache, force=True)
+            again = _score_vectors_mmap(
+                cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5)
+            assert again is not None and again
+        finally:
+            cache.close()
+
+    def test_count_is_queried_once_per_process_not_once_per_search(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _MATRIX_VERIFIED,
+            _score_vectors_mmap,
+            build_embedding_matrix,
+        )
+
+        _MATRIX_VERIFIED.clear()
+        db_path = tmp_path / "count.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache, 60)
+            build_embedding_matrix("testprov", cache=cache)
+
+            counts = {"n": 0}
+
+            def tracer(sql: str) -> None:
+                if "COUNT(*)" in sql and "embedding_vectors" in sql:
+                    counts["n"] += 1
+
+            cache.db.set_trace_callback(tracer)
+            try:
+                for _ in range(5):
+                    _score_vectors_mmap(
+                        cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5)
+            finally:
+                cache.db.set_trace_callback(None)
+
+            assert counts["n"] == 1, (
+                f"COUNT(*) ran {counts['n']} times for 5 searches"
+            )
+        finally:
+            cache.close()
+
+
+class TestMatrixFormatCompatibility:
+    """A matrix in an older layout must be reported, not silently bypassed.
+
+    The search path refuses a mismatched ``format``, so without this check
+    ``matrix-status`` answered "fresh" for a matrix no query would ever use —
+    a slow search with a healthy-looking status.
+    """
+
+    def _seed(self, cache, n: int = 30, dim: int = 8):
+        import random
+        import struct
+
+        from emsal_mcp.models import ContentStatus, Document
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        _ensure_embedding_vectors(cache.db)
+        for i in range(n):
+            cache.store_document(Document(
+                source="s", document_id=f"D{i}", title=f"K{i}",
+                content_status=ContentStatus.FULL_TEXT, full_text="m",
+            ))
+            rng = random.Random(i)
+            vec = [rng.uniform(0.1, 1.0) for _ in range(dim)]
+            cache.db.execute(
+                "INSERT OR REPLACE INTO embedding_vectors "
+                "(document_id, source, provider_id, chunk_index, dim, vector, norm) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (f"D{i}", "s", "testprov", 0, dim,
+                 struct.pack(f"{dim}f", *vec),
+                 sum(v * v for v in vec) ** 0.5),
+            )
+        cache.db.commit()
+
+    def test_old_format_is_not_reported_fresh(self, tmp_path):
+        import json
+
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _sidecar_paths,
+            build_embedding_matrix,
+            embedding_matrix_status,
+        )
+
+        db_path = tmp_path / "fmt.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache)
+            build_embedding_matrix("testprov", cache=cache)
+            assert embedding_matrix_status(
+                "testprov", cache=cache)["fresh"] is True
+
+            paths = _sidecar_paths(db_path, "testprov")
+            meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+            meta["format"] = meta["format"] - 1
+            paths["meta"].write_text(json.dumps(meta), encoding="utf-8")
+
+            status = embedding_matrix_status("testprov", cache=cache)
+            assert status["fresh"] is False
+            assert any("format" in w.lower() for w in status["warnings"])
+            assert status["recommended_next_steps"]
+        finally:
+            cache.close()
+
+    def test_old_format_falls_back_instead_of_being_used(self, tmp_path):
+        import json
+
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _MATRIX_VERIFIED,
+            _score_vectors_mmap,
+            _sidecar_paths,
+            build_embedding_matrix,
+        )
+
+        _MATRIX_VERIFIED.clear()
+        db_path = tmp_path / "fmt2.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache)
+            build_embedding_matrix("testprov", cache=cache)
+            paths = _sidecar_paths(db_path, "testprov")
+            meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+            meta["format"] = 0
+            paths["meta"].write_text(json.dumps(meta), encoding="utf-8")
+
+            assert _score_vectors_mmap(
+                cache.db, db_path, "testprov", [0.5] * 8, 1.0, limit=5) is None
+        finally:
+            cache.close()
+
+    def test_matrix_is_stored_float32(self, tmp_path):
+        """float16 halved the file but cost 6.4x on the matmul (no BLAS kernel)."""
+        import json
+
+        import numpy as np
+
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _sidecar_paths,
+            build_embedding_matrix,
+        )
+
+        db_path = tmp_path / "dtype.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache)
+            build_embedding_matrix("testprov", cache=cache)
+            paths = _sidecar_paths(db_path, "testprov")
+            mat = np.load(paths["matrix"], mmap_mode="r")
+            assert mat.dtype == np.float32
+            meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+            assert meta["dtype"] == "float32"
+        finally:
+            cache.close()
+
+
+class TestMatrixRebuildIsAtomic:
+    """Rebuilding over an existing matrix must work, or say why it did not.
+
+    Writing the .npy in place fails on Windows (OSError 22) while any process
+    still has the old file memory-mapped.  That left ``--force`` reporting
+    nothing useful and quietly keeping the previous matrix — a "rebuilt" index
+    that was not rebuilt.
+    """
+
+    def _seed(self, cache, n: int = 40, dim: int = 8):
+        import random
+        import struct
+
+        from emsal_mcp.models import ContentStatus, Document
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        _ensure_embedding_vectors(cache.db)
+        for i in range(n):
+            cache.store_document(Document(
+                source="s", document_id=f"D{i}", title=f"K{i}",
+                content_status=ContentStatus.FULL_TEXT, full_text="m",
+            ))
+            rng = random.Random(i)
+            vec = [rng.uniform(0.1, 1.0) for _ in range(dim)]
+            cache.db.execute(
+                "INSERT OR REPLACE INTO embedding_vectors "
+                "(document_id, source, provider_id, chunk_index, dim, vector, norm) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (f"D{i}", "s", "testprov", 0, dim,
+                 struct.pack(f"{dim}f", *vec),
+                 sum(v * v for v in vec) ** 0.5),
+            )
+        cache.db.commit()
+
+    def test_force_rebuild_while_matrix_is_mapped(self, tmp_path):
+        import numpy as np
+
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _sidecar_paths, build_embedding_matrix
+
+        db_path = tmp_path / "atomic.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache, 40)
+            build_embedding_matrix("testprov", cache=cache)
+            paths = _sidecar_paths(db_path, "testprov")
+
+            # Hold the old matrix open, exactly as a live search would.
+            held = np.load(paths["matrix"], mmap_mode="r")
+            assert held.shape[0] == 40
+
+            self._seed(cache, 25, dim=8)
+            result = build_embedding_matrix(
+                "testprov", cache=cache, force=True)
+            assert result["ok"] is True, result
+            assert result["rebuilt"] is True
+
+            del held
+            fresh = np.load(paths["matrix"], mmap_mode="r")
+            assert fresh.shape[0] == 40, "matrix did not actually change"
+        finally:
+            cache.close()
+
+    def test_no_temp_files_are_left_behind(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import build_embedding_matrix
+
+        db_path = tmp_path / "clean.sqlite3"
+        cache = Cache(db_path)
+        try:
+            self._seed(cache)
+            build_embedding_matrix("testprov", cache=cache)
+            build_embedding_matrix("testprov", cache=cache, force=True)
+            leftovers = sorted(p.name for p in tmp_path.glob("*.tmp.*"))
+            assert not leftovers, leftovers
+        finally:
+            cache.close()
+
+    def test_rebuild_clears_the_freshness_memo(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _MATRIX_VERIFIED,
+            build_embedding_matrix,
+        )
+
+        cache = Cache(tmp_path / "memo2.sqlite3")
+        try:
+            self._seed(cache)
+            build_embedding_matrix("testprov", cache=cache)
+            _MATRIX_VERIFIED[("sahte", "anahtar", 1)] = True
+            build_embedding_matrix("testprov", cache=cache, force=True)
+            assert _MATRIX_VERIFIED == {}
+        finally:
+            cache.close()
+
+
+class TestBestDenseProvider:
+    """``mode="semantic"`` must reach the corpus's real embeddings by default.
+
+    The configured default provider is ``local-hash-v1``, a dependency-free
+    toy.  On the real corpus that meant a caller who omitted ``provider`` was
+    searching 8,547 hash vectors while 1,327,036 e5 embeddings sat unused in
+    the same table.
+    """
+
+    def _add_vectors(self, cache, provider: str, n: int, dim: int = 8):
+        import random
+        import struct
+
+        from emsal_mcp.models import ContentStatus, Document
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        _ensure_embedding_vectors(cache.db)
+        for i in range(n):
+            doc_id = f"{provider}-D{i}"
+            cache.store_document(Document(
+                source="s", document_id=doc_id, title=f"K{i}",
+                content_status=ContentStatus.FULL_TEXT, full_text="m",
+            ))
+            rng = random.Random(i)
+            vec = [rng.uniform(0.1, 1.0) for _ in range(dim)]
+            cache.db.execute(
+                "INSERT OR REPLACE INTO embedding_vectors "
+                "(document_id, source, provider_id, chunk_index, dim, vector, norm) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (doc_id, "s", provider, 0, dim, struct.pack(f"{dim}f", *vec),
+                 sum(v * v for v in vec) ** 0.5),
+            )
+        cache.db.commit()
+
+    def test_picks_the_provider_with_the_most_vectors(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import best_dense_provider
+
+        cache = Cache(tmp_path / "best.sqlite3")
+        try:
+            self._add_vectors(cache, "local-hash-v1", 10)
+            self._add_vectors(cache, "real-model", 90)
+            assert best_dense_provider(cache=cache) == "real-model"
+        finally:
+            cache.close()
+
+    def test_returns_none_when_there_are_no_vectors(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import best_dense_provider
+
+        cache = Cache(tmp_path / "novec.sqlite3")
+        try:
+            assert best_dense_provider(cache=cache) is None
+        finally:
+            cache.close()
+
+    def test_missing_table_is_not_an_error(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import best_dense_provider
+
+        cache = Cache(tmp_path / "notable.sqlite3")
+        try:
+            cache.db.execute("DROP TABLE IF EXISTS embedding_vectors")
+            cache.db.commit()
+            assert best_dense_provider(cache=cache) is None
+        finally:
+            cache.close()

@@ -1474,9 +1474,15 @@ def main() -> None:
                 "method": "bm25_fts5",
             }, query)
         elif mode == "semantic":
-            if provider:
+            # M-112: without an explicit provider this used to fall through to
+            # TF-IDF, so the corpus's 1.3M dense embeddings were unreachable
+            # unless the caller happened to know the provider string.  Prefer
+            # whichever provider actually has vectors here.
+            from .semantic import best_dense_provider as _best
+            use = provider or _best()
+            if use:
                 from .semantic import embedding_search as _emb
-                result = _emb(query=query, limit=limit, provider=provider, filters=merged)
+                result = _emb(query=query, limit=limit, provider=use, filters=merged)
             else:
                 result = semantic_search_impl(query=query, limit=limit, filters=merged)
             return _attach_corpus_hint(result, query)

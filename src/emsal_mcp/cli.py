@@ -1164,6 +1164,42 @@ def semantic_embed_index(
     _print(result, json_out)
 
 
+@semantic_app.command("build-matrix")
+def semantic_build_matrix(
+    provider: str = typer.Option(
+        "fastembed-multilingual-e5", help="Vektörlerin provider_id değeri"
+    ),
+    force: bool = typer.Option(False, "--force", help="Güncel olsa da yeniden kur"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Hızlı anlamsal arama için bitişik vektör matrisini kur.
+
+    Vektörleri SQLite'tan bir kez okuyup cache'in yanına .npy dosyaları
+    olarak yazar. Vektör ekledikten sonra tekrar çalıştırın; bayat matris
+    tespit edilip reddedilir, sessizce kullanılmaz.
+    """
+    from .semantic import build_embedding_matrix as build_matrix_impl
+
+    def _progress(p: dict) -> None:
+        if not json_out and p["written"] % 200_000 == 0:
+            typer.echo(f"  {p['written']}/{p['total']}")
+
+    result = build_matrix_impl(
+        provider_id=provider, force=force, progress_callback=_progress,
+    )
+    _print(result, json_out)
+
+
+@semantic_app.command("matrix-status")
+def semantic_matrix_status(
+    provider: str = typer.Option("fastembed-multilingual-e5"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Hızlı arama matrisi var mı, veritabanıyla uyumlu mu?"""
+    from .semantic import embedding_matrix_status as status_impl
+    _print(status_impl(provider_id=provider), json_out)
+
+
 @semantic_app.command("embed-search")
 def semantic_embed_search(
     query: str = typer.Argument(..., help="Arama sorgusu"),

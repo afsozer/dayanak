@@ -43,7 +43,6 @@ def _spy(monkeypatch, module_name: str, func_name: str, label: str):
 @pytest.mark.parametrize(
     ("mode", "func_name"),
     [
-        ("semantic", "semantic_search"),
         ("hybrid", "hybrid_search"),
         ("rrf", "hybrid_search_rrf"),
     ],
@@ -54,6 +53,29 @@ def test_search_local_corpus_dispatches_semantic_modes(
     _spy(monkeypatch, "emsal_mcp.semantic", func_name, func_name)
     result = tools()["search_local_corpus"](query="kıdem", mode=mode)
     assert result["called"] == func_name
+
+
+def test_semantic_mode_prefers_dense_vectors_over_tfidf(monkeypatch) -> None:
+    """M-112: with embeddings present, mode="semantic" must use them.
+
+    It used to fall through to TF-IDF whenever ``provider`` was omitted, which
+    left the corpus's 1.3M dense vectors unreachable from the default call.
+    """
+    _spy(monkeypatch, "emsal_mcp.semantic", "embedding_search", "dense")
+    monkeypatch.setattr(
+        "emsal_mcp.semantic.best_dense_provider", lambda *a, **kw: "somemodel",
+    )
+    result = tools()["search_local_corpus"](query="kıdem", mode="semantic")
+    assert result["called"] == "dense"
+
+
+def test_semantic_mode_falls_back_to_tfidf_without_vectors(monkeypatch) -> None:
+    _spy(monkeypatch, "emsal_mcp.semantic", "semantic_search", "tfidf")
+    monkeypatch.setattr(
+        "emsal_mcp.semantic.best_dense_provider", lambda *a, **kw: None,
+    )
+    result = tools()["search_local_corpus"](query="kıdem", mode="semantic")
+    assert result["called"] == "tfidf"
 
 
 def test_search_local_corpus_unknown_mode_is_structured_error() -> None:
