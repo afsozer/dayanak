@@ -1483,6 +1483,13 @@ def rebuild_index(cache: Cache | None = None) -> dict[str, Any]:
 def _ensure_embedding_vectors(db: sqlite3.Connection) -> bool:
     """Create the embedding_vectors table for dense embedding storage.
 
+    ``chunk_index`` is part of the primary key.  Documents are chunked before
+    embedding (see ``chunking.py``; the e5 model caps at 512 tokens and real
+    decisions run to thousands), so a decision routinely owns hundreds of
+    vectors — one real document in the corpus has 1,798.  The original key was
+    ``(document_id, source, provider_id)``, which can hold exactly one vector
+    per document and silently overwrites every chunk but the last.
+
     Returns True if the table already existed.
     """
     existing = db.execute(
@@ -1494,19 +1501,46 @@ def _ensure_embedding_vectors(db: sqlite3.Connection) -> bool:
             document_id TEXT NOT NULL,
             source TEXT NOT NULL,
             provider_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL DEFAULT 0,
             dim INTEGER NOT NULL,
             vector BLOB NOT NULL,
             norm REAL DEFAULT 0.0,
             indexed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             content_hash TEXT,
-            PRIMARY KEY (document_id, source, provider_id)
+            PRIMARY KEY (document_id, source, provider_id, chunk_index)
         )
     """)
+    # Pre-chunking databases lack the column entirely.  Adding it keeps them
+    # readable; the narrow primary key stays until the table is rebuilt, so
+    # such a database can still only hold one vector per document.
+    cols = {r[1] for r in db.execute("PRAGMA table_info(embedding_vectors)")}
+    if "chunk_index" not in cols:
+        db.execute(
+            "ALTER TABLE embedding_vectors "
+            "ADD COLUMN chunk_index INTEGER NOT NULL DEFAULT 0"
+        )
     db.execute(
         "CREATE INDEX IF NOT EXISTS idx_ev_provider ON embedding_vectors(provider_id)"
     )
     db.commit()
     return already_existed
+
+
+def embedding_table_supports_chunks(db: sqlite3.Connection) -> bool:
+    """True when ``embedding_vectors`` can hold more than one vector per doc.
+
+    A database created before chunking has ``chunk_index`` outside the primary
+    key, so chunked inserts collapse onto a single row.  Callers that write
+    chunk-level vectors must check this instead of assuming.
+    """
+    row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' "
+        "AND name='embedding_vectors'"
+    ).fetchone()
+    if not row or not row[0]:
+        return False
+    sql = row[0].lower()
+    return "primary key" in sql and "chunk_index" in sql.split("primary key", 1)[1]
 
 
 def build_embedding_index(
@@ -1633,6 +1667,101 @@ def build_embedding_index(
                 pass
 
 
+#: Rows pulled per batch.  384 float32 per vector → ~75 MB of BLOBs per batch,
+#: which keeps peak memory well under the ~1.8 GB free on the target machine.
+_EMBED_SCAN_BATCH = 50_000
+
+
+def _score_vectors_batched(
+    db: Any,
+    provider_id: str,
+    q_vec: list[float],
+    q_norm: float,
+    *,
+    limit: int,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Cosine-score every stored vector for *provider_id*, keeping the best.
+
+    Reads in batches and scores each batch with one numpy matmul instead of a
+    Python loop per vector, then resolves document metadata for the surviving
+    candidates only — the previous version issued one SELECT per positively
+    scoring row, which on a 1.3M-vector corpus meant over a million queries.
+
+    Peak memory is one batch, not the whole matrix: the full corpus would be
+    ~2 GB of float32 and cannot be held resident here.
+    """
+    import numpy as np
+
+    q = np.asarray(q_vec, dtype=np.float32)
+    dim = int(q.shape[0])
+
+    # Over-fetch so post-scoring filters still have candidates to work with.
+    keep = max(limit * 20, 200)
+    best: list[tuple[float, str, str]] = []
+
+    cursor = db.execute(
+        "SELECT document_id, source, vector, norm FROM embedding_vectors "
+        "WHERE provider_id=? AND dim=?",
+        (provider_id, dim),
+    )
+    while True:
+        rows = cursor.fetchmany(_EMBED_SCAN_BATCH)
+        if not rows:
+            break
+        blob = b"".join(r["vector"][: dim * 4] for r in rows)
+        mat = np.frombuffer(blob, dtype=np.float32).reshape(len(rows), dim)
+        norms = np.asarray([r["norm"] or 0.0 for r in rows], dtype=np.float32)
+
+        dots = mat @ q
+        denom = norms * q_norm
+        with np.errstate(divide="ignore", invalid="ignore"):
+            sims = np.where(denom > 0, dots / denom, 0.0)
+
+        take = min(keep, sims.shape[0])
+        idx = np.argpartition(-sims, take - 1)[:take] if take else []
+        for i in idx:
+            score = float(sims[i])
+            if score > 0:
+                best.append((score, rows[i]["document_id"], rows[i]["source"]))
+
+        # Trim between batches so `best` cannot grow with corpus size.
+        if len(best) > keep * 4:
+            best.sort(key=lambda t: t[0], reverse=True)
+            del best[keep:]
+
+    best.sort(key=lambda t: t[0], reverse=True)
+    del best[keep:]
+    if not best:
+        return []
+
+    # One metadata round-trip for the survivors, not one per scored vector.
+    placeholders = ",".join("?" * len(best))
+    meta = {
+        (r["document_id"], r["source"]): r
+        for r in db.execute(
+            "SELECT document_id, source, title, content_status "
+            "FROM documents_v2 WHERE document_id IN (%s)" % placeholders,
+            [t[1] for t in best],
+        )
+    }
+
+    out: list[dict[str, Any]] = []
+    for score, doc_id, source in best:
+        row = meta.get((doc_id, source))
+        out.append({
+            "document_id": doc_id,
+            "source": source,
+            "title": row["title"] if row else "",
+            "score": round(score, 6),
+            "content_status": row["content_status"] if row else "unknown",
+        })
+
+    if filters:
+        out = _apply_filters(out, filters)
+    return out
+
+
 def embedding_search(
     query: str,
     limit: int = 10,
@@ -1652,7 +1781,7 @@ def embedding_search(
     Returns:
         Dict with ok, results, total_matches, method, provider, version.
     """
-    from .embeddings import get_embedding_provider, unpack_vector
+    from .embeddings import get_embedding_provider
 
     own_cache = cache is None
     c = cache or Cache()
@@ -1683,41 +1812,16 @@ def embedding_search(
                 "version": EMBEDDING_VERSION,
             }
 
-        # Load all embeddings for this provider (brute force) — M-51: cursor iteration
-        cursor = db.execute(
-            "SELECT document_id, source, vector, norm, dim FROM embedding_vectors WHERE provider_id=?",
-            (prov.id,),
+        # Brute-force scan, but scored in numpy batches rather than per-vector
+        # Python arithmetic.  Measured on the real corpus (1,327,036 vectors):
+        # the old row-at-a-time loop cost ~951s PER QUERY — 2.5s of pure-Python
+        # dot products per 20k vectors, plus one metadata SELECT for every
+        # positively-scoring row.  Batching keeps peak memory bounded (the full
+        # matrix would be ~2 GB, and this machine has ~1.8 GB free) while
+        # collapsing the arithmetic into a single matmul per batch.
+        scores = _score_vectors_batched(
+            db, prov.id, q_vec, q_norm, limit=limit, filters=filters,
         )
-
-        scores: list[dict[str, Any]] = []
-        for row in cursor:
-            vec = unpack_vector(row["vector"], row["dim"])
-            dot = sum(q_vec[i] * vec[i] for i in range(min(len(q_vec), len(vec))))
-            denom = q_norm * row["norm"]
-            score = dot / denom if denom > 0 else 0.0
-
-            if score > 0:
-                # Get doc metadata
-                doc = db.execute(
-                    "SELECT title, content_status FROM documents_v2 "
-                    "WHERE document_id=? AND source=?",
-                    (row["document_id"], row["source"]),
-                ).fetchone()
-                scores.append(
-                    {
-                        "document_id": row["document_id"],
-                        "source": row["source"],
-                        "title": doc["title"] if doc else "",
-                        "score": round(score, 6),
-                        "content_status": doc["content_status"] if doc else "unknown",
-                    }
-                )
-
-        scores.sort(key=lambda x: x["score"], reverse=True)
-
-        # Apply filters if any
-        if filters:
-            scores = _apply_filters(scores, filters)
 
         return {
             "ok": True,

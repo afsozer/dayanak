@@ -2213,3 +2213,255 @@ class TestTfidfIdfConsistency:
             assert stats_row[0] == 6
         finally:
             cache.close()
+
+
+class TestBatchedVectorScoring:
+    """Dense search must not scale by a Python loop over every vector.
+
+    Measured on the real corpus (1,327,036 vectors), the row-at-a-time version
+    took ~951s per query: pure-Python dot products plus one metadata SELECT for
+    every positively scoring row.  Batched numpy scoring brought the same query
+    to ~110s and returns the same ranking.
+    """
+
+    def _seed(self, cache, n: int, dim: int = 8):
+        import random
+        import struct
+
+        from emsal_mcp.models import ContentStatus, Document
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        _ensure_embedding_vectors(cache.db)
+        vectors = {}
+        for i in range(n):
+            cache.store_document(Document(
+                source="s", document_id=f"D{i}", title=f"Karar {i}",
+                content_status=ContentStatus.FULL_TEXT, full_text="metin",
+            ))
+            # Distinct per document: a periodic pattern would tie many
+            # vectors at the same score and make the ranking comparison
+            # depend on tie-break order rather than on the maths.
+            rng = random.Random(i)
+            vec = [rng.uniform(0.1, 1.0) for _ in range(dim)]
+            norm = sum(v * v for v in vec) ** 0.5
+            vectors[f"D{i}"] = (vec, norm)
+            cache.db.execute(
+                "INSERT OR REPLACE INTO embedding_vectors "
+                "(document_id, source, provider_id, chunk_index, dim, vector, norm) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (f"D{i}", "s", "testprov", 0, dim,
+                 struct.pack(f"{dim}f", *vec), norm),
+            )
+        cache.db.commit()
+        return vectors
+
+    def _naive_top(self, vectors, q_vec, q_norm, k):
+        """Reference implementation: the loop the batched version replaced."""
+        out = []
+        for doc_id, (vec, norm) in vectors.items():
+            dot = sum(q_vec[i] * vec[i] for i in range(len(q_vec)))
+            denom = q_norm * norm
+            score = dot / denom if denom > 0 else 0.0
+            if score > 0:
+                out.append((round(score, 6), doc_id))
+        out.sort(key=lambda t: (-t[0], t[1]))
+        return out[:k]
+
+    def test_ranking_matches_the_naive_loop(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _score_vectors_batched
+
+        cache = Cache(tmp_path / "vec.sqlite3")
+        try:
+            vectors = self._seed(cache, 300)
+            q_vec = [1.0, 0.2, 0.9, 0.3, 0.7, 0.1, 0.4, 0.6]
+            q_norm = sum(v * v for v in q_vec) ** 0.5
+
+            got = _score_vectors_batched(
+                cache.db, "testprov", q_vec, q_norm, limit=10,
+            )
+            expected = self._naive_top(vectors, q_vec, q_norm, 10)
+
+            assert [r["document_id"] for r in got[:10]] == [e[1] for e in expected]
+            # numpy scores in float32, the reference loop in Python float64 —
+            # compare within tolerance rather than bit-for-bit.
+            for r, e in zip(got[:10], expected, strict=True):
+                assert abs(r["score"] - e[0]) < 1e-5
+        finally:
+            cache.close()
+
+    def test_batching_does_not_change_results(self, tmp_path, monkeypatch):
+        """A batch smaller than the corpus must give the same answer."""
+        from emsal_mcp import semantic
+        from emsal_mcp.cache import Cache
+
+        cache = Cache(tmp_path / "vec2.sqlite3")
+        try:
+            self._seed(cache, 250)
+            q_vec = [0.9, 0.1, 0.5, 0.2, 0.8, 0.3, 0.6, 0.4]
+            q_norm = sum(v * v for v in q_vec) ** 0.5
+
+            monkeypatch.setattr(semantic, "_EMBED_SCAN_BATCH", 10_000)
+            one_shot = semantic._score_vectors_batched(
+                cache.db, "testprov", q_vec, q_norm, limit=5)
+
+            monkeypatch.setattr(semantic, "_EMBED_SCAN_BATCH", 17)
+            many_batches = semantic._score_vectors_batched(
+                cache.db, "testprov", q_vec, q_norm, limit=5)
+
+            assert [r["document_id"] for r in one_shot[:5]] == \
+                   [r["document_id"] for r in many_batches[:5]]
+        finally:
+            cache.close()
+
+    def test_metadata_is_not_queried_once_per_vector(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _score_vectors_batched
+
+        cache = Cache(tmp_path / "vec3.sqlite3")
+        try:
+            self._seed(cache, 400)
+            q_vec = [1.0] * 8
+            q_norm = sum(v * v for v in q_vec) ** 0.5
+
+            calls = {"documents_v2": 0}
+
+            def tracer(sql: str) -> None:
+                if "documents_v2" in sql:
+                    calls["documents_v2"] += 1
+
+            cache.db.set_trace_callback(tracer)
+            try:
+                _score_vectors_batched(
+                    cache.db, "testprov", q_vec, q_norm, limit=10)
+            finally:
+                cache.db.set_trace_callback(None)
+
+            assert calls["documents_v2"] <= 2, (
+                f"{calls['documents_v2']} metadata queries for 400 vectors — "
+                f"this is the per-row lookup that made the real corpus unusable"
+            )
+        finally:
+            cache.close()
+
+    def test_dimension_mismatch_rows_are_skipped(self, tmp_path):
+        """Vectors from another provider/dim must not corrupt the reshape."""
+        import struct
+
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _score_vectors_batched
+
+        cache = Cache(tmp_path / "vec4.sqlite3")
+        try:
+            self._seed(cache, 20, dim=8)
+            cache.db.execute(
+                "INSERT OR REPLACE INTO embedding_vectors "
+                "(document_id, source, provider_id, chunk_index, dim, vector, norm) "
+                "VALUES ('X','s','testprov',0,4,?,1.0)",
+                (struct.pack("4f", 1.0, 1.0, 1.0, 1.0),),
+            )
+            cache.db.commit()
+
+            q_vec = [1.0] * 8
+            q_norm = sum(v * v for v in q_vec) ** 0.5
+            got = _score_vectors_batched(
+                cache.db, "testprov", q_vec, q_norm, limit=5)
+
+            assert got
+            assert "X" not in [r["document_id"] for r in got]
+        finally:
+            cache.close()
+
+    def test_no_vectors_returns_empty_not_error(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _score_vectors_batched
+
+        cache = Cache(tmp_path / "vec5.sqlite3")
+        try:
+            from emsal_mcp.semantic import _ensure_embedding_vectors
+            _ensure_embedding_vectors(cache.db)
+            assert _score_vectors_batched(
+                cache.db, "yok", [1.0] * 8, 1.0, limit=5) == []
+        finally:
+            cache.close()
+
+
+class TestEmbeddingTableSupportsChunks:
+    """Documents are chunked before embedding, so one document owns many rows.
+
+    ``chunk_index`` existed only in the live database — the desktop batch job
+    created it — and appeared nowhere in this codebase.  A fresh install got a
+    primary key of (document_id, source, provider_id), which holds exactly one
+    vector per document and silently overwrites every chunk but the last.  One
+    real decision in the corpus has 1,798 chunks.
+    """
+
+    def test_fresh_table_has_chunk_index_in_the_primary_key(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _ensure_embedding_vectors,
+            embedding_table_supports_chunks,
+        )
+
+        cache = Cache(tmp_path / "fresh.sqlite3")
+        try:
+            _ensure_embedding_vectors(cache.db)
+            assert embedding_table_supports_chunks(cache.db) is True
+        finally:
+            cache.close()
+
+    def test_two_chunks_of_one_document_both_survive(self, tmp_path):
+        import struct
+
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import _ensure_embedding_vectors
+
+        cache = Cache(tmp_path / "chunks.sqlite3")
+        try:
+            _ensure_embedding_vectors(cache.db)
+            for idx in range(3):
+                cache.db.execute(
+                    "INSERT OR REPLACE INTO embedding_vectors "
+                    "(document_id, source, provider_id, chunk_index, dim, "
+                    " vector, norm) VALUES ('D1','s','p',?,4,?,1.0)",
+                    (idx, struct.pack("4f", float(idx), 1.0, 1.0, 1.0)),
+                )
+            cache.db.commit()
+            n = cache.db.execute(
+                "SELECT COUNT(*) FROM embedding_vectors WHERE document_id='D1'"
+            ).fetchone()[0]
+            assert n == 3, "chunks collapsed onto one row"
+        finally:
+            cache.close()
+
+    def test_legacy_table_is_detected_and_gets_the_column(self, tmp_path):
+        from emsal_mcp.cache import Cache
+        from emsal_mcp.semantic import (
+            _ensure_embedding_vectors,
+            embedding_table_supports_chunks,
+        )
+
+        cache = Cache(tmp_path / "legacy.sqlite3")
+        try:
+            cache.db.execute("DROP TABLE IF EXISTS embedding_vectors")
+            cache.db.execute("""
+                CREATE TABLE embedding_vectors (
+                    document_id TEXT NOT NULL, source TEXT NOT NULL,
+                    provider_id TEXT NOT NULL, dim INTEGER NOT NULL,
+                    vector BLOB NOT NULL, norm REAL DEFAULT 0.0,
+                    indexed_at DATETIME, content_hash TEXT,
+                    PRIMARY KEY (document_id, source, provider_id))
+            """)
+            cache.db.commit()
+
+            assert embedding_table_supports_chunks(cache.db) is False
+            _ensure_embedding_vectors(cache.db)
+
+            cols = {r[1] for r in cache.db.execute(
+                "PRAGMA table_info(embedding_vectors)")}
+            assert "chunk_index" in cols, "legacy table left unreadable"
+            # The narrow key survives until a rebuild — report it honestly
+            # rather than pretending chunked writes will work.
+            assert embedding_table_supports_chunks(cache.db) is False
+        finally:
+            cache.close()
