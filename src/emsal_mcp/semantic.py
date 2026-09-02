@@ -1393,8 +1393,27 @@ def get_index_status(cache: Cache | None = None) -> dict[str, Any]:
         ).fetchone() is not None
 
         fts5_document_count = 0
+        fts5_count_is_estimate = False
         if fts5_exists:
-            fts5_document_count = db.execute("SELECT COUNT(*) FROM documents_v2_fts").fetchone()[0]
+            # COUNT(*) on an external-content FTS5 table scans the whole content
+            # table (25 GB, minutes-to-hours, blocks the event loop). The
+            # shadow docsize table has one row per indexed document, so counting
+            # it is O(index) instead of O(content): ~0,01-1,3 s on the live DB.
+            #
+            # The docsize shadow table does not exist when the FTS5 index was
+            # created with detail='none' or columnsize=0. Fall back to the
+            # content table's own count then: it is an upper bound rather than
+            # the true index size, but it stays cheap. Never COUNT(*) the FTS5
+            # table itself.
+            try:
+                fts5_document_count = db.execute(
+                    "SELECT COUNT(*) FROM documents_v2_fts_docsize"
+                ).fetchone()[0]
+            except sqlite3.OperationalError:
+                fts5_count_is_estimate = True
+                fts5_document_count = db.execute(
+                    "SELECT COUNT(*) FROM documents_v2"
+                ).fetchone()[0]
 
         # Check vectors table
         vectors_table_exists = db.execute(
@@ -1412,6 +1431,13 @@ def get_index_status(cache: Cache | None = None) -> dict[str, Any]:
 
         warnings: list[str] = []
         recommended: list[str] = []
+
+        if fts5_count_is_estimate:
+            warnings.append(
+                "FTS5 docsize shadow table is missing (index built with "
+                "detail='none' or columnsize=0); fts5_document_count is an "
+                "estimate taken from the content table."
+            )
 
         if not fts5_exists:
             warnings.append("FTS5 virtual table does not exist.")
