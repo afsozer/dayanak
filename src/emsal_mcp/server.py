@@ -18,8 +18,13 @@ def main() -> None:
     it interactively (stdin is a TTY) or passes --help/--version, it prints a
     short usage note and exits instead of emitting confusing JSON parse errors.
     """
+    import functools
+    import inspect
+    import logging
     import os
     import sys
+    import threading
+    import time
 
     from . import __version__
 
@@ -268,19 +273,302 @@ def main() -> None:
     # Extended tool functions collected for dynamic loading (M-99)
     _EXTENDED_TOOLS: dict[str, Any] = {}
 
+    # ── M-118: sync araclari olay dongusunu bloklamasin ────────────────────
+    #
+    # FastMCP 1.27 (mcp/server/fastmcp/utilities/func_metadata.py:96) sync bir
+    # araci DOGRUDAN olay dongusu thread'inde cagirir:
+    #
+    #     if fn_is_async: return await fn(...)
+    #     else:           return fn(...)
+    #
+    # Bu yuzden uzun suren tek bir sync arac (orn. FTS taramasi, dense
+    # vektor aramasi) TUM istemcileri kilitler; sunucu yeni baglanti kabul
+    # eder ama hicbir istege cevap veremez.  Cozum: sync araci bir worker
+    # thread'inde calistiran async bir sarmalayiciyla kaydetmek.
+    #
+    # Guvenlik notu (olculdu): paylasilan mutable durum yok.  ``Cache()`` her
+    # cagrida yeni bir ``sqlite3.connect`` acar (cache.py:85) ve arac
+    # govdesinde yaratildigi icin baglanti hep kendi thread'inde dogar
+    # (``check_same_thread`` sorunu cikmaz); ``semantic._get_db`` ve
+    # ``circuit`` de ayni deseni kullanir.  Modul seviyesindeki tek onbellek
+    # ``semantic._MATRIX_VERIFIED`` bir dict'tir; en kotu ihtimalle dogrulama
+    # tekrar edilir.  Model/oturum singleton'i yoktur.
+    #
+    # EMSAL_TOOL_THREADS=0 sarmalayiciyi kapatir (eski, bloklayan davranis).
+    _tool_thread_limit = 6
+    try:
+        _tool_thread_limit = int(os.environ.get("EMSAL_TOOL_THREADS", "6") or "6")
+    except ValueError:
+        _tool_thread_limit = 6
+
+    _limiter_holder: dict[str, Any] = {}
+
+    def _get_tool_limiter():
+        """CapacityLimiter'i tembel yarat: anyio calisan bir dongu ister."""
+        lim = _limiter_holder.get("limiter")
+        if lim is None:
+            import anyio
+            lim = anyio.CapacityLimiter(_tool_thread_limit)
+            _limiter_holder["limiter"] = lim
+        return lim
+
+    # -- M-119: arac basina zaman siniri --------------------------------
+    #
+    # EMSAL_TOOL_TIMEOUT (saniye, varsayilan 120; 0 = sinirsiz) her arac
+    # cagrisina bir tavan koyar.  Arac bazli tavan gerekirse ``_TOOL_TIMEOUTS``
+    # sozlugune ``fn.__name__ -> saniye`` yaz.
+    #
+    # KRITIK KISIT: thread'de kosan sync bir fonksiyon IPTAL EDILEMEZ.
+    # ``anyio.fail_after`` yalnizca bekleyen coroutine'i birakir; worker thread
+    # ``fn`` bitene kadar calisir ve limiter jetonunu tutar.  Bu yuzden zaman
+    # asan sync cagrilari "runaway" (kacak) olarak sayiyoruz: health_check
+    # ``tool_runtime`` blogunda raporlaniyor ve sayac limiter kapasitesine
+    # yaklasinca WARNING log'u dusuyor.  Async araclarda boyle bir sorun yok,
+    # coroutine gercekten iptal edilir.
+    _tool_timeout_default = 120.0
+    try:
+        _tool_timeout_default = float(
+            os.environ.get("EMSAL_TOOL_TIMEOUT", "120") or "120"
+        )
+    except ValueError:
+        _tool_timeout_default = 120.0
+    if _tool_timeout_default < 0:
+        _tool_timeout_default = 0.0
+
+    # Arac bazli tavanlar (saniye); 0 / negatif = o arac icin sinirsiz.
+    _TOOL_TIMEOUTS: dict[str, float] = {}
+
+    _tool_runtime_stats: dict[str, int] = {
+        "in_flight": 0,
+        "timed_out_total": 0,
+        "runaway": 0,
+    }
+    _tool_runtime_lock = threading.Lock()
+    _tool_log = logging.getLogger("emsal_mcp.server")
+
+    # anyio 4.1+ ``abandon_on_cancel``, oncesi ``cancellable`` diyor.  Bayrak
+    # SART: varsayilan (False) iptalde thread'in bitmesini BEKLER, yani
+    # fail_after hicbir ise yaramaz.
+    _abandon_kw: dict[str, bool] = {"abandon_on_cancel": True}
+    try:  # pragma: no cover - surum tespiti
+        import anyio.to_thread as _anyio_to_thread
+
+        if "abandon_on_cancel" not in inspect.signature(
+            _anyio_to_thread.run_sync
+        ).parameters:
+            _abandon_kw = {"cancellable": True}
+    except Exception:  # pragma: no cover
+        pass
+
+    def _tool_timeout_for(name: str) -> "float | None":
+        raw = _TOOL_TIMEOUTS.get(name, _tool_timeout_default)
+        try:
+            val = float(raw)
+        except (TypeError, ValueError):
+            return None
+        return val if val > 0 else None
+
+    def _tool_runtime_snapshot() -> dict[str, Any]:
+        """health_check icin canli calisma-zamani sayaclari.
+
+        ``borrowed_tokens`` limiter'in o an dagittigi jeton sayisidir; bu
+        aracin kendisi de bir jeton tuttugu icin en az 1 gorunur.
+        """
+        borrowed: Any = None
+        lim = _limiter_holder.get("limiter")
+        if lim is not None:
+            try:
+                borrowed = lim.statistics().borrowed_tokens
+            except Exception:  # pragma: no cover
+                borrowed = None
+        with _tool_runtime_lock:
+            snap = dict(_tool_runtime_stats)
+        return {
+            "threads_limit": _tool_thread_limit,
+            "timeout_seconds": _tool_timeout_default,
+            "in_flight": snap["in_flight"],
+            "timed_out_total": snap["timed_out_total"],
+            "runaway": snap["runaway"],
+            "borrowed_tokens": borrowed,
+        }
+
+    def _tool_enter_call() -> None:
+        with _tool_runtime_lock:
+            _tool_runtime_stats["in_flight"] += 1
+
+    def _tool_exit_call() -> None:
+        with _tool_runtime_lock:
+            _tool_runtime_stats["in_flight"] -= 1
+
+    def _tool_note_timeout(state: "dict | None") -> bool:
+        """Zaman asimi sayaclarini guncelle; kacak varsa True dondur."""
+        escaped = False
+        with _tool_runtime_lock:
+            _tool_runtime_stats["timed_out_total"] += 1
+            if state is not None and not state["finished"]:
+                state["runaway"] = True
+                _tool_runtime_stats["runaway"] += 1
+                escaped = True
+            runaway_now = _tool_runtime_stats["runaway"]
+        if (
+            escaped
+            and _tool_thread_limit > 0
+            and runaway_now >= max(1, _tool_thread_limit - 1)
+        ):
+            _tool_log.warning(
+                "emsal-mcp: iptal edilemeyen %d arac cagrisi hala worker "
+                "thread'inde kosuyor (limiter kapasitesi %d); yeni cagrilar "
+                "kuyrukta bekleyebilir.",
+                runaway_now,
+                _tool_thread_limit,
+            )
+        return escaped
+
+    def _tool_timeout_error(
+        name: str, limit: float, elapsed: float, *, escaped: bool
+    ) -> dict[str, Any]:
+        warnings = []
+        if escaped:
+            warnings.append(
+                "Cagri iptal edilemedi: islem arka planda surmeye devam ediyor "
+                "olabilir ve bitene kadar bir worker thread'ini mesgul tutar."
+            )
+        else:
+            warnings.append(
+                "Cagri iptal edildi; islem arka planda surmeye devam ediyor "
+                "olabilir."
+            )
+        return build_error(
+            "TOOL_TIMEOUT",
+            f"'{name}' araci {limit:g} saniyelik zaman sinirini asti; "
+            f"{elapsed:.1f} saniye sonra beklemekten vazgecildi.",
+            source="emsal-mcp",
+            retryable=True,
+            warnings=warnings,
+            recommended_next_steps=[
+                "Sorguyu daralt: daha az sonuc iste, tarih/mahkeme filtresini "
+                "sikilastir.",
+                "Uzun suren isler icin EMSAL_TOOL_TIMEOUT degerini yukselt "
+                "(0 = sinirsiz).",
+                "health_check araciyla tool_runtime blogunu oku; runaway > 0 "
+                "ise sunucu gecici olarak yavaslamis demektir.",
+            ],
+            tool=name,
+            timeout_seconds=limit,
+            elapsed_seconds=round(elapsed, 3),
+            cancelled=not escaped,
+        )
+
+    def _threaded(fn):
+        """Araci zaman sinirli async bir sarmalayiciyla dondur.
+
+        ``functools.wraps`` ``__wrapped__``/``__annotations__``/``__doc__``
+        kopyalar; FastMCP arac semasini ``inspect.signature`` ile uretir ve o
+        da ``__wrapped__``'i takip eder, boylece tools/list ciktisi degismez.
+
+        - sync arac: worker thread + ``fail_after`` (M-118 + M-119).  Isaret:
+          ``__emsal_threaded__`` ve ``__emsal_timeout__``.
+        - async arac: thread yok, sadece ``fail_after`` (gercekten iptal
+          edilir).  Isaret: yalnizca ``__emsal_timeout__``.
+        - ``EMSAL_TOOL_THREADS=0``: sync araclar hic sarmalanmaz (eski
+          bloklayan davranis); bloklayan bir cagriya zaman siniri zaten
+          uygulanamaz.
+        """
+        name = fn.__name__
+
+        if inspect.iscoroutinefunction(fn):
+
+            @functools.wraps(fn)
+            async def _async_runner(**kwargs):
+                import anyio
+
+                limit = _tool_timeout_for(name)
+                started = time.monotonic()
+                _tool_enter_call()
+                try:
+                    if limit is None:
+                        return await fn(**kwargs)
+                    try:
+                        with anyio.fail_after(limit):
+                            return await fn(**kwargs)
+                    except TimeoutError:
+                        _tool_note_timeout(None)
+                        return _tool_timeout_error(
+                            name, limit, time.monotonic() - started, escaped=False
+                        )
+                finally:
+                    _tool_exit_call()
+
+            _async_runner.__emsal_timeout__ = True  # type: ignore[attr-defined]
+            return _async_runner
+
+        if _tool_thread_limit <= 0:
+            return fn
+
+        @functools.wraps(fn)
+        async def _runner(**kwargs):
+            import anyio
+            import anyio.to_thread
+
+            limit = _tool_timeout_for(name)
+            state = {"finished": False, "runaway": False}
+
+            def _body():
+                try:
+                    return fn(**kwargs)
+                finally:
+                    # Kacak sayacini, govde GERCEKTEN bitince dusur.
+                    with _tool_runtime_lock:
+                        state["finished"] = True
+                        if state["runaway"]:
+                            state["runaway"] = False
+                            _tool_runtime_stats["runaway"] -= 1
+
+            started = time.monotonic()
+            _tool_enter_call()
+            try:
+                if limit is None:
+                    return await anyio.to_thread.run_sync(
+                        _body, limiter=_get_tool_limiter()
+                    )
+                try:
+                    with anyio.fail_after(limit):
+                        return await anyio.to_thread.run_sync(
+                            _body, limiter=_get_tool_limiter(), **_abandon_kw
+                        )
+                except TimeoutError:
+                    escaped = _tool_note_timeout(state)
+                    return _tool_timeout_error(
+                        name, limit, time.monotonic() - started, escaped=escaped
+                    )
+            finally:
+                _tool_exit_call()
+
+        # Sarmalayiciyi tanimak icin acik isaret: ``__wrapped__`` tek basina
+        # yetmez, bazi araclar zaten baska dekoratorlerle sarmalanmis durumda.
+        _runner.__emsal_threaded__ = True  # type: ignore[attr-defined]
+        _runner.__emsal_timeout__ = True  # type: ignore[attr-defined]
+        return _runner
+
     def _tool(fn):
         """Decorator: conditionally register an MCP tool based on EMSAL_TOOL_PROFILE.
 
         In 'core' profile (default), only tools with profile='core' are registered.
         In 'full' profile, all tools are registered.
         Extended tools are collected in _EXTENDED_TOOLS for dynamic loading (M-99).
+
+        M-118: MCP'ye kaydedilen sey ``_threaded(fn)`` sarmalayicisidir; modul
+        icindeki dogrudan cagrilar bozulmasin diye dekorator orijinal ``fn``i
+        dondurur (mcp.tool() de zaten fn'i degistirmeden donduruyordu).
         """
         name = fn.__name__
         profile = _TOOL_PROFILES.get(name, "extended")
         if _effective_profile == "full" or profile == "core":
-            return mcp.tool()(fn)
+            mcp.tool()(_threaded(fn))
+            return fn
         else:
-            _EXTENDED_TOOLS[name] = fn
+            # M-99 dinamik yukleme yolu da ayni sarmalayicidan gecsin.
+            _EXTENDED_TOOLS[name] = _threaded(fn)
             return fn
 
     def _attach_corpus_hint(result: dict, query: str = "") -> dict:
@@ -2051,6 +2339,8 @@ def main() -> None:
             },
             "circuit_breakers": cb_status,
             "search_index": idx,
+            # M-119: zaman siniri / thread havuzu durumu.
+            "tool_runtime": _tool_runtime_snapshot(),
         }
 
     @_tool

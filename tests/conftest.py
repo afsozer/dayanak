@@ -92,6 +92,21 @@ def fresh_cache(tmp_path):
     cache.db.close()
 
 
+def _unwrap_threaded(fn):
+    """M-118: sadece ``_tool``un thread sarmalayicisini soy.
+
+    ``inspect.unwrap`` butun ``__wrapped__`` zincirini soyar; bazi araclar
+    zaten ``validate_tool_input`` gibi dekoratorlerle sarili oldugu icin bu
+    onlarin davranisini da atlardi.  Isaretli tek katmani soyuyoruz (M-119: async araclardaki zaman
+    siniri sarmalayicisi da ayni sekilde isaretli).
+    """
+    if getattr(fn, "__emsal_threaded__", False) or getattr(
+        fn, "__emsal_timeout__", False
+    ):
+        return fn.__wrapped__
+    return fn
+
+
 def capture_registered_tools(profile: str = "full") -> dict:
     """Return ``{tool_name: fn}`` for the tools ``server.main()`` registers.
 
@@ -113,7 +128,10 @@ def capture_registered_tools(profile: str = "full") -> dict:
 
     def capture_tool(name=None, **kw):
         def decorator(fn):
-            registered[name or getattr(fn, "__name__", "unknown")] = fn
+            # M-118: ``_tool`` sync araclari ``anyio.to_thread`` sarmalayicisiyla
+            # kaydediyor.  Testler tasima katmanini degil implementasyonu
+            # cagiriyor, o yuzden o tek katmani soyuyoruz.
+            registered[name or getattr(fn, "__name__", "unknown")] = _unwrap_threaded(fn)
             return fn
         return decorator
 

@@ -19,6 +19,21 @@ pytestmark = [pytest.mark.integration]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _unwrap_threaded(fn):
+    """M-118: sadece ``_tool``un thread sarmalayicisini soy.
+
+    ``inspect.unwrap`` butun ``__wrapped__`` zincirini soyar; bazi araclar
+    zaten ``validate_tool_input`` gibi dekoratorlerle sarili oldugu icin bu
+    onlarin davranisini da atlardi.  Isaretli tek katmani soyuyoruz (M-119: async araclardaki zaman
+    siniri sarmalayicisi da ayni sekilde isaretli).
+    """
+    if getattr(fn, "__emsal_threaded__", False) or getattr(
+        fn, "__emsal_timeout__", False
+    ):
+        return fn.__wrapped__
+    return fn
+
+
 def _capture_tools(profile: str) -> dict[str, object]:
     """Mock FastMCP, call main(), return {tool_name: function} dict."""
     registered: dict[str, object] = {}
@@ -27,9 +42,11 @@ def _capture_tools(profile: str) -> dict[str, object]:
     mock_mcp._tool_manager._tools = {}
 
     # We need add_tool because _tool() delegates to mcp.tool() which calls mcp.add_tool()
+    # M-118: ``_tool`` sync araclari ``anyio.to_thread`` sarmalayicisiyla
+    # kaydeder; testler implementasyonu cagirdigi icin o tek katman soyulur.
     def capture_add_tool(fn, name=None, **kw):
         tool_name = name or getattr(fn, "__name__", "unknown")
-        registered[tool_name] = fn
+        registered[tool_name] = _unwrap_threaded(fn)
         mock_mcp._tool_manager._tools[tool_name] = fn
         return None
 
@@ -38,7 +55,7 @@ def _capture_tools(profile: str) -> dict[str, object]:
             raise TypeError("The @tool decorator was used incorrectly.")
         def decorator(fn):
             tool_name = name or getattr(fn, "__name__", "unknown")
-            registered[tool_name] = fn
+            registered[tool_name] = _unwrap_threaded(fn)
             mock_mcp._tool_manager._tools[tool_name] = fn
             return fn
         return decorator

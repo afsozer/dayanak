@@ -8,6 +8,21 @@ pytestmark = [pytest.mark.integration]
 from unittest.mock import MagicMock, patch
 
 
+def _unwrap_threaded(fn):
+    """M-118: sadece ``_tool``un thread sarmalayicisini soy.
+
+    ``server.main()`` sync araclari ``anyio.to_thread.run_sync`` ile
+    calistiran async bir sarmalayiciyla kaydediyor; bu testler
+    implementasyonu dogrudan cagirdigi icin o tek katman soyulur
+    (``inspect.unwrap`` diger dekoratorleri de atlardi).
+    """
+    if getattr(fn, "__emsal_threaded__", False) or getattr(
+        fn, "__emsal_timeout__", False
+    ):
+        return fn.__wrapped__
+    return fn
+
+
 def _setup_server_mock():
     """Helper: mock FastMCP and return registered tools dict + mock."""
     registered_tools: dict[str, callable] = {}
@@ -16,7 +31,7 @@ def _setup_server_mock():
     def capture_tool():
         """Decorator that captures the registered function."""
         def decorator(fn):
-            registered_tools[fn.__name__] = fn
+            registered_tools[fn.__name__] = _unwrap_threaded(fn)
             return fn
         return decorator
 
