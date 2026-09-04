@@ -183,8 +183,13 @@ class MevzuatClient(BedestenClient):
                 if html:
                     text = html_to_text(html)
                     status = ContentStatus.HTML_MARKDOWN
-        # Fix title: prefer mevzuatAdi
-        title = data.get("mevzuatAdi") or data.get("title") or document_id
+        # Fix title: prefer mevzuatAdi. getDocumentContent often answers with
+        # {content, mimeType, version} only — no metadata at all — so fall back
+        # to the heading in the document text before giving up on the raw id.
+        from .mevzuatgov import _leading_title
+        title = data.get("mevzuatAdi") or data.get("title") or ""
+        if not title:
+            title = _leading_title(text, document_id) if text else document_id
         url = data.get("url")
         if not url and data.get("mevzuatNo") and data.get("mevzuatTur"):
             tur_id = data["mevzuatTur"].get("id") if isinstance(data["mevzuatTur"], dict) else data["mevzuatTur"]

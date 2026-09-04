@@ -28,11 +28,20 @@ def main() -> None:
 
     from . import __version__
 
+    # Transport: varsayilan stdio (MCP istemcisi surecmizi baslatir).  Ag
+    # uzerinden yayin icin EMSAL_MCP_TRANSPORT=streamable-http ver; host/port
+    # EMSAL_MCP_HOST / EMSAL_MCP_PORT ile ayarlanir (varsayilan 127.0.0.1:8790).
+    _transport = os.environ.get("EMSAL_MCP_TRANSPORT", "stdio").strip() or "stdio"
+    if _transport not in ("stdio", "streamable-http", "sse"):
+        _transport = "stdio"
+
     argv = sys.argv[1:]
     if argv and argv[0] in {"--version", "-V", "version"}:
         print(f"emsal-mcp-server {__version__}")
         return
-    if (argv and argv[0] in {"--help", "-h", "help"}) or sys.stdin.isatty():
+    if (argv and argv[0] in {"--help", "-h", "help"}) or (
+        _transport == "stdio" and sys.stdin.isatty()
+    ):
         print(
             f"emsal-mcp-server {__version__} - stdio MCP (JSON-RPC) sunucusu\n"
             "\n"
@@ -132,7 +141,12 @@ def main() -> None:
     except Exception as exc:  # pragma: no cover
         raise SystemExit("MCP extra kurulu değil. Kurulum: pip install -e .[mcp]") from exc
 
-    mcp = FastMCP("emsal-mcp")
+    _fastmcp_kwargs: dict[str, Any] = {}
+    if _transport != "stdio":
+        _fastmcp_kwargs["host"] = os.environ.get("EMSAL_MCP_HOST", "127.0.0.1")
+        _fastmcp_kwargs["port"] = int(os.environ.get("EMSAL_MCP_PORT", "8790"))
+
+    mcp = FastMCP("emsal-mcp", **_fastmcp_kwargs)
 
     # ── M-97: Tool surface profile infrastructure ──────────────────────────
     _effective_profile = os.environ.get("EMSAL_TOOL_PROFILE", "core")
@@ -2407,7 +2421,10 @@ def main() -> None:
             "check_timestamp": datetime.now(timezone.utc).isoformat()
         }
 
-    mcp.run()
+    if _transport == "stdio":
+        mcp.run()
+    else:
+        mcp.run(transport=_transport)
 
 
 if __name__ == "__main__":

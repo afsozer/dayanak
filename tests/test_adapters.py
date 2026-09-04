@@ -170,6 +170,52 @@ class TestHtmlToText:
     def test_strips_style(self):
         assert "text" in html_to_text("<p>text</p><style>.x{}</style>")
 
+    def test_empty_and_blank(self):
+        assert html_to_text("") == ""
+        assert html_to_text("   \n  ") == ""
+
+    def test_plain_text_passthrough(self):
+        assert html_to_text("düz metin") == "düz metin"
+
+    def test_text_after_script_survives(self):
+        # Dropping the <script> element must not swallow its tail text.
+        assert html_to_text("<div>Karar<script>var x=1</script>Sonu</div>") == "Karar\nSonu"
+
+    def test_matches_pure_python_parser(self):
+        """Output must equal BeautifulSoup(html, "html.parser"), byte for byte."""
+        import re as _re
+
+        from bs4 import BeautifulSoup
+
+        samples = [
+            "<p>a</p><p>b</p>", "<td>x</td>", "a<br>b", "<b>a</b>c",
+            "&amp; &nbsp;t", "<!-- yorum -->x", "<html><body><p>tam</p></body></html>",
+            "<div>A<script>x<b>y</b>z</script>B</div>",
+            "<style>p{color:red}</style>Metin",
+        ]
+        for html in samples:
+            soup = BeautifulSoup(html, "html.parser")
+            for tag in soup(["script", "style"]):
+                tag.decompose()
+            expected = _re.sub(r"\n{3,}", "\n\n", soup.get_text("\n", strip=True))
+            assert html_to_text(html) == expected, html
+
+    def test_does_not_truncate_long_documents(self):
+        """Regression: bs4's lxml tree builder silently cut mevzuat.gov.tr HTML.
+
+        İİK came back ending at article 193 of 366 — article 265 was simply
+        absent, which is why every "İİK m. 265" lookup returned nothing.
+        """
+        body = "".join(
+            f"<p class=MsoNormal style='line-height:127%'><span "
+            f"style='font-size:12.0pt'>Madde {i} – hüküm metni</span></p>"
+            for i in range(1, 1201)
+        )
+        text = html_to_text(f"<html><body>{body}</body></html>")
+        assert "Madde 1 – hüküm metni" in text
+        assert "Madde 1200 – hüküm metni" in text
+        assert text.count("hüküm metni") == 1200
+
 
 # ── check_http_response ────────────────────────────────────────────────
 

@@ -90,6 +90,15 @@ def _clean_title(raw: Any) -> str:
     return re.sub(r"\s+", " ", _TAG_RE.sub("", str(raw))).strip()
 
 
+_FOOTNOTE_MARKER_RE = re.compile(r"\[\d+\]")
+# A heading that ends in one of these is already a whole legislation title.
+_TITLE_TAIL_RE = re.compile(
+    r"(KANUNU|KANUN|KANUNNAMESİ|KANUN\s+HÜKMÜNDE\s+KARARNAME(?:Sİ)?|YÖNETMELİĞİ"
+    r"|YÖNETMELİK|TÜZÜĞÜ|TÜZÜK|KARARNAMESİ|TEBLİĞİ|YÖNERGESİ|GENELGESİ)\s*$",
+    re.IGNORECASE,
+)
+
+
 def _leading_title(text: str, fallback: str) -> str:
     """First meaningful heading of a fetched document.
 
@@ -100,10 +109,15 @@ def _leading_title(text: str, fallback: str) -> str:
     parts: list[str] = []
     for line in text.splitlines():
         line = line.strip()
-        if not line:
+        if not line or _FOOTNOTE_MARKER_RE.fullmatch(line):
+            # "[1]", "[2]" — footnote anchors interleaved with the heading.
             continue
         parts.append(line)
         joined = " ".join(parts)
+        if _TITLE_TAIL_RE.search(joined):
+            # Already a complete title ("İCRA VE İFLAS KANUNU"); stop before
+            # swallowing the "Kanun Numarası : 2004" header that follows.
+            return joined[:200]
         if len(joined) >= 25:
             return joined[:200]
         if len(parts) >= 4:

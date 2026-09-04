@@ -51,11 +51,26 @@ _NO_INVENTION_BLOCK = (
     "Eksik bilgiler uyarı olarak bildirilir, tamamlanmaz."
 )
 
-# Article patterns for Turkish legislation text
+# Article patterns for Turkish legislation text.
+# IGNORECASE is required: laws drafted before ~2000 head their articles
+# "Madde 265 –" (İİK, TTK, HMK...), only newer ones use "MADDE 265 –".
+# Without it İİK matched 1 of its 472 articles.
+# The qualifier sits on its own line above the heading ("Ek\nMadde 1 –");
+# capturing it keeps "Ek madde 1" / "Geçici madde 1" of amending acts from
+# colliding with article 1 of the law itself (İİK had four "article 1"s).
+_ARTICLE_QUAL = r"(?:EK\s+GE[ÇC][İI]C[İI]|GE[ÇC][İI]C[İI]|EK|M[ÜU]KERRER)"
 _ARTICLE_RE = re.compile(
-    r"^MADDE\s+(\d+(?:\s*/\s*[A-Z])?)\s*[-–—]\s*(.*?)(?=^MADDE\s+\d|\Z)",
-    re.MULTILINE | re.DOTALL,
+    rf"^(?:({_ARTICLE_QUAL})\s+)?MADDE\s+(\d+(?:\s*/\s*[A-Z])?)\s*[-–—]\s*"
+    rf"(.*?)(?=^(?:{_ARTICLE_QUAL}\s+)?MADDE\s+\d|\Z)",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
 )
+# Canonical spelling for a captured qualifier, keyed by its ASCII-folded form.
+_QUAL_CANON = {
+    "ek": "Ek",
+    "geçici": "Geçici", "gecici": "Geçici",
+    "ekgeçici": "Ek Geçici", "ekgecici": "Ek Geçici",
+    "mükerrer": "Mükerrer", "mukerrer": "Mükerrer",
+}
 _PART_RE = re.compile(r"^([İIİ]?KİNCİ|[ÜUÜ]?ÇÜNCÜ|[DÖD]?RDÜNCÜ|[BE]?ŞİNCİ|[AL]?TINCI|[YE]?DİNCİ|[SEK]?İZİNCİ|[DO]?KUZUNCU|[ON]UNCU|[Bİ]?RİNCİ)\s+KISIM", re.MULTILINE)
 _SECTION_RE = re.compile(r"^([İIİ]?KİNCİ|[ÜUÜ]?ÇÜNCÜ|[DÖD]?RDÜNCÜ|[BE]?ŞİNCİ|[AL]?TINCI|[YE]?DİNCİ|[SEK]?İZİNCİ|[DO]?KUZUNCU|[ON]UNCU|[Bİ]?RİNCİ)\s+B[ÖO]L[ÜU]M", re.MULTILINE)
 
@@ -66,6 +81,10 @@ _GENEL_GEREKCE_RE = re.compile(
 _MADDE_GEREKCELERI_RE = re.compile(
     r"(?:^|\n)MADDE\s+GEREK[ÇC]ELER[İI]\s*\n(.*?)(?=\Z)",
     re.DOTALL,
+)
+_GEREKCE_BOUNDARY_RE = re.compile(
+    r"(?:^|\n)[ \t]*(?:GENEL\s+GEREK[ÇC]E|MADDE\s+GEREK[ÇC]ELER[İI])[ \t]*(?=\n|\Z)",
+    re.IGNORECASE,
 )
 _SINGLE_MADDE_GEREKCE_RE = re.compile(
     r"Madde\s+(\d+(?:\s*/\s*[A-Z])?)\s*[-–—]\s*(.*?)(?=Madde\s+\d|\Z)",
@@ -375,15 +394,41 @@ def _fetch_doc(
         return None, f"Belge alınamadı: {exc}"
 
 
+def _normative_body(text: str) -> str:
+    """Text up to the gerekçe sections — the enacted articles only.
+
+    Rationale sections repeat every article as "Madde 1 - …"; since
+    ``_ARTICLE_RE`` is case-insensitive (old laws head their articles that
+    way), they would otherwise be counted as articles of the law itself.
+    """
+    m = _GEREKCE_BOUNDARY_RE.search(text)
+    return text[: m.start()] if m else text
+
+
+def _norm_article_no(number: str) -> str:
+    """Fold an article number for comparison: "8/A", "8 / a" and "8/a" are one.
+
+    Also covers qualified numbers ("Geçici 1" vs "geçici 1").
+    """
+    return re.sub(r"\s+", "", _tr_fold(number))
+
+
 def _parse_articles(text: str) -> list[dict[str, Any]]:
     """Parse MADDE entries from legislation text. Returns list of {number, raw_text, text}."""
     articles: list[dict[str, Any]] = []
-    for m in _ARTICLE_RE.finditer(text):
-        num = m.group(1).strip()
-        body = m.group(2).strip()
+    for m in _ARTICLE_RE.finditer(_normative_body(text)):
+        plain_num = re.sub(r"\s+", "", m.group(2))
+        body = m.group(3).strip()
+        num = plain_num
+        heading = f"MADDE {plain_num}"
+        if m.group(1):
+            key = re.sub(r"\s+", "", _tr_fold(m.group(1)))
+            qual = _QUAL_CANON.get(key, m.group(1).strip())
+            num = f"{qual} {plain_num}"
+            heading = f"{qual.upper()} MADDE {plain_num}"
         articles.append({
             "number": num,
-            "raw_text": f"MADDE {num} - {body}",
+            "raw_text": f"{heading} - {body}",
             "text": body,
         })
     return articles
@@ -775,9 +820,10 @@ def search_legislation_articles(
 
     all_articles = _parse_articles(text)
     matching = []
+    wanted = _norm_article_no(article_number) if article_number else None
 
     for art in all_articles:
-        if article_number and art["number"] != article_number:
+        if wanted and _norm_article_no(art["number"]) != wanted:
             continue
         if article_query:
             matched, match_count, terms = evaluate_boolean_query(

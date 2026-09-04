@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Callable, Coroutine, TypeVar
 
 import httpx
+import lxml.etree
+import lxml.html
 from bs4 import BeautifulSoup
 
 from emsal_mcp import __version__
@@ -455,10 +457,35 @@ def decode_turkish_html(resp: Any, default: str = "windows-1254") -> str:
 
 
 def html_to_text(html: str) -> str:
-    soup = BeautifulSoup(html, "lxml")
-    for tag in soup(["script", "style"]):
-        tag.decompose()
-    return re.sub(r"\n{3,}", "\n\n", soup.get_text("\n", strip=True))
+    """Extract plain text from HTML, one text node per line.
+
+    Uses lxml.html directly rather than BeautifulSoup's "lxml" tree builder:
+    bs4 feeds the document to libxml2 in chunks, and on the Word-exported HTML
+    that mevzuat.gov.tr serves for long laws that recovery path silently
+    truncates the tree. İİK (2004 s.k., 1,15 MB HTML) came back cut off at
+    article 193 of 366 — article 265 simply did not exist in the output.
+    Parsing the whole string at once yields the full text and is ~2x faster.
+    Output is byte-identical to BeautifulSoup(html, "html.parser").
+    """
+    if not html or not html.strip():
+        return ""
+    try:
+        root = lxml.html.fromstring(html)
+    except (lxml.etree.ParserError, lxml.etree.XMLSyntaxError, ValueError):
+        # Malformed beyond recovery — fall back to the (slower) pure-Python
+        # parser, which never truncates either.
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup(["script", "style"]):
+            tag.decompose()
+        return re.sub(r"\n{3,}", "\n\n", soup.get_text("\n", strip=True))
+    # Drop script/style *content* but keep the elements in place, so their tail
+    # text stays a separate node (matching bs4's decompose() line breaks).
+    for el in root.iter("script", "style"):
+        el.text = None
+        for child in list(el):
+            el.remove(child)
+    lines = (chunk.strip() for chunk in root.itertext())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(line for line in lines if line))
 
 
 def sha(text: str) -> str:

@@ -5,6 +5,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed — mevzuat tam metni ve madde ayrıştırma (2026-08-19)
+
+Emsal MCP, İİK m. 265'i "bulunamadı" diye döndürüyordu. Üç ayrı kusur:
+
+- **HTML metne çevrimi uzun mevzuatı sessizce kesiyordu** (`sources/base.py`):
+  `BeautifulSoup(html, "lxml")` belgeyi libxml2'ye parça parça besliyor;
+  mevzuat.gov.tr'nin Word'den ihraç edilmiş HTML'inde bu yol ağacı yarıda
+  kesiyordu. İİK'nın 1,15 MB'lık HTML'inden yalnızca 202 bin karakter
+  çıkıyor, metin 366 maddenin 193'üncüsünde bitiyordu — uyarı da yoktu.
+  Artık `lxml.html` doğrudan kullanılıyor: tam metin (425 bin karakter) ve
+  ~2 kat hızlı. Çıktı `html.parser` ile bit bit aynı.
+- **Madde başlığı deseni büyük/küçük harfe duyarlıydı** (`legislation.py`):
+  2000 öncesi kanunlar maddelerini "Madde 265 –" diye başlıklandırır, yalnızca
+  yeni kanunlar "MADDE 265 -" yazar. Desen İİK'nın 472 maddesinden 1'ini
+  buluyordu. `IGNORECASE` eklendi; gerekçe bölümleri (`GENEL GEREKÇE`,
+  `MADDE GEREKÇELERİ`) madde sayımından hariç tutuluyor.
+- **"Ek madde 1" / "Geçici madde 1" kanunun 1. maddesiyle çakışıyordu:**
+  başlıktaki nitelik artık yakalanıyor (`Ek 1`, `Geçici 1`, `Mükerrer 1`);
+  madde numarası karşılaştırması boşluk ve büyük/küçük harfe toleranslı.
+  İİK'da 472 kayıt / 457 benzersiz iken 488 kayıt / 480 benzersiz.
+- **Belge başlığı ham kimlik olarak dönüyordu** (`sources/mevzuat.py`):
+  `getDocumentContent` çoğu zaman `{content, mimeType, version}` dışında
+  metadata döndürmüyor, başlık "102993" olarak kalıyordu. Metnin ilk
+  başlığından türetiliyor: "İCRA VE İFLAS KANUNU".
+
+Regresyon testleri: `tests/test_adapters.py` (kesilme, `html.parser` eşitliği),
+`tests/test_legislation.py` (başlık biçimleri), `tests/test_mevzuat_live_smoke.py`
+(canlı kaynaktan İİK m. 265; `EMSAL_LIVE_TESTS=1`).
+
 ### FAZ O — Kesim v5.0.0 (2026-06-10)
 
 **Breaking change:** Sürüm 4.0.0 → 5.0.0. Aşağıdaki modüller/araçlar kalıcı olarak silindi.

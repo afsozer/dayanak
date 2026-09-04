@@ -896,3 +896,81 @@ class TestCLIImports:
         """Can import from server (just test import succeeds)."""
         from emsal_mcp.server import main
         assert callable(main)
+
+
+# ---------------------------------------------------------------------------
+# TestArticleHeadings — real-world heading shapes on mevzuat.gov.tr
+# ---------------------------------------------------------------------------
+
+OLD_STYLE_TEXT = """
+İCRA VE İFLAS KANUNU
+
+Madde
+264 – Dava açma müddeti bu maddede düzenlenir.
+
+Madde
+265 – Borçlu, ihtiyatî haczin dayandığı sebeplere yedi gün içinde itiraz edebilir.
+
+Madde
+266 – Borçlu parayı depo ederse haciz kalkar.
+
+Ek
+Madde 1- (Ek: 17/7/2003-4949/102 md.) Bu Kanunun ek maddesidir.
+
+Geçici
+Madde 1 – Bu kanunun yürürlüğe girdiği tarihte derdest takipler hakkında uygulanır.
+"""
+
+
+class TestArticleHeadings:
+    def test_lowercase_madde_is_parsed(self):
+        """Pre-2000 laws head articles "Madde 265 –", not "MADDE 265 -"."""
+        from emsal_mcp.legislation import _parse_articles
+
+        numbers = [a["number"] for a in _parse_articles(OLD_STYLE_TEXT)]
+        assert "265" in numbers
+        assert numbers[:3] == ["264", "265", "266"]
+
+    def test_qualified_articles_keep_their_prefix(self):
+        """"Ek madde 1" must not collide with article 1 of the law."""
+        from emsal_mcp.legislation import _parse_articles
+
+        numbers = [a["number"] for a in _parse_articles(OLD_STYLE_TEXT)]
+        assert "Ek 1" in numbers
+        assert "Geçici 1" in numbers
+        assert "1" not in numbers
+
+    def test_gerekce_articles_are_not_counted(self):
+        """Rationale sections repeat every article as "Madde N -"."""
+        from emsal_mcp.legislation import _parse_articles
+
+        text = OLD_STYLE_TEXT + (
+            "\nMADDE GEREKÇELERİ\n"
+            "Madde 264 - Madde ile dava açma süresi düzenlenmektedir.\n"
+            "Madde 265 - Madde ile itiraz usulü düzenlenmektedir.\n"
+        )
+        numbers = [a["number"] for a in _parse_articles(text)]
+        assert numbers.count("265") == 1
+        assert len(numbers) == 5
+
+    def test_article_number_lookup_is_case_and_space_tolerant(self):
+        from emsal_mcp.legislation import search_legislation_articles
+
+        client = FakeMevzuatClient()
+        client.doc_to_return = _make_legislation_doc(
+            full_text=OLD_STYLE_TEXT, markdown=OLD_STYLE_TEXT,
+        )
+        for wanted in ("265", " 265 "):
+            result = search_legislation_articles(
+                "test-12345", article_number=wanted,
+                sources_override={"mevzuat": client},
+            )
+            assert result["ok"] is True, wanted
+            assert len(result["matching_articles"]) == 1
+            assert "yedi gün" in result["matching_articles"][0]["text"]
+
+        result = search_legislation_articles(
+            "test-12345", article_number="geçici 1",
+            sources_override={"mevzuat": client},
+        )
+        assert [a["number"] for a in result["matching_articles"]] == ["Geçici 1"]

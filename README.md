@@ -1,6 +1,6 @@
 # Emsal-mcp
 
-> **v5.0.0** — 14 core + 30 extended MCP tools (44 total) · 142 CLI commands · 67 test files · 42 source modules
+> **v5.0.0** — 14 core + 30 extended MCP tools (44 total) · 142 CLI commands · 68 test files · 42 source modules
 >
 > [![CI](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/brachindul/emsal-mcp/actions/workflows/ci.yml)
 
@@ -50,6 +50,33 @@ emsal-mcp smoke --offline
 ```powershell
 emsal-mcp-server
 ```
+
+## Korpus crawl + panel
+
+Uzun soluklu korpus taraması (Bedesten'den yıl yıl karar indirme) bir master
+script ile yürür, durumu tarayıcıdan izlenir.
+
+```powershell
+.\scripts\kur-otomatik-baslatma.ps1          # oturum açılışına ekler (yönetici gerekmez)
+.\scripts\kur-otomatik-baslatma.ps1 -Durum   # ne çalışıyor?
+.\scripts\kur-otomatik-baslatma.ps1 -Kaldir  # geri al
+```
+
+| Parça | Ne yapar |
+|---|---|
+| `crawl_master.ps1` | Yılları sırayla tarar. Tek örnek kilidi (mutex), `crawl_logs\crawl_state.json`'a checkpoint yazar — PC kapanırsa kaldığı **yıl ve sayfadan** devam eder. |
+| `scripts\panel.py` | http://127.0.0.1:8799 — canlı crawl durumu, yıl hedefleri, kütüphane dağılımı, hız/tahmin. Ek bağımlılık yok. |
+| Zamanlanmış görevler | `EmsalCrawlMaster` (oturum + 1 dk), `EmsalPanel` (oturum + 20 sn). |
+
+Notlar:
+
+- Rate limit `EMSAL_RATE_LIMIT_MAX=12`. Ölçüldü: 12'de 429 yok (~2.800 belge/saat),
+  15'te 429 cooldown döngüsüne girip hız sıfırlanıyor.
+- Panel, `cache.sqlite3` (21 GB) üzerinde yıl sayımı yapmaz — tek bir yıl sorgusu
+  tam tablo taraması yüzünden ~60 sn sürüyor. Sayımlar `~/.emsal-mcp/panel_stats.sqlite3`
+  içinde artımlı (yalnız yeni `rowid`'ler) tutulur, günde bir kez tam sayım yapılır.
+- Yıl hedefleri Bedesten'in `total` alanından ölçülür (`crawl_logs\hedefler.json`),
+  tahmin edilmez.
 
 ## Özellikler
 
