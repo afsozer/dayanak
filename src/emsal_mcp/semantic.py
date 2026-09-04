@@ -728,7 +728,7 @@ def build_semantic_index(
 
         vectors_count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
         fts5_row_count = db.execute("SELECT COUNT(*) FROM documents_v2_fts").fetchone()[0]
-        docs_total = db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+        docs_total = _docs_total(db)
         remaining_unindexed = max(0, docs_total - vectors_count)
 
         if vectors_count == 0 and docs_total > 0:
@@ -801,6 +801,19 @@ def semantic_search(
 
         # Check if vectors exist
         vec_count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
+        if vec_count == 0 and _docs_total(db) > _BIG_CORPUS_DOCS:
+            return {
+                "ok": True,
+                "query": query,
+                "results": [],
+                "total_matches": 0,
+                "method": "tfidf_cosine",
+                "warnings": [
+                    "Büyük korpus: TF-IDF vektörleri yok ve sorgu sırasında hesaplanmadı. "
+                    "Anlamsal arama için mode='semantic' (toplu dense indeks) kullanın."
+                ],
+                "version": SEMANTIC_VERSION,
+            }
         if vec_count == 0:
             # Try computing vectors on-the-fly
             computed = _compute_tfidf_vectors(db)
@@ -970,6 +983,24 @@ def _tfidf_search(
 # ── Reciprocal Rank Fusion (RRF) — M-69 ──────────────────────────────────────
 
 _RRF_K = 60  # RRF constant (standard value)
+
+#: Bu belge sayısının üstünde korpus "büyük" sayılır: sorgu anında TF-IDF
+#: vektörü hesaplanmaz, BM25 genişletilmiş OR sorgusuna düşmez (11 M kararda
+#: 100+ s ölçüldü; bkz. hybrid_search).
+_BIG_CORPUS_DOCS = 2_000_000
+
+
+def _docs_total(db: sqlite3.Connection) -> int:
+    """documents_v2 satır sayısı; FTS gölge tablosu varsa oradan (11 M satırda
+    COUNT(*) documents_v2 saniyeler, docsize milisaniye)."""
+    try:
+        if _table_exists(db, "documents_v2_fts_docsize"):
+            return int(db.execute(
+                "SELECT COUNT(*) FROM documents_v2_fts_docsize"
+            ).fetchone()[0])
+    except Exception:
+        pass
+    return int(db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0])
 
 
 def _rrf_fusion(
@@ -1147,7 +1178,7 @@ def hybrid_search(
         _ensure_search_vectors(db)
 
         # Check for data
-        docs_total = db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+        docs_total = _docs_total(db)
         if docs_total == 0:
             return {
                 "ok": True,
@@ -1168,33 +1199,51 @@ def hybrid_search(
         # ---- Query Expansion (Turkish suffix stripping) ----
         expanded_terms = _expand_query(query)
         expanded_query = " OR ".join(expanded_terms) if expanded_terms else query
+        large_corpus = docs_total > _BIG_CORPUS_DOCS
 
         # ---- FTS5 BM25 Search ----
+        # Ölçüm (11 M belge, 2026-09-03): OR'lanmış genişletilmiş sorgu 185 s,
+        # yalnız ham kelimeler OR 102 s, ham kelimeler AND 1,2 s.  Önce AND;
+        # yeterli sonuç yoksa OR'a yalnız küçük korpusta düşülür.
         bm25_results: dict[tuple[str, str], float] = {}
+        fts_sql = """\
+            SELECT d.document_id, d.source, bm25(documents_v2_fts) as bm25_score
+            FROM documents_v2_fts f
+            JOIN documents_v2 d ON d.rowid = f.rowid
+            WHERE documents_v2_fts MATCH ?
+            ORDER BY bm25_score
+            LIMIT ?
+            """
         try:
-            # Escape special FTS5 characters in expanded query for MATCH
-            safe_query = re.sub(r'[^\w\s]', ' ', expanded_query).strip()
-            if safe_query:
-                fts_rows = db.execute(
-                    """\
-                    SELECT d.document_id, d.source, bm25(documents_v2_fts) as bm25_score
-                    FROM documents_v2_fts f
-                    JOIN documents_v2 d ON d.rowid = f.rowid
-                    WHERE documents_v2_fts MATCH ?
-                    ORDER BY bm25_score
-                    LIMIT ?
-                    """,
-                    (safe_query, limit * 3),  # fetch extra for merge
-                ).fetchall()
-                for row in fts_rows:
+            raw_words = [w for w in re.sub(r'[^\w\s]', ' ', query).split() if w]
+            and_query = " AND ".join(raw_words)
+            if and_query:
+                for row in db.execute(fts_sql, (and_query, limit * 3)).fetchall():
                     bm25_results[(row["document_id"], row["source"])] = row["bm25_score"]
+            if len(bm25_results) < limit and not large_corpus:
+                # Escape special FTS5 characters in expanded query for MATCH
+                safe_query = re.sub(r'[^\w\s]', ' ', expanded_query).strip()
+                if safe_query:
+                    for row in db.execute(fts_sql, (safe_query, limit * 3)).fetchall():
+                        key = (row["document_id"], row["source"])
+                        bm25_results.setdefault(key, row["bm25_score"])
+            elif len(bm25_results) < limit:
+                warnings.append(
+                    "Büyük korpus: BM25 yalnız tüm kelimeleri içeren kararları aradı "
+                    "(genişletilmiş OR sorgusu atlandı)."
+                )
         except Exception:
             warnings.append("FTS5 query failed; falling back to cosine-only scoring.")
 
         # ---- TF-IDF Cosine Search ----
         cosine_results: dict[tuple[str, str], float] = {}
         vec_count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
-        if vec_count == 0:
+        if vec_count == 0 and large_corpus:
+            warnings.append(
+                "Büyük korpus: TF-IDF vektörleri yok ve sorgu sırasında hesaplanmadı; "
+                "TF-IDF sinyali atlandı."
+            )
+        elif vec_count == 0:
             computed = _compute_tfidf_vectors(db)
             if computed == 0:
                 warnings.append("No text content available for TF-IDF indexing.")
@@ -2027,6 +2076,16 @@ def best_dense_provider(cache: Cache | None = None) -> str | None:
     own_cache = cache is None
     c = cache or Cache()
     try:
+        # Toplu FAISS indeksi varsa (bulk_index.py) onun sağlayıcısı kazanır:
+        # 11 M kararın vektörleri embedding_vectors tablosunda değil, orada.
+        try:
+            from .bulk_index import bulk_index_exists
+            from .embeddings import get_embedding_provider
+            prov = get_embedding_provider(None)
+            if prov is not None and bulk_index_exists(Path(c.path), prov.id):
+                return prov.id
+        except Exception:
+            pass
         _ensure_embedding_vectors(c.db)
         row = c.db.execute(
             "SELECT provider_id, COUNT(*) n FROM embedding_vectors "
@@ -2306,10 +2365,31 @@ def embedding_search(
         # never masquerade as "no matching decisions".
         method = "dense_mmap"
         warnings: list[str] = []
+
+        # Toplu FAISS indeksi (bulk_index.py): milyonlarca parça vektörü,
+        # belge bazında tekilleştirilmiş.  Varsa önce o; embedding_vectors
+        # tablosundaki (crawl'dan gelen, indeks sonrası) vektörler "delta"
+        # olarak aşağıdaki yolla taranıp aynı belgede en yüksek skorla birleşir.
+        bulk: list[dict[str, Any]] | None = None
+        try:
+            from .bulk_index import bulk_search
+            bulk = bulk_search(db, Path(c.path), prov.id, q_vec, limit=limit, filters=filters)
+        except Exception as exc:  # faiss yoksa / indeks bozuksa sessizce eski yol
+            warnings.append(f"Toplu indeks kullanılamadı: {exc}")
+
         scores = _score_vectors_mmap(
             db, Path(c.path), prov.id, q_vec, q_norm,
             limit=limit, filters=filters,
         )
+        if bulk is not None:
+            method = "dense_bulk"
+            delta = scores if scores is not None else []
+            merged: dict[tuple[str, str], dict[str, Any]] = {}
+            for r in bulk + delta:
+                key = (r["document_id"], r["source"])
+                if key not in merged or r["score"] > merged[key]["score"]:
+                    merged[key] = r
+            scores = sorted(merged.values(), key=lambda x: x["score"], reverse=True)
         if scores is None:
             method = "dense_scan"
             status = embedding_matrix_status(prov.id, cache=c)
@@ -2372,11 +2452,23 @@ def get_embedding_index_status(cache: Cache | None = None) -> dict[str, Any]:
             GROUP BY provider_id
         """
         ).fetchall()
-        return {
+        out: dict[str, Any] = {
             "ok": True,
             "providers": [dict(r) for r in rows],
             "version": EMBEDDING_VERSION,
         }
+        # Toplu FAISS indeksi (bulk_index.py) — embedding_vectors'tan bağımsız
+        try:
+            from .bulk_index import bulk_index_status
+            from .embeddings import get_embedding_provider
+            prov = get_embedding_provider(None)
+            if prov is not None:
+                bs = bulk_index_status(Path(c.path), prov.id)
+                if bs.get("exists"):
+                    out["bulk_index"] = bs
+        except Exception as exc:
+            out["bulk_index"] = {"exists": False, "error": str(exc)}
+        return out
     except Exception as exc:
         return build_error(
             "EMBEDDING_STATUS_FAILED",

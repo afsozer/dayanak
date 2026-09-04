@@ -1190,6 +1190,67 @@ def semantic_build_matrix(
     _print(result, json_out)
 
 
+@semantic_app.command("bulk-build")
+def semantic_bulk_build(
+    vec_dir: Path = typer.Argument(
+        ..., help="embed_parquet_worker.py çıktı dizini (*.vectors.npy + *.keys.parquet)"
+    ),
+    provider: str = typer.Option(
+        "fastembed-multilingual-e5", help="Sorgu tarafında kullanılacak provider_id"
+    ),
+    nlist: int = typer.Option(16384, help="IVF hücre sayısı"),
+    pq_m: int = typer.Option(64, help="PQ alt-vektör sayısı (bayt/vektör)"),
+    train_sample: int = typer.Option(1_000_000, help="IVF/PQ eğitimi için örnek vektör"),
+    max_files: int = typer.Option(0, help="Deneme: yalnız ilk N dosya"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Milyonlarca parça vektörü için FAISS IVF-PQ toplu indeksi kur.
+
+    Sonuç cache.sqlite3'ün yanına yazılır (bulk-<provider>.faiss / .keys.npz /
+    .meta.json).  Arama sırasında adaylar VEC_DIR'deki fp16 vektörlerle yeniden
+    puanlanır; VEC_DIR sunucuda cache'in yanındaki vec/ ya da EMSAL_BULK_VEC_DIR
+    ortam değişkeni olmalı.
+    """
+    from .bulk_index import build_bulk_index
+    from .cache import Cache
+
+    c = Cache()
+    db_path = Path(c.path)
+    c.close()
+    result = build_bulk_index(
+        vec_dir, db_path, provider, nlist=nlist, pq_m=pq_m,
+        train_sample=train_sample, max_files=max_files,
+        log=(lambda m: None) if json_out else (lambda m: typer.echo("  " + m)),
+    )
+    _print(result, json_out)
+
+
+@semantic_app.command("bulk-status")
+def semantic_bulk_status(
+    provider: str = typer.Option("fastembed-multilingual-e5"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Toplu FAISS indeksi var mı, kaç vektör, refine için vektör dosyaları bulunuyor mu?"""
+    from .bulk_index import _load, bulk_index_status, vec_dir_for
+    from .cache import Cache
+
+    c = Cache()
+    db_path = Path(c.path)
+    c.close()
+    st = bulk_index_status(db_path, provider)
+    if st.get("exists"):
+        st["vec_dir"] = str(vec_dir_for(db_path))
+        try:
+            L = _load(db_path, provider)
+            if L is None:
+                st["refine"] = "indeks yüklenemedi"
+            else:
+                st["refine"] = "açık" if L.mats else L.refine_warning
+        except Exception as exc:
+            st["refine"] = f"yüklenemedi: {exc}"
+    _print(st, json_out)
+
+
 @semantic_app.command("matrix-status")
 def semantic_matrix_status(
     provider: str = typer.Option("fastembed-multilingual-e5"),
