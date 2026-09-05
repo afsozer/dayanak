@@ -115,6 +115,9 @@ _DOC_ID_RE = re.compile(r"^(?P<tur>\d+)\.(?P<tertip>\d+)\.(?P<no>\d+)$")
 # text itself; it embeds the iframe below, which serves every type that has a
 # text layer at all.
 _IFRAME_PATH = "/anasayfa/MevzuatFihristDetayIframe"
+#: Bu tur kodlarinda /MevzuatMetin/<id>.htm yok (302 -> hata sayfasi); dogrudan
+#: iframe yoluna gidilir. Olcum 05.09.2026 (bkz. get_document).
+_NO_HTM_TYPES = frozenset({3, 7, 8, 9, 10, 20})
 # İİK's iframe body is 1,3 MB and the register trickles it out; 8 s is enough
 # for the .htm probe but not for this one.
 _IFRAME_BUDGET = 20.0
@@ -438,22 +441,29 @@ class MevzuatGovClient(SourceClient):
         url = f"{self.base}/MevzuatMetin/{doc_id}.htm"
         warnings: list[str] = []
         text = ""
-        try:
-            outcome, payload = await self._fetch_text(url, doc_id)
-        except httpx.TimeoutException as exc:
-            # A .htm timeout is NOT the end of the road: measured 05.09.2026,
-            # kurum yönetmelikleri and Cumhurbaşkanı kararları time out on
-            # this path while the iframe route answers in ~2 s. Returning here
-            # cost those two types their full text.
-            warnings.append(
-                f"{doc_id}: .htm yolu {_DOC_TIMEOUT:.0f} sn içinde yanıt vermedi "
-                f"({_DOC_RETRIES + 1} deneme, {type(exc).__name__})."
-            )
-        else:
-            if outcome == "html":
-                text = html_to_text(str(payload))
-                if _SOFT_404_RE.search(text):
-                    text = ""
+        # .htm ikizi yalniz kanun/tuzuk/KHK/mulga/CBK'da var (05.09.2026 olcumu,
+        # 10 tur x 3 kayit). Yonetmelik, KKY, universite yonetmeligi, teblig,
+        # CB yonetmeligi ve CB kararinda .htm 302 -> 64 KB hata sayfasi ->
+        # soft-404 tespiti: belge basina ~8 s bosa gidiyordu (8.852 yonetmelik
+        # icin 21 saat). Bu turlerde dogrudan iframe yoluna gec.
+        outcome, payload = "skip", None
+        if int(m.group("tur")) not in _NO_HTM_TYPES:
+            try:
+                outcome, payload = await self._fetch_text(url, doc_id)
+            except httpx.TimeoutException as exc:
+                # A .htm timeout is NOT the end of the road: measured 05.09.2026,
+                # kurum yönetmelikleri and Cumhurbaşkanı kararları time out on
+                # this path while the iframe route answers in ~2 s. Returning here
+                # cost those two types their full text.
+                warnings.append(
+                    f"{doc_id}: .htm yolu {_DOC_TIMEOUT:.0f} sn içinde yanıt vermedi "
+                    f"({_DOC_RETRIES + 1} deneme, {type(exc).__name__})."
+                )
+                outcome, payload = "timeout", None
+        if outcome == "html":
+            text = html_to_text(str(payload))
+            if _SOFT_404_RE.search(text):
+                text = ""
 
         pdf_url: str | None = None
         if not text:
