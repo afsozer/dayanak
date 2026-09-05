@@ -15,12 +15,11 @@ from docx.shared import Pt, RGBColor
 
 from .models import Draft, InputPack, build_error
 
+# Karar/belge disa aktarimi icin kisa uyari. Placeholder cumlesi dilekce
+# taslaklarina ozgudur ve petition.DISCLAIMER_HEADER'da durur; kararda
+# placeholder olmaz (kullanici istegi, 5 Eyl 2026).
 DISCLAIMER_TEXT = (
-    "DİKKAT: Bu belge emsal-mcp tarafından otomatik olarak oluşturulmuştur. "
-    "Avukat denetimi ve resmi doğrulama gerektirir. "
-    "Bu belgedeki {PLACEHOLDER} formatındaki alanlar yalnızca doğrulanmış "
-    "bilgilerle doldurulmalıdır; eksik bırakılabilir ama uydurma bilgiyle "
-    "değiştirilmez."
+    "DİKKAT: Bu belge emsal-mcp tarafından otomatik olarak oluşturulmuştur."
 )
 
 PLACEHOLDER_RE = re.compile(r"\{\{[^}]+\}\}")
