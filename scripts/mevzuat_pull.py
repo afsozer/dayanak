@@ -71,13 +71,37 @@ def _log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+# mevzuat.gov.tr guvenlik duvari ~70 istek/5 dk sonra baglantiyi ~30 s kesiyor
+# (ConnectError, 4xx yok; 5 Eyl 2026 olcumu: 70. sayfada dustu, 30 s sonra
+# toparladi). Ag hatasinda bekleyip yeniden dene; cekim saatlerce surecegi icin
+# tek bir kesinti butun kosuyu dusurmesin.
+_BACKOFF = (30, 60, 120, 300, 600)
+
+
+async def _with_backoff(fn, what: str):
+    import httpx
+    for i, wait in enumerate((*_BACKOFF, None)):
+        try:
+            return await fn()
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError,
+                httpx.ReadError, httpx.ConnectTimeout) as exc:
+            if wait is None:
+                raise
+            _log(f"  ag hatasi ({what}): {type(exc).__name__}; {wait} s bekleniyor "
+                 f"(deneme {i + 1}/{len(_BACKOFF)})")
+            await asyncio.sleep(wait)
+
+
 async def _list_all(client, tur_name: str, code: int, page_size: int, limit: int | None):
     """Bir türün tüm kayıtlarını sayfa sayfa listele; recordsTotal ile doğrula."""
     rows: list = []
     page = 1
     total = None
     while True:
-        sp = await client.search_page("", limit=page_size, page=page, mevzuat_tur=code)
+        sp = await _with_backoff(
+            lambda: client.search_page("", limit=page_size, page=page, mevzuat_tur=code),
+            f"{tur_name} listeleme s.{page}",
+        )
         if total is None:
             total = sp.total
             _log(f"{tur_name}: kaynak {total} kayıt bildiriyor")
@@ -90,7 +114,7 @@ async def _list_all(client, tur_name: str, code: int, page_size: int, limit: int
         if total is not None and len(rows) >= total:
             break
         page += 1
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.8)
     if limit is None and total is not None and len(rows) != total:
         _log(f"UYARI {tur_name}: listelenen {len(rows)} != bildirilen {total}")
     return rows, total
@@ -101,7 +125,7 @@ async def _fetch_text(mg_client, bd_client, doc_id: str, mevzuat_no: str, tur_na
     from emsal_mcp.models import ContentStatus
 
     try:
-        doc = await mg_client.get_document(doc_id)
+        doc = await _with_backoff(lambda: mg_client.get_document(doc_id), f"belge {doc_id}")
         text = doc.full_text or ""
         if doc.content_status == ContentStatus.HTML_MARKDOWN and len(text) >= _MIN_TEXT:
             return text, "mevzuatgov", doc.source_url or "", ""
