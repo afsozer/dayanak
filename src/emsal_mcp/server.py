@@ -603,10 +603,16 @@ def main() -> None:
         corpus = None
         coverage = None
         try:
+            # 11 M kararlik korpusta COUNT(*) + MIN/MAX(decision_date) tam tablo
+            # taramasi = her arac cagrisinda ~100 s (5 Eyl 2026, py-spy ile
+            # olculdu). Sayim FTS golge tablosundan (ms); kapsam yalniz kucuk
+            # korpusta (decision_date dd.mm.yyyy dizesinde MIN/MAX zaten
+            # kronolojik degil).
+            from .semantic import _BIG_CORPUS_DOCS, _docs_total
             c = Cache()
             try:
-                corpus = c.db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
-                if corpus:
+                corpus = _docs_total(c.db)
+                if corpus and corpus <= _BIG_CORPUS_DOCS:
                     row = c.db.execute(
                         "SELECT MIN(decision_date), MAX(decision_date) "
                         "FROM documents_v2 WHERE decision_date IS NOT NULL"
