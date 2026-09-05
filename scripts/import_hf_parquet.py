@@ -91,8 +91,13 @@ def map_row(r: dict, now: str) -> tuple | None:
 
     if source == "bedesten":
         url = f"https://mevzuat.adalet.gov.tr/ictihat/{did}"
+    elif src == "aym_bb" and esas and "/" in esas:
+        # Doğrulandı 5 Eyl 2026: 301 → /kbb/BB/<başvuru no>, 200
+        url = f"https://kararlarbilgibankasi.anayasa.gov.tr/BB/{esas}"
+    elif src == "aym_norm" and karar and "/" in karar:
+        url = f"https://normkararlarbilgibankasi.anayasa.gov.tr/ND/{karar}"
     else:
-        url = None  # AYM kararlar bilgi bankası kimliği; URL deseni doğrulanmadı, uydurma
+        url = None
     meta = {
         "origin": ORIGIN,
         "hf_source": src,
