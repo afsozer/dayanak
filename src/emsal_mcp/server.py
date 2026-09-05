@@ -782,16 +782,12 @@ def main() -> None:
             birimAdi: Optional chamber code. Yargıtay H1–H23 / C1–C23 (hukuk /
                 ceza daireleri), HGK, CGK, BGK; Danıştay D1–D17, IDDK, VDDK;
                 AYIM. Full list: list_sources(detail="birim_codes").
-            karar_tarihi_start: Optional start date filter (ISO format,
-                e.g. "2023-01-01"). Inclusive.
-            karar_tarihi_end: Optional end date filter (ISO format,
-                e.g. "2024-12-31"). Inclusive.
-            esas_no: Optional case file number in YIL/SIRA format
-                (e.g. "2023/1234"). Parsed into separate year/sequence int
-                fields for the upstream API.
-            karar_no: Optional decision number in YIL/SIRA format
-                (e.g. "2023/5678"). Parsed into separate year/sequence int
-                fields for the upstream API.
+            karar_tarihi_start: Optional ISO start date, inclusive
+                (e.g. "2023-01-01").
+            karar_tarihi_end: Optional ISO end date, inclusive
+                (e.g. "2024-12-31").
+            esas_no: Optional case file number, YIL/SIRA ("2023/1234").
+            karar_no: Optional decision number, YIL/SIRA ("2023/5678").
             sort_by: Result ordering — "relevance" (Solr score, default when a
                 query/phrase is present) or "date" (newest first, default when
                 only filters like esas_no/karar_no/date range are given). When
@@ -1378,20 +1374,55 @@ def main() -> None:
         query: str,
         mevzuat_no: str | None = None,
         limit: int = 20,
+        mode: str = "hybrid",
     ) -> dict:
-        """YEREL korpusta MADDE bazında arama (FTS5, çevrimdışı, kelimeler AND).
+        """YEREL korpusta MADDE bazında arama (çevrimdışı, madde metinlerinde).
 
-        search_legislation mevzuatı BÜTÜN olarak canlı bulur; bu araç çekilmiş
-        mevzuatın MADDELERİNDE arar. 0 sonuç "hüküm yok" DEMEK DEĞİLDİR:
-        korpus yalnızca çekilmiş mevzuatı içerir, o hâlde search_legislation
-        çağır. mevzuat_no tek mevzuatla sınırlar (ör. "6098"). Sonuç:
-        mevzuat_adi, madde_no, baslik, snippet, kaynak_url.
+        mode: "hybrid" (varsayılan; BM25+anlam RRF), "lexical" (FTS5, kelime
+        AND), "semantic" (ifade metinde geçmese de bulur). 0 sonuç "hüküm yok"
+        DEMEK DEĞİL: korpus yalnız çekilmişi içerir, search_legislation çağır.
+        mevzuat_no tek mevzuatla sınırlar (ör. "6098"). Sonuç: mevzuat_adi,
+        madde_no, baslik, snippet, kaynak_url.
         """
+        from . import legislation_semantic as _sem
         from .legislation_corpus import corpus_stats, search_madde
 
+        istenen = (mode or "hybrid").strip().lower()
+        if istenen not in ("lexical", "semantic", "hybrid"):
+            istenen = "hybrid"
+        if not (query or "").strip():
+            istenen = "lexical"  # bos sorgu: search_madde duzgun hata dondursun
+        aday = max(int(limit), 20)
         c = Cache()
         try:
-            out = search_madde(c.db, query, mevzuat_no=mevzuat_no, limit=limit)
+            uyari = None
+            sem = None
+            if istenen in ("semantic", "hybrid"):
+                qv = _sem.embed_query(query)
+                sem = None if qv is None else _sem.search(
+                    c.db, c.path, qv, limit=aday, mevzuat_no=mevzuat_no)
+                if sem is None:
+                    uyari = ("Semantik indeks ya da gomme saglayicisi yok; "
+                             "sozluksel (BM25) aramaya dusuldu.")
+                    istenen = "lexical"
+            if istenen == "semantic":
+                out = {"ok": True, "query": query, "results": sem[:limit],
+                       "total_matches": len(sem[:limit])}
+            else:
+                lex = search_madde(c.db, query, mevzuat_no=mevzuat_no, limit=aday)
+                if istenen == "lexical" or not lex.get("ok"):
+                    lex["results"] = lex.get("results", [])[:limit]
+                    lex["total_matches"] = len(lex["results"])
+                    out = lex
+                    istenen = "lexical"
+                else:
+                    birlesik = _sem.rrf_merge(lex.get("results", []), sem, limit=limit)
+                    out = {"ok": True, "query": query,
+                           "fts_query": lex.get("fts_query"),
+                           "results": birlesik, "total_matches": len(birlesik)}
+            out["mode"] = istenen
+            if uyari:
+                out["uyari"] = uyari
             stats = corpus_stats(c.db)
         finally:
             c.close()
