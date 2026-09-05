@@ -297,8 +297,14 @@ def bulk_search(
     if not best:
         return []
 
+    # Baslik/durum sorgusu belge basina bir PK aramasi: 2.000 aday icin 67 GB
+    # DB'de soguk rastgele okuma ~5 s olculdu (5 Eyl 2026). Once skora gore
+    # sirala, yalniz ilk N belge icin metadata cek; filtre varsa N genis tutulur
+    # (filtre metadata uzerinden calisir, sonradan elenecek).
+    ranked = sorted(best.items(), key=lambda kv: kv[1][0], reverse=True)
+    top_n = max(limit * 40, 1000) if filters else max(limit * 10, 200)
     out: list[dict[str, Any]] = []
-    for (doc_id, source), (score, cix) in best.items():
+    for (doc_id, source), (score, cix) in ranked[:top_n]:
         row = db.execute(
             "SELECT title, content_status FROM documents_v2 WHERE document_id=? AND source=?",
             (doc_id, source),
@@ -310,7 +316,6 @@ def bulk_search(
             "content_status": (row["content_status"] if row else None) or "unknown",
             "best_chunk": cix,
         })
-    out.sort(key=lambda x: x["score"], reverse=True)
     if filters:
         from .semantic import _apply_filters
         out = _apply_filters(out, filters)

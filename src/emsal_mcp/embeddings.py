@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
+import threading
 import re
 import struct
 from abc import ABC, abstractmethod
@@ -263,6 +264,23 @@ class FastEmbedMultilingualProvider(FastEmbedProvider):
 # Provider Factory
 # ---------------------------------------------------------------------------
 
+#: Surec basina bir fastembed saglayicisi. Fabrika her cagrida yeni nesne
+#: uretiyordu ve ONNX oturumu + tokenizer her sorguda yeniden yukleniyordu:
+#: 11 M kararlik sunucuda semantik cagrinin ~4 s'si buydu (py-spy, 5 Eyl 2026).
+_PROVIDER_CACHE: dict[tuple[str, str | None], EmbeddingProvider] = {}
+_PROVIDER_LOCK = threading.Lock()
+
+
+def _cached_provider(cls: type, cache_dir: str | None) -> EmbeddingProvider:
+    key = (cls.__name__, cache_dir)
+    with _PROVIDER_LOCK:
+        prov = _PROVIDER_CACHE.get(key)
+        if prov is None:
+            prov = cls(cache_dir=cache_dir)
+            _PROVIDER_CACHE[key] = prov
+        return prov
+
+
 def get_embedding_provider(
     provider: str | None = None,
     *,
@@ -297,7 +315,7 @@ def get_embedding_provider(
             from .config import config
 
             cache_dir = str(config.embedding_cache_dir) if config.embedding_cache_dir else None
-            return FastEmbedProvider(cache_dir=cache_dir)
+            return _cached_provider(FastEmbedProvider, cache_dir)
         except RuntimeError:
             if strict:
                 return None
@@ -308,7 +326,7 @@ def get_embedding_provider(
             from .config import config
 
             cache_dir = str(config.embedding_cache_dir) if config.embedding_cache_dir else None
-            return FastEmbedMultilingualProvider(cache_dir=cache_dir)
+            return _cached_provider(FastEmbedMultilingualProvider, cache_dir)
         except RuntimeError:
             if strict:
                 return None

@@ -990,14 +990,37 @@ _RRF_K = 60  # RRF constant (standard value)
 _BIG_CORPUS_DOCS = 2_000_000
 
 
+#: (db dosya yolu, MAX(rowid)) -> satır sayısı. 11 M satırda docsize COUNT(*)
+#: bile ~0,5 s (py-spy, 5 Eyl 2026); MAX(rowid) indeks aramasıdır (ms) ve satır
+#: eklenmedikçe değişmez, o yüzden sayım süreç içinde onunla anahtarlanır.
+_DOCS_TOTAL_MEMO: dict[tuple[str, int], int] = {}
+
+
 def _docs_total(db: sqlite3.Connection) -> int:
     """documents_v2 satır sayısı; FTS gölge tablosu varsa oradan (11 M satırda
-    COUNT(*) documents_v2 saniyeler, docsize milisaniye)."""
+    COUNT(*) documents_v2 saniyeler, docsize milisaniye); MAX(rowid) ile memoize."""
     try:
+        path = ""
+        for _, name, file in db.execute("PRAGMA database_list"):
+            if name == "main":
+                path = file or ""
+        max_rowid = int(db.execute(
+            "SELECT COALESCE(MAX(rowid), 0) FROM documents_v2"
+        ).fetchone()[0])
+        key = (path, max_rowid)
+        hit = _DOCS_TOTAL_MEMO.get(key)
+        if hit is not None:
+            return hit
         if _table_exists(db, "documents_v2_fts_docsize"):
-            return int(db.execute(
+            n = int(db.execute(
                 "SELECT COUNT(*) FROM documents_v2_fts_docsize"
             ).fetchone()[0])
+        else:
+            n = int(db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0])
+        if len(_DOCS_TOTAL_MEMO) > 64:
+            _DOCS_TOTAL_MEMO.clear()
+        _DOCS_TOTAL_MEMO[key] = n
+        return n
     except Exception:
         pass
     return int(db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0])
@@ -1474,7 +1497,7 @@ def get_index_status(cache: Cache | None = None) -> dict[str, Any]:
             vectors_count = db.execute("SELECT COUNT(*) FROM search_vectors").fetchone()[0]
 
         # Total cached documents
-        total_cached = db.execute("SELECT COUNT(*) FROM documents_v2").fetchone()[0]
+        total_cached = _docs_total(db)  # 11 M satirda COUNT(*) 150 s (5 Eyl 2026)
 
         unindexed = max(0, total_cached - vectors_count)
 
