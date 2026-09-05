@@ -203,3 +203,346 @@ def test_corpus_stats(db):
     _write(db)
     stats = lc.corpus_stats(db)
     assert stats == {"belge_sayisi": 1, "madde_sayisi": 5, "turler": {"KANUN": 1}}
+
+
+# ── Faz 2a: değişiklik ayrıştırması ─────────────────────────────────────────
+
+def _tek(chunk: str) -> dict:
+    kayitlar = lc.parse_paren(chunk)
+    assert len(kayitlar) == 1, kayitlar
+    return kayitlar[0]
+
+
+def test_parse_paren_basit_degisik():
+    k = _tek("(Değişik: 23/1/2008-5728/47 md.)")
+    assert (k["tur"], k["kapsam"]) == ("degisik", "madde")
+    assert (k["tarih"], k["degistiren_no"], k["degistiren_madde"]) == (
+        "2008-01-23", "5728", "47")
+
+
+def test_parse_paren_mulga_bosluklu_tire():
+    k = _tek("(Mülga: 1/4/1965 - 557/8 md.)")
+    assert k["tur"] == "mulga" and k["tarih"] == "1965-04-01"
+    assert k["degistiren_no"] == "557"
+
+
+def test_parse_paren_uzun_tire_ve_ek_fikra():
+    k = _tek("(Ek fıkra: 2/3/2005 – 5311/5 md.)")
+    assert (k["tur"], k["kapsam"]) == ("ek", "fıkra")
+    assert k["degistiren_no"] == "5311"
+
+
+def test_parse_paren_sirali_fikra_kapsami():
+    k = _tek("(Değişik birinci fıkra: 17/7/2003-4949/16 md.)")
+    assert (k["tur"], k["kapsam"]) == ("degisik", "fıkra")
+    assert k["degistiren_madde"] == "16"
+    # Sıra bilgisi ("birinci") ham alanda korunur.
+    assert "birinci fıkra" in k["ham"]
+
+
+@pytest.mark.parametrize("chunk,no", [
+    ("(Değişik:11/10/2011-KHK-663/58 md.)", "KHK-663"),
+    ("(Mülga: 2/7/2018 - KHK/703/119 md.)", "KHK-703"),
+    ("(Değişik:9/8/1993 – KHK – 499/17 md.)", "KHK-499"),
+    ("(Değişik birinci fıkra: 23/12/1988 – KHK 351/7 md.)", "KHK-351"),
+])
+def test_parse_paren_khk_bicimleri(chunk, no):
+    assert _tek(chunk)["degistiren_no"] == no
+
+
+@pytest.mark.parametrize("chunk,no,md", [
+    ("(Ek: 24/1/2013-6411/ 1 md.)", "6411", "1"),          # boşluklu madde no
+    ("(Mülga: 22/5/2003/4857/120 md.)", "4857", "120"),      # tarih-ayraç "/"
+    ("(Değişik: 20/3/1981–2430/7 md.)", "2430", "7"),        # ayraçsız uzun tire
+    ("(Mülga: 15/5/1974- 1803/8 md.)", "1803", "8"),
+])
+def test_parse_paren_ayrac_varyantlari(chunk, no, md):
+    k = _tek(chunk)
+    assert (k["degistiren_no"], k["degistiren_madde"]) == (no, md)
+
+
+def test_parse_paren_iki_nokta_olmadan():
+    k = _tek("(Değişik 6/6/1985-3222/17 md.)")
+    assert k["tur"] == "degisik" and k["degistiren_no"] == "3222"
+
+
+def test_parse_paren_coklu_degisiklik():
+    ks = lc.parse_paren(
+        "(Ek: 17/7/2003-4949/50 md.; Mülga: 28/2/2018-7101/65 md.)")
+    assert [k["tur"] for k in ks] == ["ek", "mulga"]
+    assert [k["tarih"] for k in ks] == ["2003-07-17", "2018-02-28"]
+    assert [k["degistiren_no"] for k in ks] == ["4949", "7101"]
+
+
+def test_parse_paren_khk_aynen_kabul():
+    ks = lc.parse_paren(
+        "(Mülga: 24/6/1995-KHK-560/21 md.; Aynen kabul: 27/5/2004-5179/37 md.)")
+    assert [k["tur"] for k in ks] == ["mulga", "aynen_kabul"]
+    assert ks[0]["degistiren_no"] == "KHK-560"
+    assert ks[1]["degistiren_no"] == "5179"
+
+
+def test_parse_paren_degistirilerek_kabul():
+    ks = lc.parse_paren(
+        "(Ek: 2/1/2017-KHK-681/30 md.; Değiştirilerek kabul: 1/2/2018-7073/30 md.)")
+    assert [k["tur"] for k in ks] == ["ek", "degistirilerek_kabul"]
+
+
+def test_parse_paren_yeniden_duzenleme():
+    k = _tek("(Yeniden Düzenleme:19/2/2025-7542/1 md.)")
+    assert k["tur"] == "yeniden_duzenleme" and k["tarih"] == "2025-02-19"
+
+
+def test_parse_paren_cumle_kapsami():
+    k = _tek("(Ek cümle: 17/7/2003-4949/33 md.)")
+    assert k["kapsam"] == "cümle" and k["tur"] == "ek"
+
+
+def test_parse_paren_aym_iptali():
+    k = _tek(
+        "(İptal fıkra:Anayasa Mahkemesinin 14/3/2024 tarihli ve "
+        "E.: 2023/140, K.: 2024/81 sayılı Kararı ile)")
+    assert (k["tur"], k["kapsam"]) == ("iptal", "fıkra")
+    assert (k["aym_esas"], k["aym_karar"]) == ("2023/140", "2024/81")
+    assert k["tarih"] == "2024-03-14"
+    assert k["degistiren_no"] == ""
+
+
+def test_parse_paren_aym_kunyesindeki_noktali_virgul_bolmez():
+    """AYM künyesi ";" içerir; parantez ondan bölünmemeli."""
+    ks = lc.parse_paren(
+        "(İptal sekizinci fıkra: Anayasa Mahkemesinin 25/12/2024 tarihli ve "
+        "E.:2022/6; K.:2024/225 sayılı Kararı ile)")
+    assert len(ks) == 1
+    assert (ks[0]["aym_esas"], ks[0]["aym_karar"]) == ("2022/6", "2024/225")
+
+
+def test_parse_paren_aym_kesme_isaretli():
+    k = _tek(
+        "(İptal birinci fıkra: Anayasa Mahkemesi’nin 28/2/2008 tarihli ve "
+        "E.: 2006/71, K.: 2008/69 sayılı Kararı ile.)")
+    assert k["aym_esas"] == "2006/71" and k["tarih"] == "2008-02-28"
+
+
+@pytest.mark.parametrize("chunk", [
+    "(ek gösterge dahil)",
+    "(Ekim ayı dahil)",
+    "(Ek Madde 1, Ek Madde 2, Ek Madde 3)",
+    "(1) Bu Kanunun amacı budur.",
+])
+def test_parse_paren_degisiklik_olmayan_parantezleri_eler(chunk):
+    assert lc.parse_paren(chunk) == []
+
+
+# ── Faz 2a: dipnot gövdeleri ────────────────────────────────────────────────
+
+FOOTNOTE_DOC = (
+    "MADDE 1 - Bir hüküm. [1]\n"
+    "MADDE 2 - Başka hüküm. [2]\n"
+    "[1]\n"
+    "2/3/2024 tarihli ve 7499 sayılı Kanunun 37 nci maddesiyle bu fıkrada yer\r\n"
+    "alan “on gündür.” ibaresi “iki haftadır.” şeklinde değiştirilmiştir.\n"
+    "[2]\n"
+    "Bu madde başlığı “Temyiz:“ iken, 2/3/2005 tarihli ve 5311 sayılı Kanunun\r\n"
+    "25 inci maddesiyle metne işlendiği şekilde değiştirilmiştir.\n"
+)
+
+
+def test_parse_footnotes_govdeleri_numarayla_esler():
+    fn = lc.parse_footnotes(FOOTNOTE_DOC)
+    assert set(fn) == {1, 2}
+    assert fn[1].startswith("2/3/2024 tarihli ve 7499")
+    assert "Temyiz" in fn[2]
+    # Yumuşak satır kaydırması boşluğa dönüşür.
+    assert "\r" not in fn[1] and "\n" not in fn[1]
+
+
+def test_parse_dipnot_kanun_kunyesi():
+    k = lc.parse_dipnot(1, lc.parse_footnotes(FOOTNOTE_DOC)[1])
+    assert (k["tur"], k["kapsam"]) == ("degisik", "fıkra")
+    assert (k["tarih"], k["degistiren_no"], k["degistiren_madde"]) == (
+        "2024-03-02", "7499", "37")
+    assert k["dipnot_no"] == 1
+
+
+def test_parse_dipnot_madde_basligi_kapsami():
+    k = lc.parse_dipnot(2, lc.parse_footnotes(FOOTNOTE_DOC)[2])
+    assert k["kapsam"] == "başlık" and k["degistiren_no"] == "5311"
+
+
+def test_parse_dipnot_tarih_ve_yazimi():
+    """Kaynakta "tarihli ve" kadar sık "tarih ve" geçiyor."""
+    k = lc.parse_dipnot(3, "22/7/1998 tarih ve 4369 sayılı Kanunun 81 inci "
+                           "maddesiyle bu bentte yer alan ibare değiştirilmiştir.")
+    assert (k["tarih"], k["degistiren_no"], k["degistiren_madde"]) == (
+        "1998-07-22", "4369", "81")
+    assert k["kapsam"] == "bent"
+
+
+def test_parse_dipnot_khk():
+    k = lc.parse_dipnot(4, "2/7/2018 tarihli 703 sayılı KHK’nin 68 inci "
+                           "maddesiyle, bu fıkrada yer alan “Bakanlar Kurulunca” "
+                           "ibaresi “Cumhurbaşkanınca” şeklinde değiştirilmiştir.")
+    assert k["degistiren_no"] == "KHK-703" and k["degistiren_madde"] == "68"
+
+
+def test_parse_dipnot_aym_iptali():
+    k = lc.parse_dipnot(5, "Anayasa Mahkemesinin 8/11/2023 tarihli ve "
+                           "E.: 2020/75; K.: 2023/188 sayılı Kararı ile bu fıkra "
+                           "iptal edilmiştir.")
+    assert k["tur"] == "iptal"
+    assert (k["aym_esas"], k["aym_karar"]) == ("2020/75", "2023/188")
+
+
+def test_parse_dipnot_yapilandirilamayan_ham_kalir():
+    k = lc.parse_dipnot(6, "Bu hükmün uygulanmasında ek 2 nci maddeye bakınız.")
+    assert k["tarih"] == "" and k["degistiren_no"] == ""
+    assert k["ham"].startswith("Bu hükmün")
+
+
+def test_parse_dipnot_bakanlar_kurulu_karari_kanun_sayilmaz():
+    """"97/9218 sayılı Bakanlar Kurulu Kararı" kanun numarası değildir."""
+    k = lc.parse_dipnot(7, "2/1/1997 tarihli ve 97/9218 sayılı Bakanlar Kurulu "
+                           "Kararı ile ölçüler tespit edilmiştir.")
+    assert k["degistiren_no"] == ""
+
+
+def test_parse_degisiklik_parantez_ve_dipnotu_birlestirir():
+    dipnotlar = lc.parse_footnotes(FOOTNOTE_DOC)
+    kayitlar = lc.parse_degisiklik(
+        "(Değişik: 23/1/2008-5728/47 md.) Bir hüküm. [1]", dipnotlar)
+    assert len(kayitlar) == 2
+    assert kayitlar[0]["degistiren_no"] == "5728" and kayitlar[0]["dipnot_no"] is None
+    assert kayitlar[1]["dipnot_no"] == 1
+
+
+# ── Faz 2a: madde başlığı sezgiseli ─────────────────────────────────────────
+
+# Kaynak biçimi birebir: "\r\n" yumuşak kaydırma, çıplak "\n" blok sınırı.
+HIYERARSIK = (
+    "F. Konut ve çatılı işyeri kiralarında sözleşmenin sona\r\nermesi\n"
+    "I. Bildirim yoluyla\n"
+    "1. Genel olarak\n"
+    "MADDE 347-\nKonut ve çatılı işyeri kiralarında kiracı, belirli\r\n"
+    "süreli sözleşmelerin süresinin bitiminden en az onbeş gün önce\r\n"
+    "bildirimde bulunmadıkça, sözleşme uzatılmış sayılır.\n"
+)
+
+
+def test_baslik_hiyerarsik_kenar_basligi():
+    art = lc.split_articles(HIYERARSIK)[0]
+    assert art["baslik"] == "1. Genel olarak"
+    assert art["ust_baslik"] == (
+        "F. Konut ve çatılı işyeri kiralarında sözleşmenin sona ermesi"
+        " > I. Bildirim yoluyla"
+    )
+
+
+def test_baslik_iki_nokta_ile_biten_eski_usul():
+    """İİK 68 tipi: madde başlığı ":" ile biter — Faz 1'de boş kalıyordu."""
+    metin = (
+        "b) İtirazın kesin\r\nolarak kaldırılması:\n"
+        "[28]\n"
+        "Madde\r\n68 – Talebine itiraz edilen alacaklı bir belgeye dayanıyorsa\r\n"
+        "itirazın kaldırılmasını isteyebilir.\n"
+    )
+    art = lc.split_articles(metin)[0]
+    assert art["madde_no"] == "68"
+    assert art["baslik"] == "b) İtirazın kesin olarak kaldırılması:"
+
+
+def test_baslik_ciplak_satir_sonuyla_bolunmus_basligi_birlestirir():
+    """6100 m.170: başlık nadiren çıplak "\\n" ile de bölünüyor."""
+    metin = (
+        "İsticvap olunacak\nkişilerin belirlenmesi\n"
+        "MADDE 170-\n(1) Taraflardan her biri isticvap olunabilir.\n"
+    )
+    art = lc.split_articles(metin)[0]
+    assert art["baslik"] == "İsticvap olunacak kişilerin belirlenmesi"
+    assert art["ust_baslik"] == ""
+
+
+def test_baslik_onceki_maddenin_cumlesini_almaz():
+    metin = (
+        "MADDE 1 -\nBu Kanunun amacı budur.\n"
+        "MADDE 2 -\nİkinci hükmün metni.\n"
+    )
+    arts = lc.split_articles(metin)
+    assert arts[1]["baslik"] == "" and arts[1]["ust_baslik"] == ""
+
+
+def test_baslik_kapanis_parantezli_cumleyi_baslik_saymaz():
+    """492 m.14: "(… karar verilir.)" paragrafı üst başlık sanılıyordu."""
+    metin = (
+        "(Yukarıdaki işlemlerin harçlarının karşı taraftan tahsiline karar "
+        "verilir.)\n"
+        "Harçtan muaf olanlar:\n"
+        "MADDE 14 -\nAşağıdaki kişiler harçtan muaftır.\n"
+    )
+    art = lc.split_articles(metin)[0]
+    assert art["baslik"] == "Harçtan muaf olanlar:"
+    assert art["ust_baslik"] == ""
+
+
+def test_sonraki_maddenin_basligi_onceki_govdeye_yapismaz():
+    arts = lc.split_articles(HIYERARSIK + "Sonraki başlık\nMADDE 348-\nİkinci.\n")
+    assert not arts[0]["metin"].rstrip().endswith("Sonraki başlık")
+    assert arts[1]["baslik"] == "Sonraki başlık"
+
+
+# ── Faz 2a: şema ve okuma yüzeyi ────────────────────────────────────────────
+
+def test_ensure_schema_degisiklik_tablosunu_ve_ust_baslik_sutununu_ekler(tmp_path):
+    conn = sqlite3.connect(tmp_path / "y.sqlite3")
+    lc.ensure_schema(conn)
+    lc.ensure_schema(conn)  # idempotent: ikinci ALTER hata vermemeli
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(mevzuat_madde)")}
+    assert "ust_baslik" in cols
+    dcols = [r[1] for r in conn.execute("PRAGMA table_info(mevzuat_degisiklik)")]
+    assert dcols == [
+        "mevzuat_id", "sira", "kapsam", "tur", "tarih", "degistiren_no",
+        "degistiren_madde", "rg_tarihi", "rg_sayisi", "aym_esas", "aym_karar",
+        "ham", "dipnot_no",
+    ]
+    conn.close()
+
+
+def test_ensure_schema_faz1_tablosuna_sutunu_sonradan_ekler(tmp_path):
+    """Faz 1'de yazılmış tablo düşürülmeden yükseltilmeli."""
+    conn = sqlite3.connect(tmp_path / "z.sqlite3")
+    conn.execute(lc._MADDE_TABLE)
+    conn.execute(
+        "INSERT INTO mevzuat_madde (mevzuat_id, madde_no, sira, baslik, metin,"
+        " degisiklik_notu) VALUES ('x', '1', 1, 'Amaç', 'metin', '')")
+    conn.commit()
+    lc.ensure_schema(conn)
+    row = conn.execute(
+        "SELECT baslik, ust_baslik FROM mevzuat_madde WHERE mevzuat_id='x'"
+    ).fetchone()
+    assert row == ("Amaç", None)
+    conn.close()
+
+
+def test_upsert_degisiklik_satirlarini_yazar(db):
+    _write(db)
+    rows = db.execute(
+        "SELECT sira, tur, tarih, degistiren_no FROM mevzuat_degisiklik"
+        " ORDER BY sira").fetchall()
+    assert ("degisik", "2020-01-01", "7000") in [(r[1], r[2], r[3]) for r in rows]
+    assert ("ek", "2021-02-02", "7100") in [(r[1], r[2], r[3]) for r in rows]
+    # Yeniden yazımda kopya birikmemeli.
+    _write(db, metin=SAMPLE.replace("deneme yapmaktır", "başka iş yapmaktır"))
+    assert db.execute(
+        "SELECT COUNT(*) FROM mevzuat_degisiklik").fetchone()[0] == len(rows)
+
+
+def test_get_madde_degisiklikleri_ve_ust_basligi_dondurur(db):
+    _write(db)
+    out = lc.get_madde(db, "9999", "2")
+    assert out["ok"] is True
+    assert "ust_baslik" in out
+    degs = out["degisiklikler"]
+    assert degs and degs[0]["tur"] == "degisik"
+    assert degs[0]["degistiren_no"] == "7000"
+    # Boş alanlar çıktıyı şişirmez.
+    assert "aym_esas" not in degs[0]
