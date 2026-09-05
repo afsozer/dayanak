@@ -128,3 +128,68 @@ class TestAbbreviationRouting:
         # query should be emptied (number lookup takes priority over phrase)
         assert captured[0]["query_passed"] == ""
         assert captured[0]["filters"].get("mevzuat_no") == "6698"
+
+
+class TestSearchPage:
+    """``search()`` returns a bare list, so Bedesten's own total was dropped.
+
+    Measured 05.09.2026: ``{"data": {"mevzuatList": [...], "total": 1860,
+    "start": 0}}`` for mevzuatAdi="Kanun". A caller asking for 10 hits could
+    not tell 10-of-1860 from 10-of-10.
+    """
+
+    @staticmethod
+    def _run(total, n=3, **kw):
+        from emsal_mcp.sources.mevzuat import MevzuatClient
+
+        payload = {"data": {
+            "mevzuatList": [
+                {"documentId": f"m{i}", "mevzuatAdi": f"KANUN {i}", "mevzuatNo": str(i)}
+                for i in range(n)
+            ],
+            "start": 0,
+        }}
+        if total is not None:
+            payload["data"]["total"] = total
+
+        async def _post(*a, **k):
+            return _mock_resp(payload)
+
+        with patch("emsal_mcp.sources.base.client") as mc:
+            cm = AsyncMock()
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            return asyncio.run(MevzuatClient().search_page("kanun", limit=10, **kw))
+
+    def test_total_and_page_count_surface(self):
+        page = self._run(total=1860)
+        assert page.total == 1860
+        assert page.page_size == 10
+        assert page.total_pages == 186
+        assert len(page.results) == 3
+
+    def test_missing_total_is_none_not_zero(self):
+        """No total upstream must not be reported as "0 sonuç"."""
+        page = self._run(total=None)
+        assert page.total is None
+        assert page.total_pages is None
+        assert len(page.results) == 3
+
+    def test_search_still_returns_a_plain_list(self):
+        """The list contract is unchanged; search_page is additive."""
+        from emsal_mcp.sources.mevzuat import MevzuatClient
+
+        async def _post(*a, **k):
+            return _mock_resp({"data": {"mevzuatList": [
+                {"documentId": "m1", "mevzuatAdi": "KVKK", "mevzuatNo": "6698"},
+            ], "total": 7}})
+
+        with patch("emsal_mcp.sources.base.client") as mc:
+            cm = AsyncMock()
+            cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_post)))
+            cm.__aexit__ = AsyncMock(return_value=False)
+            mc.return_value = cm
+            out = asyncio.run(MevzuatClient().search("kvkk", limit=5))
+        assert isinstance(out, list)
+        assert out[0].document_id == "m1"

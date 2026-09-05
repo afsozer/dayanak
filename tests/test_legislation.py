@@ -446,6 +446,24 @@ class TestSearchLegislationArticles:
         assert required_keys.issubset(result.keys())
 
 
+class TestGetLegislationDocumentText:
+    def test_document_returns_the_text_itself(self):
+        """``part='document'`` described the law without ever handing it over.
+
+        It answered article_count/text_length/content_hash and no text at
+        all, so "tam metni ver" could not be served from this path.
+        """
+        from emsal_mcp.legislation import get_legislation_document
+
+        client = FakeMevzuatClient()
+        client.doc_to_return = _make_legislation_doc()
+        result = get_legislation_document(
+            "test-12345", sources_override={"mevzuat": client},
+        )
+        assert result["markdown"]
+        assert len(result["markdown"]) == result["text_length"]
+
+
 # ---------------------------------------------------------------------------
 # TestGetLegislationArticleTree
 # ---------------------------------------------------------------------------
@@ -522,6 +540,77 @@ class TestGetLegislationArticleTree:
             "warnings", "recommended_next_steps", "version", "rule",
         }
         assert required_keys.issubset(result.keys())
+
+    def test_tree_numbers_match_their_headings(self):
+        """Article numbers must come from the heading, not a running index.
+
+        The old ``_build_tree`` walked the parsed article list with a counter
+        while scanning the text with an uppercase-only ``^MADDE (\\d+)``
+        pattern. Every heading that pattern missed shifted the rest of the
+        law: measured on HMK, tree entry ``number=80`` carried the heading
+        ``MADDE 83-``. Here article 3 is written lower case and article 5
+        carries a letter suffix — both invisible to the old scanner.
+        """
+        from emsal_mcp.legislation import get_legislation_article_tree
+
+        text = (
+            "BİRİNCİ KISIM\nGenel Hükümler\n\n"
+            "BİRİNCİ BÖLÜM\nAmaç ve Kapsam\n\n"
+            "Amaç\nMADDE 1 - Birinci madde metni.\n\n"
+            "Kapsam\nMADDE 2 - İkinci madde metni.\n\n"
+            "Tanımlar\nMadde 3 - Üçüncü madde metni.\n\n"
+            "Dördüncü\nMADDE 4 - Dördüncü madde metni.\n\n"
+            "Ek düzenleme\nMADDE 5/A - Beşinci madde metni.\n\n"
+            "Geçici\nGEÇİCİ MADDE 1 - Geçiş hükmü.\n"
+        )
+        client = FakeMevzuatClient()
+        client.doc_to_return = _make_legislation_doc(full_text=text, markdown=text)
+        result = get_legislation_article_tree(
+            "test-12345", sources_override={"mevzuat": client},
+        )
+        entries = [
+            a
+            for p in result["tree"]["parts"]
+            for sec in p["sections"]
+            for a in sec["articles"]
+        ]
+        numbers = [a["number"] for a in entries]
+        assert numbers == ["1", "2", "3", "4", "5/A", "Geçici 1"], numbers
+        for entry in entries:
+            tail = entry["number"].split()[-1].replace(" ", "")
+            assert tail.upper() in entry["heading"].upper().replace(" ", ""), entry
+
+    def test_tree_headings_carry_their_titles(self):
+        """KISIM/BÖLÜM titles include the descriptive line under the marker.
+
+        ``[Bİ]?RİNCİ`` requires exactly one character before "RİNCİ", so
+        "BİRİNCİ KISIM" never matched: TBK's part list came back as
+        ``["", "İKİNCİ KISIM"]`` and HMK reported 2 of its 12 KISIM lines.
+        """
+        from emsal_mcp.legislation import get_legislation_article_tree
+
+        text = (
+            "BİRİNCİ KISIM\nGenel Hükümler\n\n"
+            "BİRİNCİ BÖLÜM\nAmaç\n\nMADDE 1 - Bir.\n\n"
+            "İKİNCİ KISIM\nÖzel Hükümler\n\n"
+            "ÜÇÜNCÜ BÖLÜM\nSorumluluk\n\nMADDE 2 - İki.\n"
+        )
+        client = FakeMevzuatClient()
+        client.doc_to_return = _make_legislation_doc(full_text=text, markdown=text)
+        result = get_legislation_article_tree(
+            "test-12345", sources_override={"mevzuat": client},
+        )
+        titles = [p["title"] for p in result["tree"]["parts"]]
+        assert titles == [
+            "BİRİNCİ KISIM — Genel Hükümler",
+            "İKİNCİ KISIM — Özel Hükümler",
+        ], titles
+        assert result["part_count"] == 2
+        sections = [s["title"] for p in result["tree"]["parts"] for s in p["sections"]]
+        assert sections == [
+            "BİRİNCİ BÖLÜM — Amaç",
+            "ÜÇÜNCÜ BÖLÜM — Sorumluluk",
+        ], sections
 
     def test_tree_source_not_found(self):
         """Invalid source returns ok=False."""
@@ -641,10 +730,36 @@ MADDE 2 - İkinci madde.
         )
         required_keys = {
             "ok", "document_id", "source", "title", "found",
-            "genel_gerekce", "madde_gerekceleri", "raw_text",
+            "genel_gerekce", "madde_gerekceleri", "raw_text_preview",
             "warnings", "recommended_next_steps", "version", "rule",
         }
         assert required_keys.issubset(result.keys())
+
+    def test_gerekce_does_not_echo_the_whole_law(self):
+        """A miss must not answer with 2 000 chars of the source text.
+
+        Measured 05.09.2026: with no gerekçe in a consolidated text —
+        the normal case — the tool returned ``found: false`` next to a
+        ``raw_text`` field holding the law itself, so the answer that had
+        found nothing was the largest thing the tool ever printed.
+        """
+        from emsal_mcp.legislation import _GEREKCE_PREVIEW_CHARS, get_legislation_gerekce
+        from emsal_mcp.models import ContentStatus, Document
+
+        long_text = "MADDE 1 - Bir hüküm cümlesi.\n" * 400
+        client = FakeMevzuatClient()
+        client.doc_to_return = Document(
+            source="mevzuat", document_id="test-long", title="UZUN KANUN",
+            full_text=long_text, markdown=long_text,
+            content_status=ContentStatus.HTML_MARKDOWN,
+        )
+        result = get_legislation_gerekce(
+            "test-long", sources_override={"mevzuat": client},
+        )
+        assert result["found"] is False
+        assert "raw_text" not in result
+        assert len(result["raw_text_preview"]) <= _GEREKCE_PREVIEW_CHARS
+        assert result["text_length"] == len(long_text)
 
     def test_gerekce_source_not_found(self):
         """Invalid source returns ok=False."""

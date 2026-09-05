@@ -18,6 +18,7 @@ from emsal_mcp.sources.mevzuatgov import (
     MevzuatGovClient,
     _clean_title,
     _leading_title,
+    _looks_like_text,
 )
 
 _ROW = {
@@ -34,14 +35,23 @@ _ROW = {
 }
 
 
-def _resp(json_data=None, status=200, body: bytes | None = None):
+def _resp(json_data=None, status=200, body: bytes | None = None, headers=None):
     r = MagicMock()
     r.status_code = status
     r.json.return_value = json_data or {}
     r.content = body if body is not None else b""
+    r.headers = headers if headers is not None else {}
     r.url = "http://mock"
     r.request = MagicMock()
     return r
+
+
+# The register's own "404 - Sayfa Bulunamadı" landing page, which it serves
+# with HTTP 200 (or via a 302 that ``client()`` follows) instead of a 404.
+_SOFT_404_BODY = (
+    "<html><head><meta charset='utf-8'></head><body>"
+    "<h1>404 - Sayfa Bulunamadı</h1></body></html>"
+).encode("utf-8")
 
 
 def _patched(post=None, get=None):
@@ -191,7 +201,10 @@ class TestGetDocument:
         )
 
         async def _get(*a, **k):
-            return _resp(body=html.encode("windows-1254"))
+            return _resp(
+                body=html.encode("windows-1254"),
+                headers={"content-type": "text/html"},
+            )
 
         mc = _patched(get=_get)
         try:
@@ -202,28 +215,97 @@ class TestGetDocument:
         assert "�" not in (doc.full_text or "")
         assert doc.metadata["mevzuat_tur_adi"] == "KANUN"
 
-    def test_pdf_only_falls_back(self):
+    def test_iframe_serves_the_types_that_have_no_htm(self):
+        """Yönetmelik, tebliğ, KKY and üniversite yönetmeliği have no .htm.
+
+        Measured 05.09.2026 over 30 records: ``/MevzuatMetin/{id}.htm``
+        answers 302 → ``/Anasayfa/ErrorPage?code=404`` for MevzuatTur 3, 7, 8,
+        9 and 20, and since ``client()`` follows redirects the adapter used to
+        read that error page, hit the soft-404 check and report
+        ``unavailable`` — for most of the register. The detail page's iframe
+        serves all of them.
+        """
         calls = []
+        html = (
+            "<html><body><p>TÜRKİYE EMİSYON TİCARET SİSTEMİ YÖNETMELİĞİ</p>"
+            "<p>MADDE 1- (1) Bu Yönetmeliğin amacı…</p></body></html>"
+        )
 
         async def _get(url, *a, **k):
             calls.append(url)
-            return _resp(status=404) if url.endswith(".htm") else _resp(status=200)
+            if ".htm" in url:
+                return _resp(body=_SOFT_404_BODY, headers={"content-type": "text/html"})
+            return _resp(
+                body=html.encode("utf-8"),
+                headers={"content-type": "text/html; charset=utf-8"},
+            )
 
         mc = _patched(get=_get)
         try:
-            doc = asyncio.run(MevzuatGovClient().get_document("1.5.9999"))
+            doc = asyncio.run(MevzuatGovClient().get_document("7.5.46261"))
         finally:
             mc.stop()
-        assert doc.content_status.value == "pdf_link_only"
-        assert len(calls) == 2
+        assert doc.content_status.value == "html_markdown"
+        assert "EMİSYON" in (doc.full_text or "")
+        assert any("MevzuatFihristDetayIframe" in c for c in calls), calls
+        warns = (doc.metadata or {}).get("_emsal_warnings", [])
+        assert any("iframe" in w for w in warns), warns
 
-    def test_missing_document_reported(self):
-        async def _get(*a, **k):
-            return _resp(status=404)
+    def test_iframe_charset_comes_from_the_header(self):
+        """The iframe is UTF-8 while the embedded Word export says 1254.
+
+        ``decode_turkish_html`` trusts the ``<meta charset>``, which here
+        belongs to the document the iframe wraps, not to the response — so
+        this route produced mojibake ("TÃœRKÄ°YE") for every Turkish letter.
+        """
+        html = (
+            "<html><head><meta http-equiv=Content-Type "
+            "content='text/html; charset=Windows-1254'></head><body>"
+            "<p>TÜRKİYE EMİSYON TİCARET SİSTEMİ YÖNETMELİĞİ</p>"
+            "<p>MADDE 1- (1) Bu Yönetmeliğin amacı, sera gazı emisyonlarının "
+            "izlenmesine ilişkin usul ve esasları düzenlemektir.</p></body></html>"
+        )
+
+        async def _get(url, *a, **k):
+            if ".htm" in url:
+                return _resp(body=_SOFT_404_BODY, headers={"content-type": "text/html"})
+            return _resp(
+                body=html.encode("utf-8"),
+                headers={"content-type": "text/html; charset=utf-8"},
+            )
 
         mc = _patched(get=_get)
         try:
-            doc = asyncio.run(MevzuatGovClient().get_document("1.5.9999"))
+            doc = asyncio.run(MevzuatGovClient().get_document("7.5.46261"))
+        finally:
+            mc.stop()
+        text = doc.full_text or ""
+        assert "TÜRKİYE" in text, text[:120]
+        assert "Ã" not in text and "Ä°" not in text
+
+    def test_scanned_pdf_is_not_passed_off_as_text(self):
+        """Cumhurbaşkanı kararları are scans with no ToUnicode map.
+
+        pypdf still returns a few hundred characters for them — control codes
+        from the embedded font's own encoding. Reporting that as the full text
+        of a Cumhurbaşkanı kararı would be worse than reporting nothing.
+        """
+        garbage = "\x1a\x0e\r\x1a$\t#\x16\x1f#\x19\x18" * 40
+        assert _looks_like_text(garbage) is False
+        assert _looks_like_text("MADDE 1- Bu Yönetmeliğin amacı… " * 20) is True
+
+    def test_missing_document_reported(self):
+        """Nothing on any of the three routes → unavailable, not a fake hit."""
+        async def _get(url, *a, **k):
+            if url.endswith(".pdf"):
+                return _resp(status=404, headers={})
+            return _resp(status=404, headers={})
+
+        mc = _patched(get=_get)
+        try:
+            doc = asyncio.run(MevzuatGovClient().get_document("1.5.999999"))
         finally:
             mc.stop()
         assert doc.content_status.value == "unavailable"
+        warns = (doc.metadata or {}).get("_emsal_warnings", [])
+        assert any("bulunamadı" in w for w in warns), warns

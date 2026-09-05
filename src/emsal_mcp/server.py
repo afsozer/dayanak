@@ -1925,18 +1925,20 @@ def main() -> None:
         document_id: str,
         source: str | None = None,
         part: str = "document",
+        page_number: int = 1,
     ) -> dict:
         """Get legislation content from the Mevzuat source.
 
         Args:
             document_id: Mevzuat document ID.
             source: Source ID (default: "mevzuat").
-            part: 'document' (default) returns full document,
-                  'article_tree' returns the article tree structure,
-                  'gerekce' returns the legislative rationale/preambles.
+            part: 'document' (default, full text), 'article_tree' the
+                  part/section/article tree, 'gerekce' the rationale.
+            page_number: page of part='document' (40 000 chars/page).
 
         Returns:
-            Dict appropriate for the requested part.
+            Dict for the requested part; 'document' also carries
+            current_page/total_pages/total_chars.
         """
         if part == "article_tree":
             return get_legislation_article_tree_impl(
@@ -1946,10 +1948,19 @@ def main() -> None:
             return get_legislation_gerekce_impl(
                 document_id=document_id, source=source,
             )
-        else:
-            return get_legislation_document_impl(
-                document_id=document_id, source=source,
+        result = get_legislation_document_impl(
+            document_id=document_id, source=source,
+        )
+        if result.get("markdown"):
+            from .server_utils import split_markdown_for_pagination
+            page = split_markdown_for_pagination(
+                result["markdown"], page_number=page_number
             )
+            result["markdown"] = page["markdown"]
+            result["current_page"] = page["current_page"]
+            result["total_pages"] = page["total_pages"]
+            result["total_chars"] = page["total_chars"]
+        return result
 
     @_tool
     def citation_check(

@@ -97,6 +97,52 @@ _SOFT_404_RE = re.compile(r"404\s*[-–—]?\s*Sayfa\s+Bulunamad", re.IGNORECASE
 # Full text lives at MevzuatMetin/{tur}.{tertip}.{no}.htm
 _DOC_ID_RE = re.compile(r"^(?P<tur>\d+)\.(?P<tertip>\d+)\.(?P<no>\d+)$")
 
+# ── Why there are three routes to one document ──────────────────────────
+# Measured 05.09.2026 over 30 records across ten MevzuatTur codes:
+#
+#   tür                     .htm            .pdf            iframe
+#   KANUN/KHK/CBK/TÜZÜK     200             200             200
+#   YÖNETMELİK (3)          302 → 404       200             200
+#   TEBLİĞ (9) / KKY (7)    302 → 404       302 → 404       200
+#   ÜNİVERSİTE YÖN. (8)     302 → 404       302 → 404       200
+#   CB KARARI (20)          302 → 404       200 (taranmış)  boş
+#
+# The 302 goes to /Anasayfa/ErrorPage?code=404, and since ``client()`` follows
+# redirects the adapter used to receive that 65 KB error page, fall into the
+# soft-404 check and answer ``unavailable`` — for 8 865 yönetmelik, 4 459
+# tebliğ, 3 653 KKY and 5 063 üniversite yönetmeliği, i.e. most of the
+# register. The site's own detail page (``/mevzuat?MevzuatNo=…``) carries no
+# text itself; it embeds the iframe below, which serves every type that has a
+# text layer at all.
+_IFRAME_PATH = "/anasayfa/MevzuatFihristDetayIframe"
+# İİK's iframe body is 1,3 MB and the register trickles it out; 8 s is enough
+# for the .htm probe but not for this one.
+_IFRAME_BUDGET = 20.0
+_PDF_BUDGET = 20.0
+# ⚠️ The iframe answers ``Content-Type: text/html; charset=utf-8`` while the
+# embedded Word export still declares ``<meta charset=Windows-1254>``. The
+# meta wins in ``decode_turkish_html`` and every Turkish character comes back
+# mojibake ("TÃœRKÄ°YE"), so this route must trust the HTTP header.
+_HTTP_CHARSET_RE = re.compile(r"charset=([\w-]+)", re.IGNORECASE)
+
+# A born-digital PDF extracts cleanly (4721 s.k.: 396 171 chars, 1 106 MADDE
+# against the .htm route's 1 110). Cumhurbaşkanı kararları are scans whose
+# embedded fonts carry no ToUnicode map: pypdf returns a few hundred control
+# characters that LOOK like text. Anything below this share of Turkish letters
+# is not text, it is a font-encoding artefact.
+_PDF_MIN_LETTER_RATIO = 0.55
+_PDF_MIN_CHARS = 200
+_TR_LETTERS = set("abcçdefgğhıijklmnoöprsştuüvyzABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ")
+
+
+def _looks_like_text(text: str) -> bool:
+    """True when an extracted PDF layer is prose rather than font garbage."""
+    if len(text.strip()) < _PDF_MIN_CHARS:
+        return False
+    letters = sum(1 for ch in text if ch in _TR_LETTERS)
+    printable = sum(1 for ch in text if not ch.isspace())
+    return bool(printable) and letters / printable >= _PDF_MIN_LETTER_RATIO
+
 
 def _doc_id(tur: Any, tertip: Any, no: Any) -> str:
     return f"{tur}.{tertip}.{no}"
@@ -304,10 +350,12 @@ class MevzuatGovClient(SourceClient):
 
     # ── Document fetch ──────────────────────────────────────────────────
     async def _fetch_text(self, url: str, doc_id: str) -> tuple[str, Any]:
-        """Fetch the .htm body, falling back to the .pdf link on 404.
+        """Fetch the .htm body.
 
-        Returns ``("html", text)`` or ``("document", Document)`` — the latter
-        for the terminal 404 outcomes, which already know their answer.
+        Returns ``("html", text)``, or ``("miss", "")`` when the register
+        answers this path with a 404 — hard (HTTP 404) or soft (a 302 to
+        ``/Anasayfa/ErrorPage?code=404``, which ``client()`` follows). The
+        caller then walks the iframe and PDF routes.
         Raises ``httpx.TimeoutException`` when every attempt times out.
         """
         last: httpx.TimeoutException | None = None
@@ -316,26 +364,7 @@ class MevzuatGovClient(SourceClient):
                 async with asyncio.timeout(_DOC_BUDGET), client(timeout=_DOC_TIMEOUT) as c:
                     resp = await c.get(url, headers=self._doc_headers)
                     if resp.status_code == 404:
-                        pdf_url = f"{self.base}/MevzuatMetin/{doc_id}.pdf"
-                        head = await c.get(pdf_url, headers=self._doc_headers)
-                        if head.status_code < 400:
-                            doc = Document(
-                                source=self.source_id, document_id=doc_id,
-                                title=doc_id, source_url=pdf_url, pdf_url=pdf_url,
-                                content_status=ContentStatus.PDF_LINK_ONLY,
-                            )
-                            return "document", finalize_document(doc, [
-                                "Bu mevzuat yalnızca PDF olarak yayımlanmış; tam metin "
-                                "için PDF çıkarımı gerekir."
-                            ])
-                        doc = Document(
-                            source=self.source_id, document_id=doc_id,
-                            title=doc_id, content_status=ContentStatus.UNAVAILABLE,
-                        )
-                        return "document", finalize_document(doc, [
-                            f"{doc_id}: kaynakta bulunamadı (HTTP 404). Tür/tertip/no "
-                            "üçlüsünü search() sonucundan doğrulayın."
-                        ])
+                        return "miss", ""
                     check_http_response(resp, self.source_id)
                     return "html", decode_turkish_html(resp)
             except (httpx.TimeoutException, asyncio.TimeoutError) as exc:
@@ -346,6 +375,51 @@ class MevzuatGovClient(SourceClient):
                 if attempt < _DOC_RETRIES:
                     await asyncio.sleep(0.5)
         raise last  # type: ignore[misc]
+
+    async def _fetch_iframe(self, tur: str, tertip: str, no: str) -> str:
+        """Full text via the detail page's iframe — the only universal route.
+
+        Decodes with the charset from the HTTP header when the server sends
+        one; the embedded document's own ``<meta charset>`` is stale here.
+        """
+        url = (
+            f"{self.base}{_IFRAME_PATH}?MevzuatTur={tur}"
+            f"&MevzuatNo={no}&MevzuatTertip={tertip}"
+        )
+        async with asyncio.timeout(_IFRAME_BUDGET), client(timeout=_IFRAME_BUDGET) as c:
+            resp = await c.get(url, headers=self._doc_headers)
+            if resp.status_code >= 400:
+                return ""
+            m = _HTTP_CHARSET_RE.search(resp.headers.get("content-type", ""))
+            if m:
+                try:
+                    return resp.content.decode(m.group(1), errors="replace")
+                except LookupError:
+                    pass
+            return decode_turkish_html(resp)
+
+    async def _fetch_pdf(self, doc_id: str) -> tuple[str, str | None]:
+        """Last resort: the .pdf twin. Returns ``(text, pdf_url)``.
+
+        ``text`` is empty when the PDF is missing, unreadable, or a scan
+        without a usable text layer — the caller then reports PDF-link-only
+        rather than passing font garbage off as the law.
+        """
+        pdf_url = f"{self.base}/MevzuatMetin/{doc_id}.pdf"
+        async with asyncio.timeout(_PDF_BUDGET), client(timeout=_PDF_BUDGET) as c:
+            resp = await c.get(pdf_url, headers=self._doc_headers)
+            if resp.status_code >= 400:
+                return "", None
+            if not resp.headers.get("content-type", "").startswith("application/pdf"):
+                return "", None
+            body = resp.content
+        from emsal_mcp.pdf_extractor import extract_pdf_text
+
+        result = extract_pdf_text(body)
+        if not result.get("ok"):
+            return "", pdf_url
+        text = result.get("text") or ""
+        return (text if _looks_like_text(text) else ""), pdf_url
 
     async def get_document(self, document_id: str, **kwargs: Any) -> Document:
         m = _DOC_ID_RE.match(str(document_id).strip())
@@ -360,47 +434,87 @@ class MevzuatGovClient(SourceClient):
                 "Kimlikleri search() sonucundan alın."
             ])
 
-        url = f"{self.base}/MevzuatMetin/{m.group(0)}.htm"
+        doc_id = m.group(0)
+        url = f"{self.base}/MevzuatMetin/{doc_id}.htm"
         warnings: list[str] = []
+        text = ""
         try:
-            outcome, payload = await self._fetch_text(url, m.group(0))
+            outcome, payload = await self._fetch_text(url, doc_id)
         except httpx.TimeoutException as exc:
-            doc = Document(
-                source=self.source_id, document_id=m.group(0),
-                title=m.group(0), content_status=ContentStatus.UNAVAILABLE,
+            # A .htm timeout is NOT the end of the road: measured 05.09.2026,
+            # kurum yönetmelikleri and Cumhurbaşkanı kararları time out on
+            # this path while the iframe route answers in ~2 s. Returning here
+            # cost those two types their full text.
+            warnings.append(
+                f"{doc_id}: .htm yolu {_DOC_TIMEOUT:.0f} sn içinde yanıt vermedi "
+                f"({_DOC_RETRIES + 1} deneme, {type(exc).__name__})."
             )
-            return finalize_document(doc, [
-                f"{m.group(0)}: kaynak {_DOC_TIMEOUT:.0f} sn içinde yanıt vermedi "
-                f"({_DOC_RETRIES + 1} deneme, {type(exc).__name__}). Var olmayan bir "
-                "tür/tertip/no üçlüsü bu kaynakta 404 yerine sessizce zaman aşımına "
-                "düşer; üçlüyü search() sonucundan doğrulayın."
-            ])
-        if outcome == "document":
-            return payload  # type: ignore[return-value]
-        html = str(payload)
+        else:
+            if outcome == "html":
+                text = html_to_text(str(payload))
+                if _SOFT_404_RE.search(text):
+                    text = ""
 
-        text = html_to_text(html)
-        if _SOFT_404_RE.search(text):
-            doc = Document(
-                source=self.source_id, document_id=m.group(0),
-                title=m.group(0), content_status=ContentStatus.UNAVAILABLE,
-            )
-            return finalize_document(doc, [
-                f"{m.group(0)}: kaynakta bulunamadı (HTTP 200 döndü ama gövde "
-                "kaynağın kendi '404 - Sayfa Bulunamadı' sayfası). Tür/tertip/no "
-                "üçlüsünü search() sonucundan doğrulayın."
-            ])
-        status = ContentStatus.HTML_MARKDOWN if text else ContentStatus.UNAVAILABLE
+        pdf_url: str | None = None
         if not text:
-            warnings.append(f"{m.group(0)}: sayfa boş döndü, metin çıkarılamadı.")
+            # Route 2 — the detail page's iframe. Covers yönetmelik, tebliğ,
+            # KKY and üniversite yönetmeliği, none of which have a .htm twin.
+            try:
+                iframe_html = await self._fetch_iframe(
+                    m.group("tur"), m.group("tertip"), m.group("no")
+                )
+            except (httpx.TimeoutException, asyncio.TimeoutError):
+                iframe_html = ""
+                warnings.append(f"{doc_id}: iframe yolu zaman aşımına uğradı.")
+            candidate = html_to_text(iframe_html) if iframe_html else ""
+            if candidate and not _SOFT_404_RE.search(candidate):
+                text = candidate
+                warnings.append(
+                    f"{doc_id}: .htm yolu yok; tam metin sitenin kendi detay "
+                    "iframe'inden alındı."
+                )
 
-        title = _leading_title(text, m.group(0))
+        if not text:
+            # Route 3 — the PDF twin, if it carries a real text layer.
+            try:
+                pdf_text, pdf_url = await self._fetch_pdf(doc_id)
+            except (httpx.TimeoutException, asyncio.TimeoutError):
+                pdf_text, pdf_url = "", None
+                warnings.append(f"{doc_id}: PDF yolu zaman aşımına uğradı.")
+            if pdf_text:
+                text = pdf_text
+                warnings.append(f"{doc_id}: tam metin PDF'ten çıkarıldı.")
+
+        if not text:
+            if pdf_url:
+                doc = Document(
+                    source=self.source_id, document_id=doc_id, title=doc_id,
+                    source_url=pdf_url, pdf_url=pdf_url,
+                    content_status=ContentStatus.PDF_LINK_ONLY,
+                )
+                return finalize_document(doc, [
+                    f"{doc_id}: yalnızca PDF olarak yayımlanmış ve PDF'in metin "
+                    "katmanı okunabilir değil (taranmış görüntü ya da pypdf kurulu "
+                    "değil). Tam metin için PDF'i elle açın."
+                ])
+            doc = Document(
+                source=self.source_id, document_id=doc_id,
+                title=doc_id, content_status=ContentStatus.UNAVAILABLE,
+            )
+            return finalize_document(doc, [
+                f"{doc_id}: kaynakta bulunamadı (.htm, detay iframe'i ve .pdf "
+                "yollarının üçü de metin vermedi). Tür/tertip/no üçlüsünü "
+                "search() sonucundan doğrulayın."
+            ])
+
+        status = ContentStatus.HTML_MARKDOWN
+        title = _leading_title(text, doc_id)
 
         doc = Document(
-            source=self.source_id, document_id=m.group(0), title=title,
+            source=self.source_id, document_id=doc_id, title=title,
             markdown=text, full_text=text,
             content_status=status,
-            content_hash=sha(text) if text else None,
+            content_hash=sha(text),
             source_url=(
                 f"{self.base}/mevzuat?MevzuatNo={m.group('no')}"
                 f"&MevzuatTur={m.group('tur')}&MevzuatTertip={m.group('tertip')}"

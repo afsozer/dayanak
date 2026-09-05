@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from emsal_mcp.models import Document, SearchResult
+from emsal_mcp.models import Document, SearchPage, SearchResult
 
 from .bedesten import BedestenClient
 
@@ -17,6 +17,34 @@ class MevzuatClient(BedestenClient):
     _get_document_response_keys = ["content"]
 
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
+        results, _ = await self._search_raw(query, limit, **filters)
+        return results
+
+    async def search_page(
+        self, query: str = "", limit: int = 10, page: int = 1, **filters
+    ) -> SearchPage:
+        """Search with the upstream total, which ``search()`` throws away.
+
+        Bedesten answers ``{"data": {"mevzuatList": [...], "total": 1860,
+        "start": 0}}`` (measured 05.09.2026, mevzuatAdi="Kanun"), but the
+        list-returning ``search()`` contract has no room for ``total`` — so a
+        caller asking for 10 of 1 860 matches could not tell that from 10 of
+        10. Kept alongside ``search()`` rather than replacing it.
+        """
+        filters.setdefault("page", page)
+        results, total = await self._search_raw(query, limit, **filters)
+        page_size = max(1, int(limit))
+        total_pages = None
+        if isinstance(total, int):
+            total_pages = max(1, (total + page_size - 1) // page_size) if total else 0
+        return SearchPage(
+            results=results, total=total if isinstance(total, int) else None,
+            page=page, page_size=page_size, total_pages=total_pages,
+        )
+
+    async def _search_raw(
+        self, query: str, limit: int = 10, **filters
+    ) -> tuple[list[SearchResult], int | None]:
         from .base import (
             BedestenUpstreamError,
             check_bedesten_response_error,
@@ -133,7 +161,8 @@ class MevzuatClient(BedestenClient):
                 source_url=url,
                 content_status=ContentStatus.METADATA_ONLY, metadata=i,
             ))
-        return out
+        total = data.get("total")
+        return out, (total if isinstance(total, int) else None)
 
     async def get_document(self, document_id: str, **kwargs) -> Document:
         from .base import (

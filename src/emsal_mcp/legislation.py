@@ -71,8 +71,59 @@ _QUAL_CANON = {
     "ekgeçici": "Ek Geçici", "ekgecici": "Ek Geçici",
     "mükerrer": "Mükerrer", "mukerrer": "Mükerrer",
 }
-_PART_RE = re.compile(r"^([İIİ]?KİNCİ|[ÜUÜ]?ÇÜNCÜ|[DÖD]?RDÜNCÜ|[BE]?ŞİNCİ|[AL]?TINCI|[YE]?DİNCİ|[SEK]?İZİNCİ|[DO]?KUZUNCU|[ON]UNCU|[Bİ]?RİNCİ)\s+KISIM", re.MULTILINE)
-_SECTION_RE = re.compile(r"^([İIİ]?KİNCİ|[ÜUÜ]?ÇÜNCÜ|[DÖD]?RDÜNCÜ|[BE]?ŞİNCİ|[AL]?TINCI|[YE]?DİNCİ|[SEK]?İZİNCİ|[DO]?KUZUNCU|[ON]UNCU|[Bİ]?RİNCİ)\s+B[ÖO]L[ÜU]M", re.MULTILINE)
+# ── Ordinal headings ("BİRİNCİ KISIM", "ÜÇÜNCÜ BÖLÜM") ──────────────────
+# The previous patterns were written as optional character classes
+# (``[Bİ]?RİNCİ``), which requires exactly ONE character before "RİNCİ" —
+# "BİRİNCİ" has two, so it never matched. Measured 05.09.2026: HMK carries 12
+# KISIM and 31 BÖLÜM lines; those patterns found 2 and 13, and TBK's part list
+# came back as ["", "İKİNCİ KISIM"]. Build the alternation from the words
+# themselves instead, with the Turkish/ASCII look-alikes folded into classes
+# (documents are inconsistent about İ/I and Ç/C).
+_TR_CHAR_CLASS = {
+    "C": "[CcÇç]", "G": "[GgĞğ]", "I": "[IıİiÎî]",
+    "O": "[OoÖö]", "S": "[SsŞş]", "U": "[UuÜü]",
+}
+
+
+def _tr_word_pattern(word: str) -> str:
+    """Regex for an ASCII-folded uppercase word, tolerant of Turkish spelling."""
+    return "".join(
+        _TR_CHAR_CLASS.get(ch, f"[{ch}{ch.lower()}]") for ch in word
+    )
+
+
+_ORDINAL_WORDS = [
+    "BIRINCI", "IKINCI", "UCUNCU", "DORDUNCU", "BESINCI", "ALTINCI",
+    "YEDINCI", "SEKIZINCI", "DOKUZUNCU", "ONUNCU", "SONUNCU", "SON",
+]
+# "ON BİRİNCİ", "YİRMİ İKİNCİ" — compound ordinals above ten.
+_ORDINAL_TENS = ["ON", "YIRMI", "OTUZ", "KIRK", "ELLI"]
+_ORDINAL_PAT = (
+    "(?:(?:" + "|".join(_tr_word_pattern(w) for w in _ORDINAL_TENS) + r")\s+)?"
+    "(?:" + "|".join(_tr_word_pattern(w) for w in _ORDINAL_WORDS) + ")"
+)
+_PART_RE = re.compile(
+    rf"^[ \t]*{_ORDINAL_PAT}\s+{_tr_word_pattern('KISIM')}\b", re.MULTILINE
+)
+_SECTION_RE = re.compile(
+    rf"^[ \t]*{_ORDINAL_PAT}\s+{_tr_word_pattern('BOLUM')}\b", re.MULTILINE
+)
+# Same headings anchored to a single line, for the tree scanner.
+_PART_LINE_RE = re.compile(rf"^{_ORDINAL_PAT}\s+{_tr_word_pattern('KISIM')}\b")
+_SECTION_LINE_RE = re.compile(rf"^{_ORDINAL_PAT}\s+{_tr_word_pattern('BOLUM')}\b")
+# A heading is sometimes broken across two lines by the source markup
+# ("BİRİNCİ\nBÖLÜM" — measured on üniversite yönetmelikleri).
+_ORDINAL_ONLY_RE = re.compile(rf"^{_ORDINAL_PAT}$")
+_HEADING_TAIL_RE = re.compile(
+    rf"^(?:{_tr_word_pattern('KISIM')}|{_tr_word_pattern('BOLUM')})$"
+)
+# Article heading as it appears on its own line; IGNORECASE because pre-2000
+# laws write "Madde 265 –".
+_TREE_ARTICLE_RE = re.compile(
+    rf"^(?:({_ARTICLE_QUAL})\s+)?MADDE\s+(\d+(?:\s*/\s*[A-Za-z])?)\s*[-–—]?",
+    re.IGNORECASE,
+)
+_QUAL_ONLY_RE = re.compile(rf"^{_ARTICLE_QUAL}$", re.IGNORECASE)
 
 _GENEL_GEREKCE_RE = re.compile(
     r"(?:^|\n)GENEL\s+GEREK[ÇC]E\s*\n(.*?)(?=(?:^|\n)MADDE\s+GEREK[ÇC]ELER[İI]|(?:^|\n)MADDE\s+\d|\Z)",
@@ -86,6 +137,8 @@ _GEREKCE_BOUNDARY_RE = re.compile(
     r"(?:^|\n)[ \t]*(?:GENEL\s+GEREK[ÇC]E|MADDE\s+GEREK[ÇC]ELER[İI])[ \t]*(?=\n|\Z)",
     re.IGNORECASE,
 )
+# Preview budget for the gerekçe tool's echo of the source text.
+_GEREKCE_PREVIEW_CHARS = 500
 _SINGLE_MADDE_GEREKCE_RE = re.compile(
     r"Madde\s+(\d+(?:\s*/\s*[A-Z])?)\s*[-–—]\s*(.*?)(?=Madde\s+\d|\Z)",
     re.DOTALL,
@@ -434,61 +487,170 @@ def _parse_articles(text: str) -> list[dict[str, Any]]:
     return articles
 
 
+def _heading_title(lines: list[str], idx: int, marker: str) -> str:
+    """Marker line plus the descriptive line under it.
+
+    Turkish legislation writes the heading over two lines —
+    ``BİRİNCİ KISIM`` / ``Genel Hükümler`` — and only the first was kept,
+    so every part and section came back as a bare ordinal.
+    """
+    for j in range(idx + 1, min(idx + 4, len(lines))):
+        nxt = lines[j].strip()
+        if not nxt:
+            continue
+        if (
+            len(nxt) <= 120
+            and not _PART_LINE_RE.match(nxt)
+            and not _SECTION_LINE_RE.match(nxt)
+            and not _ORDINAL_ONLY_RE.match(nxt)
+            and not _TREE_ARTICLE_RE.match(nxt)
+            and not _QUAL_ONLY_RE.match(nxt)
+        ):
+            return f"{marker} — {nxt}"
+        break
+    return marker
+
+
+def _article_caption(lines: list[str], idx: int) -> str:
+    """The marginal heading that sits above a MADDE line ("Amaç", "Kapsam")."""
+    for j in range(idx - 1, max(idx - 4, -1), -1):
+        prev = lines[j].strip()
+        if not prev:
+            continue
+        if _QUAL_ONLY_RE.match(prev):
+            continue
+        if (
+            len(prev) <= 120
+            and not _TREE_ARTICLE_RE.match(prev)
+            and not _PART_LINE_RE.match(prev)
+            and not _SECTION_LINE_RE.match(prev)
+            and not _ORDINAL_ONLY_RE.match(prev)
+            and not _HEADING_TAIL_RE.match(prev)
+        ):
+            return prev
+        break
+    return ""
+
+
 def _build_tree(articles: list[dict[str, Any]], full_text: str) -> dict[str, Any]:
     """Build part/section/article tree from flat article list + full text.
 
-    When no PART or SECTION markers exist, returns empty parts list.
+    Articles are matched to their headings BY NUMBER, not by order of
+    appearance. The old code walked ``articles`` with a running index while
+    scanning the text with an uppercase-only ``^MADDE (\\d+)`` pattern, so
+    every heading the pattern missed (a lower-case "Madde 265 –", a "GEÇİCİ
+    MADDE 1", a "MADDE 305/A") shifted the whole rest of the law: measured on
+    HMK, tree entry ``number=80`` carried the heading ``MADDE 83-``, and TBK
+    was off by nine articles from its 34th onward.
+
+    When no PART or SECTION markers exist, returns a single anonymous part.
     """
-    lines = full_text.splitlines()
+    body = _normative_body(full_text)
+    by_number: dict[str, dict[str, Any]] = {}
+    for art in articles:
+        by_number.setdefault(_norm_article_no(art["number"]), art)
+
+    lines = body.splitlines()
     parts: list[dict[str, Any]] = []
     current_part: dict[str, Any] | None = None
     current_section: dict[str, Any] | None = None
-    article_index = 0
+    used: set[str] = set()
+    pending_qual: str | None = None
+    skip_until = -1
 
-    for line in lines:
-        stripped = line.strip()
+    def _ensure_slot() -> dict[str, Any]:
+        nonlocal current_part, current_section
+        if current_part is None:
+            current_part = {"title": "", "sections": []}
+            parts.append(current_part)
+        if current_section is None:
+            current_section = {"title": "", "articles": []}
+            current_part["sections"].append(current_section)
+        return current_section
+
+    for idx, raw_line in enumerate(lines):
+        if idx <= skip_until:
+            continue
+        stripped = raw_line.strip()
         if not stripped:
             continue
 
-        # Part header
-        part_m = _PART_RE.match(stripped)
-        if part_m:
-            current_part = {"title": stripped, "sections": []}
+        # A heading split over two lines: "BİRİNCİ" / "BÖLÜM".
+        marker = stripped
+        marker_idx = idx
+        if _ORDINAL_ONLY_RE.match(stripped):
+            for j in range(idx + 1, min(idx + 3, len(lines))):
+                nxt = lines[j].strip()
+                if not nxt:
+                    continue
+                if _HEADING_TAIL_RE.match(nxt):
+                    marker = f"{stripped} {nxt}"
+                    marker_idx = j
+                    skip_until = j
+                break
+
+        if _PART_LINE_RE.match(marker):
+            current_part = {
+                "title": _heading_title(lines, marker_idx, marker),
+                "sections": [],
+            }
             current_section = None
             parts.append(current_part)
+            pending_qual = None
             continue
 
-        # Section header
-        section_m = _SECTION_RE.match(stripped)
-        if section_m:
-            current_section = {"title": stripped, "articles": []}
+        if _SECTION_LINE_RE.match(marker):
             if current_part is None:
                 current_part = {"title": "", "sections": []}
                 parts.append(current_part)
+            current_section = {
+                "title": _heading_title(lines, marker_idx, marker),
+                "articles": [],
+            }
             current_part["sections"].append(current_section)
+            pending_qual = None
             continue
 
-        # Article
-        art_m = re.match(r"^MADDE\s+(\d+)", stripped)
-        if art_m and article_index < len(articles):
-            art = articles[article_index]
-            article_index += 1
-            article_entry = {
-                "number": art["number"],
-                "title": stripped[:120],
-                "preview": art["text"][:200],
-            }
-            if current_section is not None:
-                current_section["articles"].append(article_entry)
-            elif current_part is not None:
-                # Add directly to part — create a default section if none exists
-                if not current_part["sections"]:
-                    current_part["sections"].append({"title": "", "articles": []})
-                current_part["sections"][-1]["articles"].append(article_entry)
-            else:
-                # No part header seen yet — create a default part
-                current_part = {"title": "", "sections": [{"title": "", "articles": [article_entry]}]}
-                parts.append(current_part)
+        if _QUAL_ONLY_RE.match(stripped):
+            # "Ek" / "Geçici" on its own line, above the MADDE heading.
+            pending_qual = stripped
+            continue
+
+        art_m = _TREE_ARTICLE_RE.match(stripped)
+        if not art_m:
+            pending_qual = None
+            continue
+
+        qual_raw = art_m.group(1) or pending_qual
+        pending_qual = None
+        number = re.sub(r"\s+", "", art_m.group(2))
+        key = _norm_article_no(f"{qual_raw} {number}" if qual_raw else number)
+        art = by_number.get(key)
+        if art is None or key in used:
+            continue
+        used.add(key)
+        caption = _article_caption(lines, idx)
+        _ensure_slot()["articles"].append({
+            "number": art["number"],
+            "title": caption or stripped[:120],
+            "heading": stripped[:120],
+            "preview": art["text"][:200],
+        })
+
+    # Articles the scanner never reached (heading rendered inline, inside a
+    # table cell, …) still belong in the tree — losing them silently would
+    # make article_count and the tree disagree.
+    missing = [a for a in articles if _norm_article_no(a["number"]) not in used]
+    if missing:
+        orphan = {"title": "(yapı dışı maddeler)", "articles": [
+            {"number": a["number"], "title": f"MADDE {a['number']}",
+             "heading": f"MADDE {a['number']}", "preview": a["text"][:200]}
+            for a in missing
+        ]}
+        if current_part is None:
+            current_part = {"title": "", "sections": []}
+            parts.append(current_part)
+        current_part["sections"].append(orphan)
 
     return {"parts": parts}
 
@@ -732,6 +894,11 @@ def get_legislation_document(
         },
         "article_count": len(articles),
         "text_length": len(text),
+        # The tool used to describe the document (length, hash, article count)
+        # without ever handing over its text, so "tam metni ver" could not be
+        # answered from this path at all. The server layer paginates this at
+        # 40 000 characters, the same budget get_document uses.
+        "markdown": text,
         "warnings": warnings,
         "recommended_next_steps": (
             ["Tam metin mevcut; alıntı için kullanılabilir."]
@@ -979,7 +1146,8 @@ def get_legislation_gerekce(
         sources_override: Dict mapping source_id -> fake client for tests.
 
     Returns:
-        Dict with ok, found, genel_gerekce, madde_gerekceleri, raw_text, etc.
+        Dict with ok, found, genel_gerekce, madde_gerekceleri and a
+        ``raw_text_preview`` capped at 500 characters (never the full text).
     """
     warnings: list[str] = []
     doc, error = _fetch_doc(document_id, source, sources_override)
@@ -992,7 +1160,7 @@ def get_legislation_gerekce(
             found=False,
             genel_gerekce=None,
             madde_gerekceleri=None,
-            raw_text=None,
+            raw_text_preview=None,
             warnings=[error],
             recommended_next_steps=[error],
             version=LEGISLATION_VERSION,
@@ -1011,7 +1179,7 @@ def get_legislation_gerekce(
             found=False,
             genel_gerekce=None,
             madde_gerekceleri=None,
-            raw_text=None,
+            raw_text_preview=None,
             warnings=["Belge içeriği mevcut değil."],
             recommended_next_steps=["Belge içeriği mevcut değil."],
             version=LEGISLATION_VERSION,
@@ -1052,7 +1220,13 @@ def get_legislation_gerekce(
         "found": found,
         "genel_gerekce": genel_gerekce_raw,
         "madde_gerekceleri": madde_gerekceleri_list,
-        "raw_text": text[:2000] if len(text) > 2000 else text,
+        # ⚠️ NOT the whole document. When a consolidated text carries no
+        # gerekçe — which is the normal case, mevzuat.gov.tr publishes the
+        # enacted text only — this key used to echo 2 000 characters of the
+        # law itself back at the agent under a "found: false" answer, i.e. the
+        # tool's largest output was the one that had found nothing.
+        "raw_text_preview": text[:_GEREKCE_PREVIEW_CHARS],
+        "text_length": len(text),
         "warnings": warnings,
         "recommended_next_steps": (
             ["Gerekçe metni bulundu; doğrudan alıntılanabilir."]
