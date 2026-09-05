@@ -1520,7 +1520,30 @@ def get_index_status(cache: Cache | None = None) -> dict[str, Any]:
             )
             recommended.append("Call build_semantic_index(force_rebuild=True) to resync.")
 
-        if not vectors_table_exists:
+        # Toplu FAISS indeksi (bulk_index.py) varsa anlamsal arama oradan
+        # calisir; TF-IDF eksikligi o durumda bir sorun degil, bilgi notu.
+        bulk: dict[str, Any] | None = None
+        try:
+            from .bulk_index import bulk_index_status
+            from .embeddings import get_embedding_provider
+            db_file = ""
+            for _, _name, _file in db.execute("PRAGMA database_list"):
+                if _name == "main":
+                    db_file = _file or ""
+            prov = get_embedding_provider(None)
+            if db_file and prov is not None:
+                bs = bulk_index_status(Path(db_file), prov.id)
+                if bs.get("exists"):
+                    bulk = bs
+        except Exception:
+            bulk = None
+
+        if bulk is not None:
+            warnings.append(
+                f"Anlamsal arama toplu FAISS indeksinden: {bulk.get('count', 0):,} parça "
+                f"vektörü ({bulk.get('built_at')}); TF-IDF vektörleri bu korpusta kullanılmıyor."
+            )
+        elif not vectors_table_exists:
             warnings.append("search_vectors table does not exist.")
             recommended.append("Call build_semantic_index() to create TF-IDF vectors.")
         elif vectors_count < total_cached:
@@ -1529,7 +1552,7 @@ def get_index_status(cache: Cache | None = None) -> dict[str, Any]:
             )
             recommended.append("Call build_semantic_index() to index remaining documents.")
 
-        if unindexed > 0:
+        if unindexed > 0 and bulk is None:
             recommended.append(f"{unindexed} documents are not yet TF-IDF indexed.")
 
         return {
@@ -1540,6 +1563,7 @@ def get_index_status(cache: Cache | None = None) -> dict[str, Any]:
             "vectors_count": vectors_count,
             "total_cached_documents": total_cached,
             "unindexed_documents": unindexed,
+            "dense_bulk_index": bulk,
             "warnings": warnings,
             "recommended_next_steps": recommended,
             "version": SEMANTIC_VERSION,

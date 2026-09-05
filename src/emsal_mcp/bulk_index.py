@@ -29,6 +29,7 @@ import glob
 import json
 import os
 import re
+import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -257,6 +258,31 @@ def _doc_id(L: _Loaded, i: int) -> str:
     return str(n) if n >= 0 else L.meta["uuids"][-n - 1]
 
 
+def _best_chunk_text(text: str, chunk_index: int, max_chars: int = 600) -> str:
+    """Belgeyi indekslemede kullanilan ayni parcalayiciyla bol, en iyi parcayi dondur."""
+    try:
+        from .chunking import chunk_text
+        chunks = chunk_text(text)
+        if not chunks:
+            return ""
+        c = chunks[min(max(int(chunk_index), 0), len(chunks) - 1)]
+        c = " ".join(c.split())
+        # Ortusme parcalari, onceki parcanin kuyrugunu basa ekliyor ve ayni metin
+        # hemen ardindan yeniden geliyor ("... takdirde k" + "... takdirde kiraci").
+        # Ilk 100 karakter ileride tekrar ediyorsa basi at.
+        head = c[:100]
+        if len(head) == 100:
+            again = c.find(head, 1)
+            if 0 < again <= 400:
+                c = c[again:]
+        # Kelime ortasindan baslayan kesit: ilk bosluga kadar at.
+        if c and not c[0].isupper() and " " in c[:40]:
+            c = c[c.index(" ") + 1:]
+        return c[:max_chars] + ("…" if len(c) > max_chars else "")
+    except Exception:
+        return ""
+
+
 def bulk_search(
     db: Any,
     db_path: Path,
@@ -303,19 +329,38 @@ def bulk_search(
     # (filtre metadata uzerinden calisir, sonradan elenecek).
     ranked = sorted(best.items(), key=lambda kv: kv[1][0], reverse=True)
     top_n = max(limit * 40, 1000) if filters else max(limit * 10, 200)
+    # En iyi parcanin metni alinti olur: kullanici sonucun NEDEN eslestigini
+    # gorur (sozluksel aramadaki snippet'in karsiligi). Yalniz ilk `snippet_n`
+    # belge icin full_text okunur (belge basina bir PK okumasi + parcalama).
+    snippet_n = max(limit * 2, 10)
     out: list[dict[str, Any]] = []
-    for (doc_id, source), (score, cix) in ranked[:top_n]:
-        row = db.execute(
-            "SELECT title, content_status FROM documents_v2 WHERE document_id=? AND source=?",
-            (doc_id, source),
-        ).fetchone()
-        out.append({
+    for rank, ((doc_id, source), (score, cix)) in enumerate(ranked[:top_n]):
+        cols = "title, content_status, full_text" if rank < snippet_n else \
+            "title, content_status, NULL AS full_text"
+        try:
+            row = db.execute(
+                f"SELECT {cols} FROM documents_v2 WHERE document_id=? AND source=?",
+                (doc_id, source),
+            ).fetchone()
+        except sqlite3.OperationalError:  # full_text sutunu olmayan sema (test)
+            row = db.execute(
+                "SELECT title, content_status, NULL AS full_text FROM documents_v2 "
+                "WHERE document_id=? AND source=?",
+                (doc_id, source),
+            ).fetchone()
+        entry: dict[str, Any] = {
             "document_id": doc_id, "source": source,
             "title": (row["title"] if row else "") or "",
             "score": round(min(score, 1.0), 6),
             "content_status": (row["content_status"] if row else None) or "unknown",
             "best_chunk": cix,
-        })
+        }
+        text = row["full_text"] if row else None
+        if text:
+            snippet = _best_chunk_text(text, cix)
+            if snippet:
+                entry["snippet"] = snippet  # related_quotes'u sunucu bundan uretir
+        out.append(entry)
     if filters:
         from .semantic import _apply_filters
         out = _apply_filters(out, filters)

@@ -57,10 +57,11 @@ def corpus(tmp_path: Path):
     db = sqlite3.connect(db_path)
     db.row_factory = sqlite3.Row
     db.execute("CREATE TABLE documents_v2 (document_id TEXT, source TEXT, title TEXT, "
-               "content_status TEXT, PRIMARY KEY (document_id, source))")
-    db.executemany("INSERT INTO documents_v2 VALUES (?,?,?,?)",
-                   [(i, "bedesten", f"Yargıtay {i}", "html_markdown") for i in set(ids)]
-                   + [(i, "aym", f"AYM {i}", "html_markdown") for i in a_ids])
+               "content_status TEXT, full_text TEXT, PRIMARY KEY (document_id, source))")
+    body = "\n\n".join(f"Paragraf {k} " + ("hukuki metin " * 120) for k in range(4))
+    db.executemany("INSERT INTO documents_v2 VALUES (?,?,?,?,?)",
+                   [(i, "bedesten", f"Yargıtay {i}", "html_markdown", body) for i in set(ids)]
+                   + [(i, "aym", f"AYM {i}", "html_markdown", None) for i in a_ids])
     db.commit()
     return {"vec_dir": vec_dir, "db_path": db_path, "db": db,
             "vecs": np.array(vecs), "ids": ids, "a_vecs": np.array(a_vecs), "a_ids": a_ids}
@@ -122,6 +123,8 @@ class TestSearch:
         assert out[0]["title"] == f"Yargıtay {corpus['ids'][7 * 3]}"
         assert out[0]["best_chunk"] in (0, 1, 2)
         assert out[0]["score"] > 0.99  # refine: tam fp16 iç çarpım, PQ yaklaşıklığı değil
+        assert out[0]["snippet"].startswith("Paragraf") and "related_quotes" not in out[0]
+        assert "snippet" not in out[-1] or len(out) <= 20  # yalnız ilk snippet_n belge
         assert out == sorted(out, key=lambda r: r["score"], reverse=True)
 
     def test_uuid_ids_and_source_mapping(self, corpus, monkeypatch):
