@@ -173,6 +173,8 @@ def main() -> None:
         "legal_research_guide":       "core",
         "load_extended_tools":        "core",
         "health_check":               "core",
+        # ── Extended: mevzuat güncelleme (Faz 2b) ───────────────────────
+        "mevzuat_degisiklik_raporu":  "extended",
         # ── Extended: cache_admin ───────────────────────────────────────
         # M-105: cache_admin tools removed from MCP (CLI-only)
         # M-103: release tools removed from MCP surface
@@ -236,6 +238,7 @@ def main() -> None:
         "get_legislation":              "legislation",
         "mevzuat_korpus_ara":           "legislation",
         "mevzuat_madde_getir":          "legislation",
+        "mevzuat_degisiklik_raporu":    "legislation",
         "research_topic":               "research",
         "citation_check":               "citation",
         "prepare_petition":             "petition",
@@ -1400,6 +1403,31 @@ def main() -> None:
                 "sonucuna VARMA — canlı search_legislation ile doğrula."
             )
         return out
+
+    @_tool
+    def mevzuat_degisiklik_raporu(gun_sayisi: int = 7) -> dict:
+        """Son N günde Resmî Gazete'de YAYIMLANAN mevzuat değişiklikleri.
+
+        "Bu hafta ne değişti" sorusunun cevabı: RG fihristindeki mevzuat
+        kalemleri (kanun, yönetmelik, tebliğ, CB kararı), başlıktan çıkarılan
+        HEDEF mevzuat ve bu hedefin yerel korpustaki karşılığı. Ayrıca son
+        haftalık güncelleme koşusunun özeti.
+
+        UYARI: eşleşme başlık benzerliğiyle kurulur; ``eslesme.yontem`` "no"
+        ise bağ ZAYIFTIR (aynı numara farklı türlerde tekrar ediyor). Eşleşme
+        yoksa mevzuat korpusta yok demektir — "değişiklik yok" DEMEK DEĞİLDİR.
+        gun_sayisi büyüdükçe maliyet doğrusal artar (ölçüm ~2,4 s/gün).
+        """
+        import asyncio as _asyncio
+
+        from .legislation_update import degisiklik_raporu
+
+        gun = max(1, min(int(gun_sayisi), 60))
+        c = Cache()
+        try:
+            return _asyncio.run(degisiklik_raporu(c.db, gun))
+        finally:
+            c.close()
 
     @_tool
     def mevzuat_madde_getir(mevzuat_no: str, madde_no: str) -> dict:

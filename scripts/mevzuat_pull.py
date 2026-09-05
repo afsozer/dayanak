@@ -5,10 +5,27 @@ Kullanım:
     python scripts/mevzuat_pull.py --tur KANUN
     python scripts/mevzuat_pull.py --tur KANUN --tur KHK --tur CBK
     python scripts/mevzuat_pull.py --tur KANUN --limit 5      # deneme
+    python scripts/mevzuat_pull.py --tur KANUN --only-changed # haftalık
 
 Kaldığı yerden devam eder: metni değişmemiş mevzuat atlanır (``metin_hash`` +
 ``guncelleme_tarihi`` karşılaştırması), yani yarıda kesilen bir çekim aynı
-komutla sürdürülebilir.
+komutla sürdürülebilir. AMA bu atlama metin İNDİRİLDİKTEN sonra olur; tam
+çekimin maliyeti belge sayısı × ~0,45 s'dir.
+
+``--only-changed`` (Faz 2b) bu maliyeti kaldırır: metni indirmeden önce
+"değişmiş mi" sorusu ucuz sinyallerle cevaplanır —
+
+* Bedesten ``kayitTarihi`` (UYAP konsolide metni ne zaman yeniden yükledi),
+  tür başına KAYIT_TARIHI azalan tek listeleme;
+* listelemedeki RG tarih/sayısının DB'dekinden farklı olması;
+* korpusta hiç bulunmama.
+
+ÖLÇÜM (05.09.2026): mevzuat.gov.tr listelemesinde güncelleme tarihi ALANI YOK;
+tek değişim sinyali Bedesten ``kayitTarihi``. Ayrıntı ``legislation_update``
+modülünün başındaki nota bakın.
+
+Değişen bir mevzuatın ESKİ metni üzerine yazılmadan önce
+``mevzuat_dokuman_gecmis`` tablosuna arşivlenir.
 
 Kaynak sırası: önce mevzuat.gov.tr (resmî konsolide metin), o başarısız
 olursa Bedesten (``mevzuatNo`` ile arayıp ``getDocumentContent``). İkisi de
@@ -24,6 +41,7 @@ import asyncio
 import json
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -109,9 +127,11 @@ async def _fetch_text(mg_client, bd_client, doc_id: str, mevzuat_no: str, tur_na
 
 
 async def run(turler: list[str], limit: int | None, sleep: float, page_size: int,
-              force: bool) -> int:
+              force: bool, only_changed: bool = False,
+              gun_sayisi: int = 10) -> int:
     from emsal_mcp.cache import Cache
     from emsal_mcp import legislation_corpus as lc
+    from emsal_mcp import legislation_update as lu
     from emsal_mcp.sources.mevzuat import MevzuatClient
     from emsal_mcp.sources.mevzuatgov import TYPE_CODES, MevzuatGovClient
 
@@ -123,6 +143,7 @@ async def run(turler: list[str], limit: int | None, sleep: float, page_size: int
     cache = Cache()
     db = cache.db
     lc.ensure_schema(db)
+    lu.ensure_update_schema(db)
     _log(f"cache: {cache.path}")
 
     mg = MevzuatGovClient()
@@ -132,20 +153,65 @@ async def run(turler: list[str], limit: int | None, sleep: float, page_size: int
     hatalar: list[tuple[str, str, str]] = []
     t0 = time.time()
 
+    # ── --only-changed: ucuz değişim sinyallerini bir kez topla ──────────
+    ozet: dict[str, dict[str, str]] = {}
+    taze: set[tuple[str, str]] = set()
+    if only_changed:
+        ozet = lu.db_ozet(db)
+        esik = (datetime.now(timezone.utc) - timedelta(days=gun_sayisi)).date().isoformat()
+        t_taze = time.time()
+        taze, taze_detay = await lu.taze_kayitlar(bd, turler, esik)
+        _log(
+            f"only-changed: korpusta {len(ozet)} belge; Bedesten'de {esik} sonrası "
+            f"yeniden yüklenen {len(taze)} kayıt ({time.time() - t_taze:.1f} s)"
+        )
+        for d in taze_detay[:30]:
+            _log(f"  taze: {d['tur']} {d['mevzuat_no']} {d['kayit_tarihi']} {d['ad'][:50]}")
+
+    kosu_zamani = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
     for tur_name in turler:
         code = TYPE_CODES[tur_name]
+        t_tur = time.time()
+        tur_sayac = {"degisen": 0, "yeni": 0, "hata": 0}
         rows, total = await _list_all(mg, tur_name, code, page_size, limit)
         _log(f"{tur_name}: {len(rows)} kayıt işlenecek")
         for i, r in enumerate(rows, 1):
             meta = r.metadata or {}
             no = str(meta.get("mevzuat_no") or r.karar_no or "")
+            if only_changed and not force:
+                cek, sebep = lu.cekilsin_mi(
+                    r.document_id, tur=tur_name, mevzuat_no=no,
+                    rg_tarihi=str(meta.get("resmi_gazete_tarihi") or ""),
+                    rg_sayisi=str(meta.get("resmi_gazete_sayisi") or ""),
+                    ozet=ozet, taze=taze,
+                )
+                if not cek:
+                    toplam["atlanan"] += 1
+                    continue
+                tur_sayac["yeni" if sebep == "yeni" else "degisen"] += 1
+                _log(f"  ÇEK ({sebep}) {r.document_id} {r.title[:60]}")
             metin, kaynak, url, err = await _fetch_text(mg, bd, r.document_id, no, tur_name)
             if not metin:
                 toplam["hata"] += 1
+                tur_sayac["hata"] += 1
                 hatalar.append((r.document_id, r.title[:60], err[:160]))
                 _log(f"  HATA {r.document_id} {r.title[:50]} — {err[:120]}")
                 await asyncio.sleep(sleep)
                 continue
+            # Üzerine yazmadan önce eski metni arşivle (metin gerçekten
+            # değiştiyse; aynıysa arşiv kopyası çöp olurdu).
+            eski = ozet.get(r.document_id) if only_changed else None
+            if eski is None:
+                eski_row = db.execute(
+                    "SELECT metin_hash FROM mevzuat_dokuman WHERE mevzuat_id = ?",
+                    (r.document_id,),
+                ).fetchone()
+                eski_hash = eski_row[0] if eski_row else None
+            else:
+                eski_hash = eski.get("metin_hash") or None
+            if eski_hash and eski_hash != lc._hash(metin):
+                lu.arsivle(db, r.document_id)
             res = lc.upsert_document(
                 db,
                 mevzuat_id=r.document_id,
@@ -175,6 +241,12 @@ async def run(turler: list[str], limit: int | None, sleep: float, page_size: int
                 )
             if res["status"] != "skipped":
                 await asyncio.sleep(sleep)
+        lu.kosu_yaz(
+            db, tur=tur_name, listelenen=len(rows),
+            degisen=tur_sayac["degisen"], yeni=tur_sayac["yeni"],
+            hata=tur_sayac["hata"], sure_s=time.time() - t_tur,
+            kosu_zamani=kosu_zamani,
+        )
 
     stats = lc.corpus_stats(db)
     cache.close()
@@ -240,6 +312,12 @@ def main() -> None:
     ap.add_argument("--sleep", type=float, default=0.5, help="İstekler arası bekleme (sn)")
     ap.add_argument("--page-size", type=int, default=100, help="Listeleme sayfa boyutu")
     ap.add_argument("--force", action="store_true", help="Değişmemiş olsa da yeniden yaz")
+    ap.add_argument("--only-changed", action="store_true",
+                    help="Yalnız yeni/değişmiş mevzuatın metnini indir "
+                         "(Bedesten kayitTarihi + RG tarih/sayı sinyalleri)")
+    ap.add_argument("--gun", type=int, default=10,
+                    help="--only-changed eşiği: son N günde yeniden yüklenenler "
+                         "(haftalık koşu için 10; bir günlük pay bırakır)")
     ap.add_argument("--resplit", action="store_true",
                     help="Ağa çıkmadan saklanan metinlerden maddeleri yeniden böl")
     args = ap.parse_args()
@@ -248,7 +326,8 @@ def main() -> None:
     if not args.tur:
         ap.error("--tur ya da --resplit verin")
     sys.exit(asyncio.run(run([t.strip().upper() for t in args.tur], args.limit,
-                             args.sleep, args.page_size, args.force)))
+                             args.sleep, args.page_size, args.force,
+                             args.only_changed, args.gun)))
 
 
 if __name__ == "__main__":

@@ -55,6 +55,12 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
     # M-111: citation_graph category removed from MCP entirely — see
     # REMOVED_TOOLS.  The module and the `emsal-mcp graph ...` CLI remain.
     # M-105: dedup removed (corpus_builder handles dedup automatically)
+    # Faz 2b: haftalık mevzuat güncellemesinin raporu. Çekirdek profile
+    # girmedi çünkü core docstring bütçesi (20 000 karakter) dolu; periyodik
+    # bir araç, her sorguda gerekmiyor.
+    "legislation": [
+        "mevzuat_degisiklik_raporu",
+    ],
     "watch": [
         "watch_add",
         "watch_list",

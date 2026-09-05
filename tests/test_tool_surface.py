@@ -195,9 +195,9 @@ class TestCoreProfile:
 
 
 class TestFullProfile:
-    """Full profile: exactly 46 tools (M-111 + mevzuat korpusu araçları)."""
+    """Full profile: exactly 47 tools (M-111 + mevzuat korpusu araçları)."""
 
-    FULL_TOOL_COUNT_SNAPSHOT = 46
+    FULL_TOOL_COUNT_SNAPSHOT = 47
 
     def test_full_profile_count_matches_snapshot(self) -> None:
         # Exact, not >=.  A `>=` bound let the surface drift from 82 to 83
