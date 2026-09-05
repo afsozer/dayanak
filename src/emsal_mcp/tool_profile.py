@@ -1,8 +1,8 @@
 """FAZ M — Tool profile infrastructure (M-97).
 
 Defines tool categories, profile membership, and filtering logic so that
-``server.py`` can register only the 14-tool core surface by default (or all
-50 tools with ``EMSAL_TOOL_PROFILE=full``).
+``server.py`` can register only the 16-tool core surface by default (or all
+tools with ``EMSAL_TOOL_PROFILE=full``).
 
 This module is pure data — no business logic, no I/O.  ``tests/test_tool_surface``
 asserts it stays in sync with the ``@_tool`` registrations in ``server.py``.
@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-# ── M-98 14-tool core profile ─────────────────────────────────────────────
+# ── Core profile (M-98: 14 araç; +2 yerel mevzuat korpusu aracı) ─────────
 # These are the EXACT tool names that appear in the core profile.
 # Order matches ROADMAP.md M-98.
 
@@ -23,6 +23,8 @@ CORE_TOOLS: list[str] = [
     "search_local_corpus",
     "search_legislation",
     "get_legislation",
+    "mevzuat_korpus_ara",
+    "mevzuat_madde_getir",
     "research_topic",
     "citation_check",
     "prepare_petition",

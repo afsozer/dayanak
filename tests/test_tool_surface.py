@@ -1,7 +1,7 @@
 """M-97: Tool surface profile tests.
 
 Verifies:
-- Core profile exposes exactly 14 tools (M-98 snapshot).
+- Core profile exposes exactly 16 tools (M-98 snapshot + 2 mevzuat korpusu).
 - Full profile tool count >= previous snapshot (regression guard).
 - EMSAL_TOOL_PROFILE env var controls registration.
 """
@@ -102,6 +102,8 @@ CORE_TOOLS = [
     "search_local_corpus",
     "search_legislation",
     "get_legislation",
+    "mevzuat_korpus_ara",
+    "mevzuat_madde_getir",
     "research_topic",
     "citation_check",
     "prepare_petition",
@@ -115,12 +117,12 @@ CORE_TOOLS = [
 
 
 class TestCoreProfile:
-    """Core profile: exactly 14 tools."""
+    """Core profile: exactly 16 tools."""
 
     def test_core_profile_exact_count(self) -> None:
         tools = _capture_tools("core")
-        assert len(tools) == 14, (
-            f"Expected 14 core tools, got {len(tools)}: {sorted(tools.keys())}"
+        assert len(tools) == 16, (
+            f"Expected 16 core tools, got {len(tools)}: {sorted(tools.keys())}"
         )
 
     def test_core_profile_matches_snapshot(self) -> None:
@@ -193,9 +195,9 @@ class TestCoreProfile:
 
 
 class TestFullProfile:
-    """Full profile: exactly 44 tools (M-111 post-consolidation snapshot)."""
+    """Full profile: exactly 46 tools (M-111 + mevzuat korpusu araçları)."""
 
-    FULL_TOOL_COUNT_SNAPSHOT = 44
+    FULL_TOOL_COUNT_SNAPSHOT = 46
 
     def test_full_profile_count_matches_snapshot(self) -> None:
         # Exact, not >=.  A `>=` bound let the surface drift from 82 to 83
@@ -288,4 +290,4 @@ class TestProfileEnvVar:
 
     def test_invalid_profile_falls_back_to_core(self) -> None:
         tools = _capture_tools("garbage")
-        assert len(tools) == 14, f"Invalid profile should fallback to 14 core, got {len(tools)}"
+        assert len(tools) == 16, f"Invalid profile should fallback to 16 core, got {len(tools)}"

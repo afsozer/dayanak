@@ -163,6 +163,8 @@ def main() -> None:
         "search_local_corpus":        "core",
         "search_legislation":         "core",
         "get_legislation":            "core",
+        "mevzuat_korpus_ara":         "core",
+        "mevzuat_madde_getir":        "core",
         "citation_check":             "core",
         "prepare_petition":           "core",
         "export_document":            "core",
@@ -232,6 +234,8 @@ def main() -> None:
         "search_local_corpus":          "search",
         "search_legislation":           "legislation",
         "get_legislation":              "legislation",
+        "mevzuat_korpus_ara":           "legislation",
+        "mevzuat_madde_getir":          "legislation",
         "research_topic":               "research",
         "citation_check":               "citation",
         "prepare_petition":             "petition",
@@ -1363,6 +1367,54 @@ def main() -> None:
             mevzuat_no=mevzuat_no,
             mevzuat_tur_list=mevzuat_tur_list,
         )
+
+    # ── Yerel mevzuat korpusu (Faz 1) ────────────────────────────────────
+
+    @_tool
+    def mevzuat_korpus_ara(
+        query: str,
+        mevzuat_no: str | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """YEREL korpusta MADDE bazında arama (FTS5, çevrimdışı, kelimeler AND).
+
+        search_legislation mevzuatı BÜTÜN olarak canlı bulur; bu araç çekilmiş
+        mevzuatın MADDELERİNDE arar. 0 sonuç "hüküm yok" DEMEK DEĞİLDİR:
+        korpus yalnızca çekilmiş mevzuatı içerir, o hâlde search_legislation
+        çağır. mevzuat_no tek mevzuatla sınırlar (ör. "6098"). Sonuç:
+        mevzuat_adi, madde_no, baslik, snippet, kaynak_url.
+        """
+        from .legislation_corpus import corpus_stats, search_madde
+
+        c = Cache()
+        try:
+            out = search_madde(c.db, query, mevzuat_no=mevzuat_no, limit=limit)
+            stats = corpus_stats(c.db)
+        finally:
+            c.close()
+        out["korpus_ozeti"] = stats
+        if out.get("ok") and not out.get("total_matches"):
+            out["hint"] = (
+                "0 eşleşme. Bu araç YALNIZCA yerel korpusta arar; korpusta "
+                f"{stats['belge_sayisi']} mevzuat var. Hüküm gerçekten yok "
+                "sonucuna VARMA — canlı search_legislation ile doğrula."
+            )
+        return out
+
+    @_tool
+    def mevzuat_madde_getir(mevzuat_no: str, madde_no: str) -> dict:
+        """Yerel korpustan tek maddenin TAM metni (çevrimdışı).
+
+        madde_no "390", "12/A", "Geçici 1" kabul eder. Korpusta yoksa
+        NOT_FOUND döner — uydurma, canlı get_legislation çağır.
+        """
+        from .legislation_corpus import get_madde
+
+        c = Cache()
+        try:
+            return get_madde(c.db, mevzuat_no, madde_no)
+        finally:
+            c.close()
 
 
 

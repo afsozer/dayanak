@@ -11,15 +11,15 @@ The server exposes two tool profiles to control which MCP tools are registered:
 | Profile | Tools | Description |
 |---------|-------|-------------|
 <!-- drift:core-tools-start -->
-| `core` | 14 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `research_topic`, `citation_check`, `prepare_petition`, `export_document`, `read_legal_file`, `list_sources`, `legal_research_guide`, `load_extended_tools`, `health_check`. |
+| `core` | 16 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`, `research_topic`, `citation_check`, `prepare_petition`, `export_document`, `read_legal_file`, `list_sources`, `legal_research_guide`, `load_extended_tools`, `health_check`. |
 <!-- drift:core-tools-end -->
-| `full` | 44 | Core + all extended categories. |
+| `full` | 46 | Core + all extended categories. |
 
 Select via the `EMSAL_TOOL_PROFILE` environment variable:
 
 ```
-EMSAL_TOOL_PROFILE=core   # default — 14 tools
-EMSAL_TOOL_PROFILE=full   # all 44 tools
+EMSAL_TOOL_PROFILE=core   # default — 16 tools
+EMSAL_TOOL_PROFILE=full   # all 46 tools
 ```
 
 ### `load_extended_tools`

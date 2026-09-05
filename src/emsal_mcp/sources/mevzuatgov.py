@@ -28,8 +28,11 @@ maddesi"). For the operative wording, use the ``resmigazete`` source.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any
+
+import httpx
 
 from .base import (
     SourceClient,
@@ -59,6 +62,13 @@ TYPE_CODES: dict[str, int] = {
     "UY": 8,             # 5 063 — üniversite yönetmelikleri
     "TEBLIGLER": 9,      # 4 459
     "CB_YONETMELIK": 10,  # 149
+    # Probed 05.09.2026: the register's own totals for these two were missing
+    # from the table, so a Cumhurbaşkanlığı Kararnamesi could not be listed at
+    # all. Codes 6 and 11–18 are NOT free slots — the site silently drops an
+    # unknown filter and answers with the whole corpus (19 069 rows), which
+    # reads as "this type has 19 069 items".
+    "CBK": 19,           # 33 — Cumhurbaşkanlığı Kararnameleri
+    "CB_KARAR": 20,      # 4 294 — Cumhurbaşkanı Kararları
 }
 _CODE_TO_NAME = {v: k for k, v in TYPE_CODES.items()}
 
@@ -67,6 +77,23 @@ _SCOPE_BODY = "1"
 _SCOPE_TITLE = "2"
 
 _SEARCH_PATH = "/anasayfa/MevzuatDatatable"
+
+# A non-existent tür.tertip.no triple does NOT get a 404 here: the register
+# accepts the connection and then never answers, so the default 30 s client
+# timeout turned every typo into a 30 s hang (measured 05.09.2026). 8 s plus a
+# single retry covers the real documents while failing fast on the rest.
+_DOC_TIMEOUT = 8.0
+_DOC_RETRIES = 1
+# Per-read timeouts alone do not bound the wall clock: the register trickles
+# its not-found page out in small chunks, so 19.5.888 still took 17.8 s under
+# an 8 s read timeout. _DOC_BUDGET caps the whole attempt.
+_DOC_BUDGET = 8.0
+
+# The register answers an unknown tür.tertip.no with HTTP 200 and its own
+# "404 - Sayfa Bulunamadı" landing page (1 783 chars of site chrome, measured
+# 05.09.2026 on 1.5.999999). Without this check the caller receives a
+# successfully-fetched "document" whose text is the navigation menu.
+_SOFT_404_RE = re.compile(r"404\s*[-–—]?\s*Sayfa\s+Bulunamad", re.IGNORECASE)
 # Full text lives at MevzuatMetin/{tur}.{tertip}.{no}.htm
 _DOC_ID_RE = re.compile(r"^(?P<tur>\d+)\.(?P<tertip>\d+)\.(?P<no>\d+)$")
 
@@ -266,6 +293,50 @@ class MevzuatGovClient(SourceClient):
         )
 
     # ── Document fetch ──────────────────────────────────────────────────
+    async def _fetch_text(self, url: str, doc_id: str) -> tuple[str, Any]:
+        """Fetch the .htm body, falling back to the .pdf link on 404.
+
+        Returns ``("html", text)`` or ``("document", Document)`` — the latter
+        for the terminal 404 outcomes, which already know their answer.
+        Raises ``httpx.TimeoutException`` when every attempt times out.
+        """
+        last: httpx.TimeoutException | None = None
+        for attempt in range(_DOC_RETRIES + 1):
+            try:
+                async with asyncio.timeout(_DOC_BUDGET), client(timeout=_DOC_TIMEOUT) as c:
+                    resp = await c.get(url, headers={"Referer": f"{self.base}/"})
+                    if resp.status_code == 404:
+                        pdf_url = f"{self.base}/MevzuatMetin/{doc_id}.pdf"
+                        head = await c.get(pdf_url, headers={"Referer": f"{self.base}/"})
+                        if head.status_code < 400:
+                            doc = Document(
+                                source=self.source_id, document_id=doc_id,
+                                title=doc_id, source_url=pdf_url, pdf_url=pdf_url,
+                                content_status=ContentStatus.PDF_LINK_ONLY,
+                            )
+                            return "document", finalize_document(doc, [
+                                "Bu mevzuat yalnızca PDF olarak yayımlanmış; tam metin "
+                                "için PDF çıkarımı gerekir."
+                            ])
+                        doc = Document(
+                            source=self.source_id, document_id=doc_id,
+                            title=doc_id, content_status=ContentStatus.UNAVAILABLE,
+                        )
+                        return "document", finalize_document(doc, [
+                            f"{doc_id}: kaynakta bulunamadı (HTTP 404). Tür/tertip/no "
+                            "üçlüsünü search() sonucundan doğrulayın."
+                        ])
+                    check_http_response(resp, self.source_id)
+                    return "html", decode_turkish_html(resp)
+            except (httpx.TimeoutException, asyncio.TimeoutError) as exc:
+                last = (
+                    exc if isinstance(exc, httpx.TimeoutException)
+                    else httpx.ReadTimeout(f"{_DOC_BUDGET:.0f} sn bütçe aşıldı")
+                )
+                if attempt < _DOC_RETRIES:
+                    await asyncio.sleep(0.5)
+        raise last  # type: ignore[misc]
+
     async def get_document(self, document_id: str, **kwargs: Any) -> Document:
         m = _DOC_ID_RE.match(str(document_id).strip())
         if not m:
@@ -281,33 +352,34 @@ class MevzuatGovClient(SourceClient):
 
         url = f"{self.base}/MevzuatMetin/{m.group(0)}.htm"
         warnings: list[str] = []
-        async with client() as c:
-            resp = await c.get(url, headers={"Referer": f"{self.base}/"})
-            if resp.status_code == 404:
-                pdf_url = f"{self.base}/MevzuatMetin/{m.group(0)}.pdf"
-                head = await c.get(pdf_url, headers={"Referer": f"{self.base}/"})
-                if head.status_code < 400:
-                    doc = Document(
-                        source=self.source_id, document_id=m.group(0),
-                        title=m.group(0), source_url=pdf_url, pdf_url=pdf_url,
-                        content_status=ContentStatus.PDF_LINK_ONLY,
-                    )
-                    return finalize_document(doc, [
-                        "Bu mevzuat yalnızca PDF olarak yayımlanmış; tam metin için "
-                        "PDF çıkarımı gerekir."
-                    ])
-                doc = Document(
-                    source=self.source_id, document_id=m.group(0),
-                    title=m.group(0), content_status=ContentStatus.UNAVAILABLE,
-                )
-                return finalize_document(doc, [
-                    f"{m.group(0)}: kaynakta bulunamadı (HTTP 404). Tür/tertip/no "
-                    "üçlüsünü search() sonucundan doğrulayın."
-                ])
-            check_http_response(resp, self.source_id)
-            html = decode_turkish_html(resp)
+        try:
+            outcome, payload = await self._fetch_text(url, m.group(0))
+        except httpx.TimeoutException as exc:
+            doc = Document(
+                source=self.source_id, document_id=m.group(0),
+                title=m.group(0), content_status=ContentStatus.UNAVAILABLE,
+            )
+            return finalize_document(doc, [
+                f"{m.group(0)}: kaynak {_DOC_TIMEOUT:.0f} sn içinde yanıt vermedi "
+                f"({_DOC_RETRIES + 1} deneme, {type(exc).__name__}). Var olmayan bir "
+                "tür/tertip/no üçlüsü bu kaynakta 404 yerine sessizce zaman aşımına "
+                "düşer; üçlüyü search() sonucundan doğrulayın."
+            ])
+        if outcome == "document":
+            return payload  # type: ignore[return-value]
+        html = str(payload)
 
         text = html_to_text(html)
+        if _SOFT_404_RE.search(text):
+            doc = Document(
+                source=self.source_id, document_id=m.group(0),
+                title=m.group(0), content_status=ContentStatus.UNAVAILABLE,
+            )
+            return finalize_document(doc, [
+                f"{m.group(0)}: kaynakta bulunamadı (HTTP 200 döndü ama gövde "
+                "kaynağın kendi '404 - Sayfa Bulunamadı' sayfası). Tür/tertip/no "
+                "üçlüsünü search() sonucundan doğrulayın."
+            ])
         status = ContentStatus.HTML_MARKDOWN if text else ContentStatus.UNAVAILABLE
         if not text:
             warnings.append(f"{m.group(0)}: sayfa boş döndü, metin çıkarılamadı.")

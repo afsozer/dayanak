@@ -10,6 +10,9 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
   "httpx>=0.27",
+  # Zincir doğrulaması için kök deposu. httpx zaten kuruyordu ama artık
+  # doğrudan kullanıyoruz (sources/base.py: certifi + vendored ara sertifika).
+  "certifi>=2024.2.2",
   "beautifulsoup4>=4.12",
   "lxml>=5.0",
   "pydantic>=2.7",
@@ -23,6 +26,11 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# www.mevzuat.gov.tr'nin göndermediği ara sertifika pakete girmeli; aksi hâlde
+# wheel'den kurulan sürümde o kaynak TLS hatasıyla ölür.
+[tool.setuptools.package-data]
+emsal_mcp = ["certs/*.pem"]
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0,<2.0"]

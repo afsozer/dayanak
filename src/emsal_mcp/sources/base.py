@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import functools
 import hashlib
 import json
 import os
 import re
+import ssl
+import tempfile
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
@@ -637,12 +640,63 @@ async def _throttle_response(response: httpx.Response) -> None:
         _get_bucket(response.request.url.host).penalize(min(secs, _RL_MAX_COOLDOWN))
 
 
-def client() -> httpx.AsyncClient:
+# ── TLS trust store ─────────────────────────────────────────────────────────
+# www.mevzuat.gov.tr sends ONLY its leaf certificate: the GeoTrust TLS RSA CA G1
+# intermediate is missing from the handshake, so certifi's roots alone cannot
+# build a chain and every request died with CERTIFICATE_VERIFY_FAILED (measured
+# 05.09.2026 — the mevzuatgov source was unusable). The intermediate is vendored
+# under ``emsal_mcp/certs`` and merged with certifi into one bundle here.
+# ``verify=False`` is not an option: it would disable verification for every
+# source, including the ones that DO serve a complete chain.
+_CERT_DIR = Path(__file__).resolve().parent.parent / "certs"
+
+
+@functools.lru_cache(maxsize=1)
+def _ca_bundle_path() -> str | None:
+    """certifi + vendored intermediates, merged into a single PEM bundle.
+
+    Returns the bundle path, or None when certifi is unavailable (then httpx
+    falls back to its own default trust store — still verified, just without
+    the vendored intermediates).
+    """
+    try:
+        import certifi
+    except Exception:  # pragma: no cover - certifi ships with httpx
+        return None
+    blobs = [Path(certifi.where()).read_bytes()]
+    for pem in sorted(_CERT_DIR.glob("*.pem")):
+        blobs.append(pem.read_bytes())
+    blob = b"\n".join(blobs)
+    out = Path(tempfile.gettempdir()) / f"emsal-ca-{hashlib.sha256(blob).hexdigest()[:16]}.pem"
+    if not out.exists() or out.stat().st_size != len(blob):
+        tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
+        tmp.write_bytes(blob)
+        os.replace(tmp, out)
+    return str(out)
+
+
+@functools.lru_cache(maxsize=1)
+def _ssl_context() -> ssl.SSLContext | None:
+    """Birleştirilmiş bundle'dan doğrulama bağlamı.
+
+    httpx 0.28 ``verify=<yol>`` biçimini kullanımdan kaldırdı; bağlamı burada
+    bir kez kurup her istemciye veriyoruz (dosya okuma da bir kereye iner).
+    """
+    bundle = _ca_bundle_path()
+    return ssl.create_default_context(cafile=bundle) if bundle else None
+
+
+def client(timeout: float = 30) -> httpx.AsyncClient:
+    kwargs: dict[str, Any] = {}
+    ctx = _ssl_context()
+    if ctx is not None:
+        kwargs["verify"] = ctx
     return httpx.AsyncClient(
-        timeout=30,
+        timeout=timeout,
         follow_redirects=True,
         headers={"User-Agent": f"EmsalMcp/{__version__} (+https://github.com/brachindul/emsal-mcp)"},
         event_hooks={"request": [_throttle_request], "response": [_throttle_response]},
+        **kwargs,
     )
 
 

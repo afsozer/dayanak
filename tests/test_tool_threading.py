@@ -182,7 +182,7 @@ def test_fastmcp_schema_is_identical_with_and_without_wrapper(monkeypatch) -> No
     wrapped = _capture_registered("full")
 
     assert set(plain) == set(wrapped)
-    assert len(plain) == 44
+    assert len(plain) == 46
 
     for name in sorted(plain):
         a = Tool.from_function(plain[name], name=name)
