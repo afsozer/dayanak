@@ -157,3 +157,39 @@ class TestSearch:
         )
         assert out is not None
         assert all(r["source"] == "aym" for r in out)
+
+
+class TestAppend:
+    def test_append_sidecar_extends_index_and_keys(self, corpus, monkeypatch):
+        _build(corpus)
+        monkeypatch.setenv("EMSAL_BULK_VEC_DIR", str(corpus["vec_dir"]))
+        rng = np.random.default_rng(7)
+        # karışık kaynaklı delta: 3 yeni bedesten belgesi (2 parça) + 1 aym (uuid)
+        vecs, ids, srcs, cix = [], [], [], []
+        for d in range(3):
+            base = rng.normal(size=DIM)
+            for c in range(2):
+                v = base + 0.05 * rng.normal(size=DIM)
+                vecs.append(v / np.linalg.norm(v)); ids.append(str(900000 + d)); srcs.append("bedesten"); cix.append(c)
+        v = rng.normal(size=DIM); vecs.append(v / np.linalg.norm(v)); ids.append("uuid-new"); srcs.append("aym"); cix.append(0)
+        np.save(corpus["vec_dir"] / "delta-1.vectors.npy", np.array(vecs).astype(np.float16))
+        pq.write_table(pa.table({
+            "document_id": pa.array(ids, pa.string()), "source": pa.array(srcs, pa.string()),
+            "chunk_index": pa.array(cix, pa.int16()), "text_len": pa.array([500] * len(ids), pa.int32()),
+        }), corpus["vec_dir"] / "delta-1.keys.parquet")
+        corpus["db"].executemany("INSERT INTO documents_v2 VALUES (?,?,?,?,?)",
+                                 [(str(900000 + d), "bedesten", f"Yeni {d}", "html_markdown", None) for d in range(3)]
+                                 + [("uuid-new", "aym", "AYM yeni", "html_markdown", None)])
+        corpus["db"].commit()
+        r = bulk_index.append_sidecar(corpus["vec_dir"], corpus["db_path"], "testprov", "delta-1", log=lambda m: None)
+        assert r["ok"] and r["added"] == 7 and r["count"] == 1250 + 7
+        st = bulk_index.bulk_index_status(corpus["db_path"], "testprov")
+        assert st["count"] == 1257 and st["files"][-1] == "delta-1.vectors.npy"
+        bulk_index._CACHE.clear()
+        out = bulk_index.bulk_search(corpus["db"], corpus["db_path"], "testprov", vecs[0].tolist(), limit=3)
+        assert out[0]["document_id"] == "900000" and out[0]["source"] == "bedesten"
+        out = bulk_index.bulk_search(corpus["db"], corpus["db_path"], "testprov", vecs[-1].tolist(), limit=3)
+        assert out[0]["document_id"] == "uuid-new" and out[0]["source"] == "aym" and out[0]["title"] == "AYM yeni"
+        # tekrar ekleme atlanır
+        r2 = bulk_index.append_sidecar(corpus["vec_dir"], corpus["db_path"], "testprov", "delta-1", log=lambda m: None)
+        assert r2["ok"] and r2.get("skipped")

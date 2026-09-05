@@ -138,12 +138,14 @@ def build_bulk_index(
     uuid_pos: dict[str, int] = {}
     pos = 0
     for fi, ((v, k), s) in enumerate(zip(files, shapes)):
-        src = source_for_file(v.name)
-        sid = SOURCES.index(src)
-        keys = pq.read_table(k, columns=["document_id", "chunk_index"])
+        keys = pq.read_table(k)
         ids = keys["document_id"].to_pylist()
         n = len(ids)
         assert n == s[0], f"{v.name}: {n} anahtar / {s[0]} vektör"
+        if "source" in keys.column_names:  # delta sidecar: satır başına kaynak
+            sids = np.array([SOURCES.index(x) for x in keys["source"].to_pylist()], dtype=np.int8)
+        else:
+            sids = np.full(n, SOURCES.index(source_for_file(v.name)), dtype=np.int8)
         nums = np.empty(n, dtype=np.int64)
         for i, d in enumerate(ids):
             if d.isdigit() and len(d) < 19:
@@ -157,7 +159,7 @@ def build_bulk_index(
                 nums[i] = -(j + 1)
         doc_num[pos:pos + n] = nums
         chunk_ix[pos:pos + n] = keys["chunk_index"].to_numpy()
-        src_id[pos:pos + n] = sid
+        src_id[pos:pos + n] = sids
         m = np.load(v, mmap_mode="r")
         step = 500_000
         for a in range(0, n, step):
@@ -183,6 +185,106 @@ def build_bulk_index(
     log(f"yazıldı: {paths['index']} ({paths['index'].stat().st_size/2**20:.0f} MB), "
         f"{total:,} vektör, {time.time()-t0:.0f} s")
     return {"ok": True, **{k: v for k, v in meta.items() if k != "uuids"}}
+
+
+
+def _encode_doc_ids(ids: list[str], uuids: list[str]) -> "np.ndarray":
+    """document_id -> int64: sayısal kimlik olduğu gibi, diğerleri -(uuid_idx+1).
+    `uuids` yerinde genişletilir."""
+    import numpy as np
+    pos = {u: i for i, u in enumerate(uuids)}
+    out = np.empty(len(ids), dtype=np.int64)
+    for i, d in enumerate(ids):
+        if d.isdigit() and len(d) < 19:
+            out[i] = int(d)
+        else:
+            j = pos.get(d)
+            if j is None:
+                j = len(uuids)
+                uuids.append(d)
+                pos[d] = j
+            out[i] = -(j + 1)
+    return out
+
+
+def append_sidecar(
+    vec_dir: Path,
+    db_path: Path,
+    provider_id: str,
+    name: str,
+    *,
+    log: Callable[[str], None] = print,
+) -> dict[str, Any]:
+    """Mevcut toplu indekse yeni bir sidecar (``<name>.vectors.npy`` +
+    ``<name>.keys.parquet``) ekle: FAISS add, anahtar dizileri ve meta.files
+    genişler. Tam yeniden kurulum gerekmez (IVF merkezleri sabit kalır).
+    Aylık birleştirme bunu kullanır (scripts/monthly_merge.cmd)."""
+    import faiss
+    import numpy as np
+    import pyarrow.parquet as pq
+
+    vec_dir = Path(vec_dir)
+    v = vec_dir / f"{name}.vectors.npy"
+    k = vec_dir / f"{name}.keys.parquet"
+    if not (v.exists() and k.exists()):
+        return {"ok": False, "error": f"{name}: vectors/keys yok ({vec_dir})"}
+    paths = bulk_paths(Path(db_path), provider_id)
+    if not bulk_index_exists(Path(db_path), provider_id):
+        return {"ok": False, "error": "toplu indeks yok; önce bulk-build"}
+    meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
+    if v.name in meta.get("files", []):
+        return {"ok": True, "skipped": True, "reason": f"{v.name} zaten indekste"}
+
+    t0 = time.time()
+    mat = np.load(v, mmap_mode="r")
+    keys = pq.read_table(k)
+    n = mat.shape[0]
+    if n != keys.num_rows:
+        return {"ok": False, "error": f"{name}: {keys.num_rows} anahtar / {n} vektör"}
+    if n == 0:
+        return {"ok": True, "skipped": True, "reason": "boş sidecar"}
+
+    index = faiss.read_index(str(paths["index"]))
+    if mat.shape[1] != index.d:
+        return {"ok": False, "error": f"dim uyuşmuyor {mat.shape[1]} != {index.d}"}
+    for a in range(0, n, 500_000):
+        index.add(np.asarray(mat[a:a + 500_000], dtype=np.float32))
+    log(f"{name}: +{n:,} vektör eklendi → {index.ntotal:,} ({time.time()-t0:.0f} s)")
+
+    with np.load(paths["keys"]) as old_npz:  # Windows: dosya açıkken os.replace başarısız olur
+        old = {k: old_npz[k] for k in ("doc_num", "chunk_index", "source_id")}
+    uuids: list[str] = list(meta.get("uuids", []))
+    nums = _encode_doc_ids(keys["document_id"].to_pylist(), uuids)
+    if "source" in keys.column_names:
+        sids = np.array([SOURCES.index(x) for x in keys["source"].to_pylist()], dtype=np.int8)
+    else:
+        sids = np.full(n, SOURCES.index(source_for_file(v.name)), dtype=np.int8)
+    doc_num = np.concatenate([old["doc_num"], nums])
+    chunk_ix = np.concatenate([old["chunk_index"], keys["chunk_index"].to_numpy().astype(np.int16)])
+    src_id = np.concatenate([old["source_id"], sids])
+    assert len(doc_num) == index.ntotal, (len(doc_num), index.ntotal)
+
+    # Yazım sırası: index (tmp+replace) → keys → meta. Sunucu dosyaları mtime ile
+    # yeniden yükler; sidecar .npy'ler değiştirilmez, yalnız yenisi eklenir.
+    tmp = paths["index"].with_suffix(".faiss.tmp")
+    faiss.write_index(index, str(tmp))
+    os.replace(tmp, paths["index"])
+    tmpk = paths["keys"].with_suffix(".npz.tmp.npz")
+    np.savez(tmpk, doc_num=doc_num, chunk_index=chunk_ix, source_id=src_id)
+    os.replace(tmpk, paths["keys"])
+    meta["files"] = list(meta.get("files", [])) + [v.name]
+    meta["count"] = int(index.ntotal)
+    meta["uuids"] = uuids
+    meta.setdefault("appends", []).append({
+        "file": v.name, "chunks": int(n), "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    })
+    tmpm = paths["meta"].with_suffix(".json.tmp")
+    tmpm.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmpm, paths["meta"])
+    _CACHE.clear()
+    log(f"{name}: indeks {index.ntotal:,} vektör, {len(meta['files'])} dosya, {time.time()-t0:.0f} s")
+    return {"ok": True, "added": int(n), "count": int(index.ntotal), "files": len(meta["files"]),
+            "elapsed_s": round(time.time() - t0, 1)}
 
 
 # ---------------------------------------------------------------------------
@@ -217,10 +319,10 @@ def _load(db_path: Path, provider_id: str) -> _Loaded | None:
         return hit
     L = _Loaded()
     L.index = faiss.read_index(key)
-    keys = np.load(p["keys"])
-    L.doc_num = keys["doc_num"]
-    L.chunk_index = keys["chunk_index"]
-    L.source_id = keys["source_id"]
+    with np.load(p["keys"]) as keys:
+        L.doc_num = keys["doc_num"]
+        L.chunk_index = keys["chunk_index"]
+        L.source_id = keys["source_id"]
     L.meta = json.loads(p["meta"].read_text(encoding="utf-8"))
     L.index.nprobe = int(os.environ.get("EMSAL_BULK_NPROBE", L.meta.get("nprobe", _DEFAULT_NPROBE)))
     L.mtime = mtime

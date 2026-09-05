@@ -1225,6 +1225,27 @@ def semantic_bulk_build(
     _print(result, json_out)
 
 
+@semantic_app.command("bulk-append")
+def semantic_bulk_append(
+    vec_dir: Path = typer.Argument(..., help="sidecar dizini"),
+    name: str = typer.Argument(..., help="<name>.vectors.npy + <name>.keys.parquet"),
+    provider: str = typer.Option("fastembed-multilingual-e5"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Mevcut toplu FAISS indeksine yeni bir sidecar ekle (aylık birleştirme)."""
+    from .bulk_index import append_sidecar
+    from .cache import Cache
+
+    c = Cache()
+    db_path = Path(c.path)
+    c.close()
+    result = append_sidecar(
+        vec_dir, db_path, provider, name,
+        log=(lambda m: None) if json_out else (lambda m: typer.echo("  " + m)),
+    )
+    _print(result, json_out)
+
+
 @semantic_app.command("bulk-status")
 def semantic_bulk_status(
     provider: str = typer.Option("fastembed-multilingual-e5"),
