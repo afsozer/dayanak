@@ -50,9 +50,11 @@ def main() -> None:
 
     db = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True, timeout=120)
     db.row_factory = sqlite3.Row
-    q = ("SELECT ev.document_id, ev.source, d.full_text, d.markdown FROM embedding_vectors ev "
-         "JOIN documents_v2 d ON d.document_id = ev.document_id AND d.source = ev.source "
-         "WHERE ev.provider_id = ? ORDER BY ev.rowid")
+    # embedding_vectors parça başına satır tutabilir (chunk_index PK'da); belge
+    # başına TEK satır al, yoksa aynı karar chunk sayısı kadar gömülür.
+    q = ("SELECT d.document_id, d.source, d.full_text, d.markdown FROM documents_v2 d "
+         "WHERE (d.document_id, d.source) IN (SELECT DISTINCT document_id, source "
+         "FROM embedding_vectors WHERE provider_id = ?) ORDER BY d.rowid")
     if args.limit:
         q += f" LIMIT {int(args.limit)}"
     rows = db.execute(q, (args.provider,)).fetchall()
@@ -145,7 +147,7 @@ def main() -> None:
         "chunk_index": pa.array(cix, pa.int16()), "text_len": pa.array(tlen, pa.int32()),
     }), vec_dir / f"{args.name}.keys.parquet", compression="zstd")
     (vec_dir / f"{args.name}.manifest.json").write_text(json.dumps(
-        {"docs": manifest, "chunks": len(texts), "provider": args.provider, "model": MODEL,
+        {"docs": manifest, "chunks": len(ids), "provider": args.provider, "model": MODEL,
          "at": time.strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False), encoding="utf-8")
     print(f"yazıldı: {out_v} ({vecs.nbytes/2**20:.0f} MB)")
 

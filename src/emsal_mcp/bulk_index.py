@@ -255,10 +255,18 @@ def append_sidecar(
         old = {k: old_npz[k] for k in ("doc_num", "chunk_index", "source_id")}
     uuids: list[str] = list(meta.get("uuids", []))
     nums = _encode_doc_ids(keys["document_id"].to_pylist(), uuids)
-    if "source" in keys.column_names:
-        sids = np.array([SOURCES.index(x) for x in keys["source"].to_pylist()], dtype=np.int8)
-    else:
-        sids = np.full(n, SOURCES.index(source_for_file(v.name)), dtype=np.int8)
+    # Kaynak listesi meta'da yaşar ve genişleyebilir (uyap_arsiv, mevzuat, ...);
+    # yeni kaynak SONA eklenir, eski source_id değerleri değişmez (int8, ≤127).
+    sources: list[str] = list(meta.get("sources", SOURCES))
+    src_col = keys["source"].to_pylist() if "source" in keys.column_names \
+        else [source_for_file(v.name)] * n
+    for x in src_col:
+        if x not in sources:
+            sources.append(x)
+    if len(sources) > 127:
+        return {"ok": False, "error": "kaynak sayısı int8 sınırını aştı"}
+    sid_of = {x: i for i, x in enumerate(sources)}
+    sids = np.array([sid_of[x] for x in src_col], dtype=np.int8)
     doc_num = np.concatenate([old["doc_num"], nums])
     chunk_ix = np.concatenate([old["chunk_index"], keys["chunk_index"].to_numpy().astype(np.int16)])
     src_id = np.concatenate([old["source_id"], sids])
@@ -275,6 +283,7 @@ def append_sidecar(
     meta["files"] = list(meta.get("files", [])) + [v.name]
     meta["count"] = int(index.ntotal)
     meta["uuids"] = uuids
+    meta["sources"] = sources
     meta.setdefault("appends", []).append({
         "file": v.name, "chunks": int(n), "at": time.strftime("%Y-%m-%d %H:%M:%S"),
     })
