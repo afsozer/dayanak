@@ -4,6 +4,8 @@ REM Korpus: D:\emsal-data\cache.sqlite3 (11 M karar, HF), vektorler D:\emsal-ben
 REM Log: %LOCALAPPDATA%\emsal-mcp\mcp_http.log
 setlocal
 set PYTHONIOENCODING=utf-8
+REM PDF/UDF donusumu icin LibreOffice (winget kurulumu PATH eklemez)
+set PATH=%PATH%;C:\Program Files\LibreOffice\program
 set EMSAL_MCP_TRANSPORT=streamable-http
 if "%EMSAL_MCP_HOST%"=="" set EMSAL_MCP_HOST=100.77.229.110
 if "%EMSAL_MCP_PORT%"=="" set EMSAL_MCP_PORT=8790

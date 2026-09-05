@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -844,9 +845,13 @@ def export_to_format(
                 toolkit_status=toolkit,
             )
         # Delegate to UDF convert pipeline: draft.md → docx → pdf
+        # 5 Eyl 2026: out_path (.pdf) DOCX adimina da veriliyordu; DOCX
+        # "x.pdf" adiyla yaziliyor, LibreOffice girdi=cikti adinda bekliyor ve
+        # 60 s zaman asimina dusuyordu. Ara DOCX her zaman .docx uzantili.
+        pdf_target = Path(out_path) if out_path else Path(str(draft_path)).with_suffix(".pdf")
         docx_result = prepare_docx_export(
             draft_path=str(draft_path),
-            out_path=str(out_path) if out_path else None,
+            out_path=str(pdf_target.with_suffix(".docx")),
             pack_dir=str(pack_dir) if pack_dir else None,
         )
         if not docx_result.get("ok"):
@@ -858,25 +863,88 @@ def export_to_format(
             if soffice:
                 import subprocess
 
-                out = Path(out_path) if out_path else Path(docx_path).with_suffix(".pdf")
-                result = subprocess.run(
-                    [soffice, "--headless", "--convert-to", "pdf",
-                     "--outdir", str(out.parent), docx_path],
-                    capture_output=True, text=True, timeout=60,
+                # Windows'ta which() PATHEXT sirasina gore soffice.COM secebilir;
+                # .exe yanindaysa onu kullan. Izole kullanici profili: ilk-calisma
+                # sihirbazi / baska bir LibreOffice orneginin kilidi donusumu
+                # asmasin. Zaman asiminda sureci oldur (aksi halde soffice.bin
+                # arkada kalir ve sonraki cagrilar da bekler).
+                exe = Path(soffice)
+                if exe.suffix.lower() == ".com" and exe.with_suffix(".exe").exists():
+                    soffice = str(exe.with_suffix(".exe"))
+                # Her donusume SIFIRDAN gecici profil: oldurulen bir onceki
+                # soffice'in kilidi/crash kaydi kalirsa yeni ornek headless'ta
+                # kurtarma penceresi acamayip 1 ile cikiyor (5 Eyl 2026 tanisi).
+                import tempfile
+                profile_dir = Path(tempfile.mkdtemp(prefix="emsal-lo-"))
+                cmd = [
+                    soffice, f"-env:UserInstallation={profile_dir.resolve().as_uri()}",
+                    "--headless", "--norestore", "--nologo",
+                    "--convert-to", "pdf", "--outdir", str(pdf_target.parent), docx_path,
+                ]
+                # Bu ortamda (Windows, headless) soffice PDF'i yazdiktan sonra
+                # CIKMIYOR: 120 s'de zaman asimi, dosya ise 10 s'de hazir
+                # (5 Eyl 2026 tanisi). Cikis kodunu beklemek yerine PDF'in olusup
+                # boyutunun sabitlenmesini bekle, sonra baslattigimiz sureci kapat.
+                pdf_path = pdf_target.parent / (Path(docx_path).stem + ".pdf")
+                if pdf_path.exists():
+                    pdf_path.unlink()
+                proc = subprocess.Popen(
+                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
                 )
-                if result.returncode != 0:
+                import time as _time
+                deadline = _time.monotonic() + 120
+                last_size, stable = -1, 0
+                while _time.monotonic() < deadline:
+                    if pdf_path.exists():
+                        size = pdf_path.stat().st_size
+                        if size > 0 and size == last_size:
+                            stable += 1
+                            if stable >= 2:
+                                break
+                        else:
+                            stable = 0
+                        last_size = size
+                    if proc.poll() is not None:
+                        break
+                    _time.sleep(0.5)
+                stderr_txt = ""
+                if proc.poll() is None:
+                    try:
+                        if os.name == "nt":
+                            subprocess.run(
+                                ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                                capture_output=True, timeout=15,
+                            )
+                        proc.kill()
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        stderr_txt = (proc.stderr.read() if proc.stderr else "") or ""
+                    except Exception:
+                        stderr_txt = ""
+                try:
+                    shutil.rmtree(profile_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                if not pdf_path.exists() or pdf_path.stat().st_size == 0:
                     return build_error(
                         "CONVERSION_FAILED",
-                        result.stderr.strip() or "LibreOffice PDF conversion failed",
-                        stdout=result.stdout.strip(),
+                        stderr_txt.strip() or "LibreOffice PDF uretmedi (120 s)",
+                        returncode=proc.returncode,
+                        expected_pdf=str(pdf_path),
+                        soffice=soffice,
                     )
-                pdf_path = out.parent / (Path(docx_path).stem + ".pdf")
+                if pdf_path != pdf_target:
+                    pdf_path.replace(pdf_target)
+                    pdf_path = pdf_target
                 return {
                     "ok": True,
                     "format": "pdf",
                     "out_path": str(pdf_path),
                     "file_size": pdf_path.stat().st_size if pdf_path.exists() else 0,
                     "source_format": "docx",
+                    "docx_path": docx_path,
                 }
         except Exception as e:
             return build_error("CONVERSION_FAILED", str(e))
