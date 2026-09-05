@@ -161,12 +161,22 @@ class MevzuatGovClient(SourceClient):
     _supports_type_filter = True
     _search_response_keys = ["data", "recordsTotal"]
 
+    # mevzuat.gov.tr'nin guvenlik duvari tarayici disi User-Agent'li istekleri
+    # SESSIZCE dusuruyor (TCP zaman asimi, 4xx yok): 5 Eyl 2026'da olculdu —
+    # ayni IP'den curl/httpx varsayilan UA ile 000, Mozilla UA ile 200 (0,3 s).
+    # base.client() varsayilani "EmsalMcp/…"; bu kaynak icin tarayici UA sart.
+    _BROWSER_UA = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+    )
     headers = {
+        "User-Agent": _BROWSER_UA,
         "X-Requested-With": "XMLHttpRequest",
         "Content-Type": "application/json; charset=UTF-8",
         "Origin": "https://www.mevzuat.gov.tr",
         "Referer": "https://www.mevzuat.gov.tr/",
     }
+    _doc_headers = {"User-Agent": _BROWSER_UA, "Referer": "https://www.mevzuat.gov.tr/"}
 
     # ── Filters → upstream parameters ───────────────────────────────────
     def _resolve_type(self, filters: dict[str, Any]) -> tuple[int, list[str]]:
@@ -304,10 +314,10 @@ class MevzuatGovClient(SourceClient):
         for attempt in range(_DOC_RETRIES + 1):
             try:
                 async with asyncio.timeout(_DOC_BUDGET), client(timeout=_DOC_TIMEOUT) as c:
-                    resp = await c.get(url, headers={"Referer": f"{self.base}/"})
+                    resp = await c.get(url, headers=self._doc_headers)
                     if resp.status_code == 404:
                         pdf_url = f"{self.base}/MevzuatMetin/{doc_id}.pdf"
-                        head = await c.get(pdf_url, headers={"Referer": f"{self.base}/"})
+                        head = await c.get(pdf_url, headers=self._doc_headers)
                         if head.status_code < 400:
                             doc = Document(
                                 source=self.source_id, document_id=doc_id,
