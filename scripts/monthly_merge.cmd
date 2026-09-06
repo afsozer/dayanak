@@ -3,7 +3,8 @@ REM Aylik birlestirme (sozer-pc): delta kararlarini GPU'da parcali gom -> toplu 
 REM Iki venv: torch (D:\emsal-bench\venv) ve faiss (D:\Emsal-mcp\.venv) ayni surecte cokuyor; asamalar ayri surec.
 setlocal
 call D:\Emsal-mcp\scripts\emsal-env.cmd
-set LOG=D:\emsal-data\crawl_logs\monthly_%date:~-4%%date:~3,2%%date:~0,2%.log
+for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmm"') do set STAMP=%%i
+set LOG=D:\emsal-data\crawl_logs\monthly_%STAMP%.log
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set STAMP=%%i
 set NAME=delta-%STAMP%
 echo %date% %time% basladi %NAME% > "%LOG%"

@@ -1423,6 +1423,7 @@ def main() -> None:
                     birlesik = _sem.rrf_merge(lex.get("results", []), sem, limit=limit)
                     out = {"ok": True, "query": query,
                            "fts_query": lex.get("fts_query"),
+                           "lexical_fallback": lex.get("lexical_fallback"),
                            "results": birlesik, "total_matches": len(birlesik)}
             out["mode"] = istenen
             if uyari:
