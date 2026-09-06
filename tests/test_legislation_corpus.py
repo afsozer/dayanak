@@ -546,3 +546,156 @@ def test_get_madde_degisiklikleri_ve_ust_basligi_dondurur(db):
     assert degs[0]["degistiren_no"] == "7000"
     # Boş alanlar çıktıyı şişirmez.
     assert "aym_esas" not in degs[0]
+
+
+# ── Faz 3: belge boyu başlık hiyerarşisi ────────────────────────────────────
+#
+# Fikstürler gerçek metinlerden birebir alındı (mevzuat.gov.tr konsolide metin,
+# "\r\n" yumuşak kaydırma / çıplak "\n" blok sınırı korunarak).
+
+# 6098 m.350-352: yapısal başlık ve kenar başlığı zincirinin ÜST halkaları
+# m.352'nin çok yukarısında; Faz 2a yalnız yerel pencereye baktığı için
+# m.352'nin ust_baslik'i boş kalıyordu.
+TBK_KIRA = (
+    "İKİNCİ KISIM\nÖzel Borç İlişkileri\n"
+    "DÖRDÜNCÜ BÖLÜM\nKira Sözleşmesi\n"
+    "İKİNCİ AYIRIM\nKonut ve Çatılı İşyeri Kiraları\n"
+    "F. Konut ve çatılı işyeri kiralarında sözleşmenin sona\r\nermesi\n"
+    "II. Dava yoluyla\n"
+    "1. Kiraya verenden kaynaklanan sebeplerle\n"
+    "a. Gereksinim, yeniden inşa ve imar\n"
+    "MADDE 350-\nKiraya veren, kira sözleşmesini belirli hâllerde sona\r\n"
+    "erdirebilir.\n"
+    "b. Yeni malikin gereksinimi\n"
+    "MADDE 351-\nKiralananı sonradan edinen kişi, sözleşmeyi altı ay sonra\r\n"
+    "açacağı bir davayla sona erdirebilir.\n"
+    "2. Kiracıdan kaynaklanan sebeplerle\n"
+    "MADDE 352-\nKiracı, kiralananı belli bir tarihte boşaltmayı yazılı olarak\r\n"
+    "üstlendiği hâlde boşaltmamışsa tahliye edilebilir.\n"
+)
+
+
+def test_hiyerarsi_yapisal_baslik_maddeler_boyunca_tasinir():
+    arts = {a["madde_no"]: a for a in lc.split_articles(TBK_KIRA)}
+    assert arts["350"]["ust_baslik"] == (
+        "İKİNCİ KISIM — Özel Borç İlişkileri"
+        " > DÖRDÜNCÜ BÖLÜM — Kira Sözleşmesi"
+        " > İKİNCİ AYIRIM — Konut ve Çatılı İşyeri Kiraları"
+        " | F. Konut ve çatılı işyeri kiralarında sözleşmenin sona ermesi"
+        " > II. Dava yoluyla > 1. Kiraya verenden kaynaklanan sebeplerle"
+    )
+
+
+def test_hiyerarsi_uzaktaki_ust_halkalar_kaybolmaz():
+    """TBK 352: üstünde tek blok var, zincirin gerisi iki madde yukarıda."""
+    art = {a["madde_no"]: a for a in lc.split_articles(TBK_KIRA)}["352"]
+    assert art["baslik"] == "2. Kiracıdan kaynaklanan sebeplerle"
+    assert art["ust_baslik"] == (
+        "İKİNCİ KISIM — Özel Borç İlişkileri"
+        " > DÖRDÜNCÜ BÖLÜM — Kira Sözleşmesi"
+        " > İKİNCİ AYIRIM — Konut ve Çatılı İşyeri Kiraları"
+        " | F. Konut ve çatılı işyeri kiralarında sözleşmenin sona ermesi"
+        " > II. Dava yoluyla"
+    )
+
+
+def test_hiyerarsi_ayni_seviyedeki_kardes_baslik_oncekini_dusurur():
+    """"2. Kiracıdan…" aynı seviyedeki "1. Kiraya verenden…"i değiştirir."""
+    arts = {a["madde_no"]: a for a in lc.split_articles(TBK_KIRA)}
+    assert "1. Kiraya verenden" not in arts["352"]["ust_baslik"]
+    assert "a. Gereksinim" not in arts["352"]["ust_baslik"]
+
+
+# 4721: KİTAP seviyesi ve büyük harfli yapısal adlar.
+TMK_TAPU = (
+    "DÖRDÜNCÜ KİTAP\nEŞYA HUKUKU\n"
+    "ÜÇÜNCÜ KISIM\nZİLYETLİK VE TAPU SİCİLİ\n"
+    "İKİNCİ BÖLÜM\nTAPU SİCİLİ\n"
+    "E. Terkin ve değiştirme\nI. Yolsuz tescilde\n"
+    "MADDE 1025-\nBir aynî hak yolsuz olarak tescil edilmiş ise, düzeltme\r\n"
+    "istenebilir.\n"
+)
+
+
+def test_hiyerarsi_kitap_seviyesi():
+    art = lc.split_articles(TMK_TAPU)[0]
+    assert art["baslik"] == "I. Yolsuz tescilde"
+    assert art["ust_baslik"] == (
+        "DÖRDÜNCÜ KİTAP — EŞYA HUKUKU > ÜÇÜNCÜ KISIM — ZİLYETLİK VE TAPU SİCİLİ"
+        " > İKİNCİ BÖLÜM — TAPU SİCİLİ | E. Terkin ve değiştirme"
+    )
+
+
+# Yönetmelik/tebliğ kalıbı: bölümün İLK maddesinden sonrakiler bağlamı yerel
+# pencerede göremiyordu (Faz 2a'da yönetmeliklerde doluluk %20'de kalmıştı).
+YONETMELIK = (
+    "BİRİNCİ BÖLÜM\nAmaç, Kapsam, Dayanak ve Tanımlar\n"
+    "Amaç\nMADDE 1 –\n(1) Bu Yönetmeliğin amacı usul ve esasları belirlemektir.\n"
+    "Kapsam\nMADDE 2 –\n(1) Bu Yönetmelik tüm birimleri kapsar.\n"
+    "İKİNCİ BÖLÜM\nGörev ve Yetkiler\n"
+    "Kurulun görevleri\nMADDE 3 –\n(1) Kurul şu görevleri yerine getirir.\n"
+)
+
+
+def test_hiyerarsi_yonetmelik_bolum_ikinci_maddede_de_dolu():
+    arts = {a["madde_no"]: a for a in lc.split_articles(YONETMELIK)}
+    assert arts["1"]["ust_baslik"] == "BİRİNCİ BÖLÜM — Amaç, Kapsam, Dayanak ve Tanımlar"
+    assert arts["2"]["baslik"] == "Kapsam"
+    assert arts["2"]["ust_baslik"] == "BİRİNCİ BÖLÜM — Amaç, Kapsam, Dayanak ve Tanımlar"
+    assert arts["3"]["ust_baslik"] == "İKİNCİ BÖLÜM — Görev ve Yetkiler"
+
+
+def test_hiyerarsi_bolum_adi_madde_basligina_karismaz():
+    arts = {a["madde_no"]: a for a in lc.split_articles(YONETMELIK)}
+    assert arts["1"]["baslik"] == "Amaç"
+    assert arts["3"]["baslik"] == "Kurulun görevleri"
+
+
+def test_hiyerarsi_madde_govdesindeki_bolum_kelimesi_yapisal_sayilmaz():
+    """Yanlış pozitif: gövde içinde geçen "bölüm"/"kısım" kelimeleri."""
+    metin = (
+        "BİRİNCİ BÖLÜM\nGenel Esaslar\n"
+        "Amaç\nMADDE 1 –\n(1) Bu Yönetmeliğin birinci bölüm hükümleri, ikinci\r\n"
+        "kısım ile birlikte uygulanır.\n"
+        "Kapsam\nMADDE 2 –\n(1) İkinci bölüm ayrıca değerlendirilir.\n"
+    )
+    arts = {a["madde_no"]: a for a in lc.split_articles(metin)}
+    assert arts["2"]["ust_baslik"] == "BİRİNCİ BÖLÜM — Genel Esaslar"
+
+
+def test_hiyerarsi_gecici_madde_bayat_kenar_basligini_almaz():
+    metin = TBK_KIRA + (
+        "DOKUZUNCU BÖLÜM\nSon Hükümler\n"
+        "GEÇİCİ MADDE 1-\nBu Kanunun yürürlüğünden önceki ilişkilere uygulanır.\n"
+    )
+    art = next(a for a in lc.split_articles(metin) if a["madde_no"] == "Geçici 1")
+    assert art["ust_baslik"] == (
+        "İKİNCİ KISIM — Özel Borç İlişkileri > DOKUZUNCU BÖLÜM — Son Hükümler"
+    )
+    assert "Dava yoluyla" not in art["ust_baslik"]
+
+
+def test_hiyerarsi_kanun_kunyesi_ust_basliga_yapismaz():
+    """4857 m.1'in üst başlığına "Yayımlandığı Düstur : Tertip: 5" giriyordu."""
+    metin = (
+        "İŞ KANUNU\n"
+        "Kanun Numarası\xa0 : 4857\n"
+        "Yayımlandığı\r\nDüstur\xa0 : Tertip : 5\xa0 Cilt : 42\n"
+        "BİRİNCİ BÖLÜM\nGenel Hükümler\n"
+        "Amaç ve kapsam\nMADDE 1 -\nBu Kanunun amacı düzenlemektir.\n"
+    )
+    art = lc.split_articles(metin)[0]
+    assert art["baslik"] == "Amaç ve kapsam"
+    assert "Düstur" not in art["ust_baslik"]
+    assert art["ust_baslik"] == "BİRİNCİ BÖLÜM — Genel Hükümler"
+
+
+@pytest.mark.parametrize("blok,seviye", [
+    ("A. Sözleşmenin kurulması", 1),
+    ("II. Dava yoluyla", 2),
+    ("1. Genel olarak", 3),
+    ("a. Hazır olanlar arasında", 4),
+    ("Amaç ve kapsam", lc._LEVEL_NONE),
+])
+def test_enum_seviye(blok, seviye):
+    assert lc._enum_level(blok) == seviye

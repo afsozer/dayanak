@@ -32,7 +32,14 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Any
 
-from .legislation import _ARTICLE_RE, _normative_body, _norm_article_no, _parse_articles
+from .legislation import (
+    _ARTICLE_RE,
+    _ORDINAL_PAT,
+    _norm_article_no,
+    _normative_body,
+    _parse_articles,
+    _tr_word_pattern,
+)
 
 CORPUS_VERSION = "1.0.0"
 
@@ -205,6 +212,7 @@ _BLOCK_SPLIT_RE = re.compile(r"(?<!\r)\n")
 _HEADING_SKIP_RE = re.compile(r"^(?:\[\d+\]|[\d\W_]+)$")
 _HEADING_MAX = 160
 _HEADING_LOOKBACK = 8
+_HEADING_RUN_MAX = 8
 _HEADING_WINDOW = 3000
 
 
@@ -232,17 +240,19 @@ def _is_heading(block: str) -> bool:
     # elenmişti; oysa eski usul kanunlarda madde başlığı iki nokta ile biter
     # ("Temyiz:", "b) İtirazın kesin olarak kaldırılması:") — İİK 68 bu yüzden
     # boş kalıyordu.
+    if _PREAMBLE_RE.match(block):
+        # "Yayımlandığı Düstur : Tertip: 5 Cilt: 42" — kanun künyesi üstbilgisi,
+        # başlık değil. Ölçüldü: 4857 m.1'in üst başlığına yapışıyordu.
+        return False
     return not block.endswith((".", "!", "?", ";"))
 
 
-def _heading_before(text: str, pos: int) -> tuple[str, str]:
-    """``pos`` konumundan önceki kenar başlığı ve üst başlık zinciri.
+def _heading_run(text: str, pos: int) -> list[str]:
+    """``pos``'tan hemen önceki KESİNTİSİZ başlık bloğu dizisi (üstten alta).
 
-    Dönüş ``(baslik, ust_baslik)``. Türk mevzuatında madde başlığı "MADDE 12 -"
-    bloğunun hemen üstündeki kısa bloktur; medeni/borçlar kanunu tipi
-    metinlerde bunun üstünde hiyerarşik kenar başlıkları vardır
-    ("F. … > I. Bildirim yoluyla > 1. Genel olarak"). En alttaki başlık
-    ``baslik``, üstündekiler " > " ile ``ust_baslik`` olur.
+    Türk mevzuatında madde başlığı "MADDE 12 -" bloğunun hemen üstündeki kısa
+    bloktur; medeni/borçlar kanunu tipi metinlerde bunun üstünde hiyerarşik
+    kenar başlıkları vardır ("F. … > I. Bildirim yoluyla > 1. Genel olarak").
     """
     # Yalnızca pos'tan önceki pencere ayrıştırılır: Faz 1'de tüm ön ek her
     # madde için yeniden bölünüyordu (490 maddelik 400 KB'lık VUK'ta O(n²)).
@@ -255,10 +265,8 @@ def _heading_before(text: str, pos: int) -> tuple[str, str]:
         if not _is_heading(block):
             break
         found.insert(0, block)
-        if len(found) >= 4:
+        if len(found) >= _HEADING_RUN_MAX:
             break
-    if not found:
-        return "", ""
     # Bir başlık nadiren ÇIPLAK "\n" ile de bölünüyor ("İsticvap olunacak\n
     # kişilerin belirlenmesi" — 6100 m.170). Küçük harfle başlayan ve
     # numaralandırma taşımayan blok, üstündekinin devamıdır.
@@ -268,11 +276,249 @@ def _heading_before(text: str, pos: int) -> tuple[str, str]:
             birlesik
             and block[:1].islower()
             and not _ENUM_RE.match(block)
+            and not _STRUCT_RE.match(block)
         ):
             birlesik[-1] = f"{birlesik[-1]} {block}"
         else:
             birlesik.append(block)
+    return birlesik
+
+
+def _birlestir(found: list[str]) -> list[str]:
+    """Çıplak "\n" ile bölünmüş başlık parçalarını birleştir (6100 m.170)."""
+    birlesik: list[str] = []
+    for block in found:
+        if (
+            birlesik
+            and block[:1].islower()
+            and not _ENUM_RE.match(block)
+            and not _STRUCT_RE.match(block)
+        ):
+            birlesik[-1] = f"{birlesik[-1]} {block}"
+        else:
+            birlesik.append(block)
+    return birlesik
+
+
+def _aralik_ve_run(text: str, bas: int, son: int) -> tuple[list[str], list[str]]:
+    """``[bas, son)`` aralığını "önceki bloklar" ve "kuyruk başlık koşusu" diye ayır.
+
+    Kuyruk koşusu = ``son`` konumundaki maddenin hemen üstündeki KESİNTİSİZ
+    başlık blokları (madde başlığı + kenar başlıkları). Önceki bloklar bir
+    önceki maddenin gövdesidir; içinden yalnız YAPISAL başlıklar toplanır.
+    """
+    bloklar = _blocks(text[bas:son].rstrip())
+    kuyruk: list[str] = []
+    kesim = len(bloklar)
+    for j in range(len(bloklar) - 1, -1, -1):
+        block = bloklar[j]
+        if not block or _HEADING_SKIP_RE.match(block):
+            kesim = j
+            continue
+        if not _is_heading(block):
+            break
+        kuyruk.insert(0, block)
+        kesim = j
+        if len(kuyruk) >= _HEADING_RUN_MAX:
+            break
+    return bloklar[:kesim], _birlestir(kuyruk)
+
+
+def _heading_before(text: str, pos: int) -> tuple[str, str]:
+    """``_heading_run``'ın yalnız YEREL penceresinden ``(baslik, ust_baslik)``.
+
+    Belge boyu hiyerarşi için ``_hierarchy`` kullanılır; bu ince sarmalayıcı
+    tek bir madde parçası ayrıştıran çağrılar için korunuyor.
+    """
+    birlesik = _heading_run(text, pos)
+    if not birlesik:
+        return "", ""
     return birlesik[-1][:200], " > ".join(birlesik[:-1])[:400]
+
+
+# ── Faz 3: belge boyu başlık hiyerarşisi ────────────────────────────────────
+#
+# Ölçüldü (6 Eyl 2026, canlı korpus): ``ust_baslik`` 298.854 maddenin yalnız
+# %19,1'inde doluydu. Sebep yapısaldı — ``_heading_before`` YALNIZCA maddenin
+# hemen üstündeki kesintisiz blok dizisine bakıyor. TBK 352'nin üstünde tek
+# blok var ("2. Kiracıdan kaynaklanan sebeplerle"); onun üstü m.351'in gövdesi.
+# Zincirin geri kalanı ("F. Konut ve çatılı işyeri … > II. Dava yoluyla")
+# belgenin çok daha yukarısında, m.349/350'nin üstünde geçiyor. Aynı şekilde
+# yönetmelik/tebliğde bağlam "BİRİNCİ BÖLÜM / Amaç, Kapsam…" satırında, bölümün
+# ilk maddesinden sonraki maddeler için erişilemez durumda.
+#
+# Çözüm: belgeyi baştan sona TEK geçişte tarayıp bir hiyerarşi yığını tutmak.
+# Yığın iki katmanlı: yapısal başlıklar (Kitap/Kısım/Bölüm/Ayırım) ve kenar
+# başlığı numaralandırması (A. / I. / 1. / a.). ``ust_baslik`` formatı:
+# "İkinci Kitap > Birinci Kısım > Üçüncü Bölüm | A. Genel olarak > I. Kapsam".
+
+_STRUCT_WORDS = ("KITAP", "KISIM", "BOLUM", "AYIRIM", "AYRIM", "FASIL", "BAB")
+_STRUCT_RE = re.compile(
+    rf"^{_ORDINAL_PAT}\s+(?:{'|'.join(_tr_word_pattern(w) for w in _STRUCT_WORDS)})"
+    r"\s*$",
+    re.IGNORECASE,
+)
+# "BAŞLANGIÇ" (TMK) ve "EK BÖLÜM" gibi ordinal taşımayan yapısal başlıklar.
+_STRUCT_ALT_RE = re.compile(
+    r"^(?:BA[ŞS]LANGI[ÇC]"
+    rf"|(?:EK|GE[ÇC][İI]C[İI])\s+(?:{'|'.join(_tr_word_pattern(w) for w in _STRUCT_WORDS)})"
+    r")\s*$",
+    re.IGNORECASE,
+)
+# Kanun künyesi/mevzuat başlığı önsözü — başlık değil, üstbilgi.
+_PREAMBLE_RE = re.compile(
+    r"^(?:Yay[ıi]mland[ıi][ğg][ıi]\s+D[üu]stur|Kabul\s+Tarihi|Kanun\s+Numaras[ıi]"
+    r"|Resm[îi]\s+Gazete|D[üu]stur|Tertip|Cilt|Sayfa)\s*:",
+    re.IGNORECASE,
+)
+
+_SEVIYE_RE = tuple(
+    re.compile("|".join(_tr_word_pattern(w) for w in grup), re.IGNORECASE)
+    for grup in (("KITAP",), ("KISIM",), ("BOLUM",), ("AYIRIM", "AYRIM", "FASIL", "BAB"))
+)
+
+_GECICI_NO_RE = re.compile(r"^(?:Ek|Ge[çc]ici|M[üu]kerrer)\b", re.IGNORECASE)
+
+_ROMAN_RE = re.compile(r"^(?:I{1,3}|IV|V|VI{1,3}|IX|X|XI{1,3}|XIV|XV)$")
+_ENUM_HEAD_RE = re.compile(r"^([A-Za-zÇĞİıÖŞÜçğiöşü]+|\d{1,2})\s*[.)–-]\s*(\S)")
+
+# Kenar başlığı seviyeleri: A. → 1, I. → 2, 1. → 3, a. → 4.
+# Numaralandırma taşımayan ara başlık 8, maddenin kendi başlığı 9.
+_LEVEL_NONE = 8
+_LEVEL_LEAF = 9
+
+
+def _enum_level(block: str) -> int:
+    """Bloğun kenar başlığı seviyesi; numaralandırma yoksa ``_LEVEL_NONE``."""
+    m = _ENUM_HEAD_RE.match(block)
+    if not m:
+        return _LEVEL_NONE
+    tok = m.group(1)
+    if tok.isdigit():
+        return 3
+    if _ROMAN_RE.match(tok.upper()) and (len(tok) > 1 or tok.upper() in ("I", "V", "X")):
+        # "I." Türkçe metinde roma rakamıdır; "A."/"B." harf seviyesidir.
+        return 2 if tok.isupper() else 4
+    if len(tok) > 1:
+        return _LEVEL_NONE
+    return 1 if tok.isupper() else 4
+
+
+def _is_struct(block: str) -> bool:
+    return bool(_STRUCT_RE.match(block) or _STRUCT_ALT_RE.match(block))
+
+
+def _path(stack: dict[int, str], ust_sinir: int) -> list[str]:
+    return [stack[k] for k in sorted(stack) if k < ust_sinir]
+
+
+class _Hiyerarsi:
+    """Belge boyunca taşınan başlık yığını."""
+
+    def __init__(self) -> None:
+        self.yapisal: dict[int, str] = {}
+        self.kenar: dict[int, str] = {}
+        self._bekleyen_yapisal: int | None = None
+        self._yapisal_adlar: set[str] = set()
+
+    def _yapisal_seviye(self, block: str) -> int:
+        # ``_tr_fold`` Ö/Ü'yü katlamıyor ("BÖLÜM" → "BÖLÜM"); seviye tespiti
+        # ``_tr_word_pattern`` ile yapılmalı. Ölçüldü (6 Eyl 2026): düz metin
+        # karşılaştırmasıyla her BÖLÜM seviye 0 sanılıp KISIM'ı siliyordu.
+        for seviye, kalip in enumerate(_SEVIYE_RE):
+            if kalip.search(block):
+                return seviye
+        return 0  # BAŞLANGIÇ vb.
+
+    def _koy(self, stack: dict[int, str], seviye: int, metin: str) -> None:
+        for k in [k for k in stack if k >= seviye]:
+            del stack[k]
+        stack[seviye] = metin[:200]
+
+    def aralik_tara(self, bloklar: list[str]) -> None:
+        """Bir önceki maddenin gövdesindeki YAPISAL başlıkları yığına işle."""
+        bekleyen: int | None = None
+        for block in bloklar:
+            if not block or _HEADING_SKIP_RE.match(block):
+                continue
+            if _is_struct(block):
+                self.yapisal_blok(block)
+                bekleyen = self._bekleyen_yapisal
+                continue
+            if bekleyen is not None:
+                if _is_heading(block) and _enum_level(block) == _LEVEL_NONE:
+                    self.yapisal[bekleyen] = f"{self.yapisal[bekleyen]} — {block}"[:200]
+                    self._yapisal_adlar.add(block)
+                bekleyen = None
+                self._bekleyen_yapisal = None
+
+    def yapisal_blok(self, block: str) -> None:
+        seviye = self._yapisal_seviye(block)
+        if self.yapisal.get(seviye, "").split(" — ")[0] == block:
+            # Aynı yapısal başlık hem aralık taramasında hem kuyruk koşusunda
+            # görülebilir; adını iki kez eklemeyelim. ``_bekleyen_yapisal``
+            # KORUNUR: adı henüz görülmemiş olabilir (bkz. GEÇİCİ MADDE testi).
+            return
+        self._koy(self.yapisal, seviye, block)
+        # Yapısal başlığın altındaki blok onun adıdır ("BİRİNCİ BÖLÜM" /
+        # "Amaç, Kapsam, Dayanak ve Tanımlar"); kenar başlığı yığını sıfırlanır.
+        self._bekleyen_yapisal = seviye
+        self.kenar.clear()
+
+    def blok(self, block: str) -> None:
+        """Madde başlığı OLMAYAN bir başlık bloğunu yığına işle."""
+        if _is_struct(block):
+            self.yapisal_blok(block)
+            return
+        if block in self._yapisal_adlar:
+            # Yapısal başlığın adı aralık taramasında zaten yığına girdi.
+            return
+        if self._bekleyen_yapisal is not None and _enum_level(block) == _LEVEL_NONE:
+            seviye = self._bekleyen_yapisal
+            self.yapisal[seviye] = f"{self.yapisal[seviye]} — {block}"[:200]
+            self._bekleyen_yapisal = None
+            return
+        self._bekleyen_yapisal = None
+        self._koy(self.kenar, _enum_level(block), block)
+
+    def madde(self, run: list[str], gecici: bool) -> tuple[str, str]:
+        """Bir maddenin ``(baslik, ust_baslik)`` değerini üret ve yığını ilerlet."""
+        if gecici:
+            # Geçici/Ek madde blokları hiyerarşinin dışındadır; bayat kenar
+            # başlığı zinciri onlara yapışmasın.
+            self.kenar.clear()
+        for block in run[:-1]:
+            self.blok(block)
+        baslik = run[-1] if run else ""
+        if baslik and _is_struct(baslik):
+            # "BİRİNCİ BÖLÜM" maddenin başlığı olamaz.
+            self.blok(baslik)
+            baslik = ""
+        if (
+            baslik
+            and self._bekleyen_yapisal is not None
+            and _enum_level(baslik) == _LEVEL_NONE
+        ):
+            # "DOKUZUNCU BÖLÜM / Son Hükümler / GEÇİCİ MADDE 1": aradaki tek
+            # blok maddenin başlığı değil, bölümün adıdır.
+            lvl = self._bekleyen_yapisal
+            self.yapisal[lvl] = f"{self.yapisal[lvl]} — {baslik}"[:200]
+            self._yapisal_adlar.add(baslik)
+            baslik = ""
+        seviye = _enum_level(baslik) if baslik else _LEVEL_LEAF
+        if baslik and seviye == _LEVEL_NONE:
+            seviye = _LEVEL_LEAF
+        kenar_yol = _path(self.kenar, seviye)
+        yapisal_yol = _path(self.yapisal, 99)
+        if baslik and seviye < _LEVEL_LEAF:
+            self._koy(self.kenar, seviye, baslik)
+        self._bekleyen_yapisal = None
+        parcalar = []
+        if yapisal_yol:
+            parcalar.append(" > ".join(yapisal_yol))
+        if kenar_yol:
+            parcalar.append(" > ".join(kenar_yol))
+        return baslik[:200], " | ".join(parcalar)[:600]
 
 
 def _degisiklik_notu(body: str) -> str:
@@ -610,9 +856,26 @@ def split_articles(text: str) -> list[dict[str, Any]]:
     dipnotlar = parse_footnotes(text)
     spans = [m.start() for m in _ARTICLE_RE.finditer(body)]
     out: list[dict[str, Any]] = []
+    runs: list[list[str]] = []
+    hiyerarsi = _Hiyerarsi()
+    onceki = 0
     for i, art in enumerate(parsed):
         pos = spans[i] if i < len(spans) else 0
-        baslik, ust = _heading_before(body, pos) if pos else ("", "")
+        if pos:
+            onceki_bloklar, run = _aralik_ve_run(body, onceki, pos)
+            onceki = pos
+        else:
+            onceki_bloklar, run = [], []
+        # Yapısal tarama koşunun ÜST kısmını da kapsar; yalnız maddenin kendi
+        # başlığı (koşunun son bloğu) dışarıda bırakılır ki bölüm adı sanılmasın.
+        onceki_bloklar = onceki_bloklar + run[:-1]
+        # Yapısal başlık (Kitap/Kısım/Bölüm/Ayırım) maddeden ÇOK önce, bir
+        # önceki maddenin gövdesinin üstünde geçebilir; yalnız yerel koşuya
+        # bakmak Faz 2a'da bu seviyeyi tamamen kaçırıyordu.
+        hiyerarsi.aralik_tara(onceki_bloklar)
+        gecici = bool(_GECICI_NO_RE.match(art["number"]))
+        baslik, ust = hiyerarsi.madde(run, gecici)
+        runs.append(run)
         out.append({
             "madde_no": art["number"],
             "sira": i + 1,
@@ -623,8 +886,9 @@ def split_articles(text: str) -> list[dict[str, Any]]:
             "degisiklikler": parse_degisiklik(art["text"], dipnotlar),
         })
     for i in range(len(out) - 1):
-        nxt = out[i + 1]
-        kesilecek = " > ".join(x for x in (nxt["ust_baslik"], nxt["baslik"]) if x)
+        # Kesilecek başlıklar HAM koşudan gelir; ``ust_baslik`` artık belge boyu
+        # yığından üretiliyor ve gövdenin sonunda birebir geçmiyor.
+        kesilecek = " > ".join(runs[i + 1])
         out[i]["metin"] = _strip_trailing_heading(out[i]["metin"], kesilecek)
     return out
 
