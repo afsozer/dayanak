@@ -155,7 +155,7 @@ def main() -> None:
 
     # _TOOL_PROFILES[name] = "core" | "extended"
     _TOOL_PROFILES: dict[str, str] = {
-        # ── Core (14 tools) ─────────────────────────────────────────────
+        # ── Core (11 tools) ─────────────────────────────────────────────
         "search_decisions":           "core",
         "get_document":               "core",
         "research_topic":             "core",  # M-98: renamed from research_topic_tool
@@ -165,14 +165,18 @@ def main() -> None:
         "get_legislation":            "core",
         "mevzuat_korpus_ara":         "core",
         "mevzuat_madde_getir":        "core",
-        "citation_check":             "core",
-        "prepare_petition":           "core",
         "export_document":            "core",
-        "read_legal_file":            "core",
-        "list_sources":               "core",
-        "legal_research_guide":       "core",
         "load_extended_tools":        "core",
         "health_check":               "core",
+        # ── Extended: drafting / files / meta (2026-09-06) ───────────────
+        # Bu bes arac cekirdekteydi; docstring butcesi (20 000 karakter)
+        # 145 karakter kala doldugu icin extended'a alindi.  Hepsi
+        # load_extended_tools ile geri getirilebilir.
+        "citation_check":             "extended",
+        "prepare_petition":           "extended",
+        "read_legal_file":            "extended",
+        "list_sources":               "extended",
+        "legal_research_guide":       "extended",
         # ── Extended: mevzuat güncelleme (Faz 2b) ───────────────────────
         "mevzuat_degisiklik_raporu":  "extended",
         # ── Extended: cache_admin ───────────────────────────────────────
@@ -240,12 +244,12 @@ def main() -> None:
         "mevzuat_madde_getir":          "legislation",
         "mevzuat_degisiklik_raporu":    "legislation",
         "research_topic":               "research",
-        "citation_check":               "citation",
-        "prepare_petition":             "petition",
         "export_document":              "export",
-        "read_legal_file":              "file_io",
-        "list_sources":                 "discovery",
-        "legal_research_guide":         "guide",
+        "citation_check":               "drafting",
+        "prepare_petition":             "drafting",
+        "read_legal_file":              "files",
+        "list_sources":                 "meta",
+        "legal_research_guide":         "meta",
         "load_extended_tools":          "admin",
         "health_check":                 "admin",
         # Extended categories
@@ -2368,19 +2372,20 @@ def main() -> None:
             ),
             "extended_tools": (
                 "=== GENİŞLETİLMİŞ ARAÇ KATEGORİLERİ ===\n\n"
-                "Core profilde 14 araç bulunur. Aşağıdaki kategoriler load_extended_tools\n"
+                "Core profilde 11 araç bulunur. Aşağıdaki kategoriler load_extended_tools\n"
                 "ile dinamik olarak yüklenebilir:\n\n"
-                "  health_admin   — Circuit breaker, kaynak sağlığı\n"
-                "  citation_graph — Atıf grafı oluşturma ve sorgulama\n"
-                "  watch          — Araştırma izleme (watch) listeleri\n"
-                "  privacy        — PII tarama, maskeleme, denetim\n"
+                "  drafting       — citation_check, prepare_petition\n"
+                "  files          — read_legal_file (UDF/PDF okuma)\n"
+                "  meta           — list_sources, legal_research_guide\n"
+                "  legislation    — mevzuat_degisiklik_raporu\n"
+                "  drafting_advanced — Gelişmiş dilekçe/argüman araçları\n"
                 "  chambers       — Daire profili, timeline, benzer daire bulma\n"
+                "  privacy        — PII tarama, maskeleme, denetim\n"
+                "  watch          — Araştırma izleme (watch) listeleri\n"
                 "  indexing       — Semantik indeks durumu (index_status)\n"
-                "  drafting_advanced — Gelişmiş dilekçe hazırlama araçları\n"
-                "  udf_admin      — UDF dönüştürme, PDF araçları\n"
-                "  research_admin — Araştırma kalite dashboard, evaluasyon\n"
-                "  query_tools    — Sorgu normalizasyonu, genişletme, filtre çıkarma\n\n"
-                "Kullanım: load_extended_tools(categories=['health_admin', 'citation_graph'])\n"
+                "  health_admin   — Circuit breaker, kaynak sağlığı\n"
+                "  udf_admin      — UDF dönüştürme, PDF araçları\n\n"
+                "Kullanım: load_extended_tools(categories=['drafting', 'files'])\n"
             ),
         }
         if topic and topic in sections:
@@ -2400,18 +2405,29 @@ def main() -> None:
 
     @_tool
     def load_extended_tools(categories: list[str]) -> dict:
-        """Dynamically load extended tool categories into the running MCP server.
+        """Load extra tool categories into the running MCP server (no restart).
 
-        In core profile (default), only 14 core tools are registered. This tool
-        loads additional tools by category, making them available to the LLM agent
-        without restarting the server.
+        Core profile registers 11 tools. Everything else waits here; load a
+        category when the task needs it.
 
-        Valid categories:
-          chambers, citation_graph, drafting_advanced, health_admin,
-          indexing, privacy, udf_admin, watch
+        Categories:
+          drafting  — citation_check (atif dogrula/bicimlendir/guvenlik),
+                      prepare_petition (dilekce input_pack/outline/taslak)
+          files     — read_legal_file (UDF/PDF dosyasi oku)
+          meta      — list_sources (kaynaklar, birim kodlari, mevzuat turleri),
+                      legal_research_guide (arama/Solr/daire/atif rehberi)
+          legislation — mevzuat_degisiklik_raporu (haftalik mevzuat degisimi)
+          drafting_advanced — coklu-mesele paketi, sablonlar, argüman zinciri,
+                      draft_document, export_bundle
+          chambers  — daire profili, timeline, benzer daire
+          privacy   — PII tarama/maskeleme/denetim
+          watch     — arastirma izleme listeleri
+          indexing  — index_status (semantik indeks durumu)
+          health_admin — circuit breaker, kaynak sagligi/smoke
+          udf_admin — UDF/PDF araci durumu, PDF tam metne yukseltme
 
         Args:
-            categories: List of category names to load.
+            categories: List of category names, e.g. ["drafting", "files"].
 
         Returns:
             Dict with ok, loaded tools, already_loaded, invalid_categories,
@@ -2464,23 +2480,39 @@ def main() -> None:
 
     @_tool
     def health_check() -> dict:
-        """Run a consolidated health check across sources, circuit breakers, and indexes.
+        """Run a consolidated health check across sources, breakers, indexes and cron jobs.
 
-        Returns a single dict with overall health status, source smoke summary,
-        circuit breaker states, and search index status.
+        Returns overall status plus source smoke summary, circuit breaker
+        states, search index status and ``scheduled_jobs`` — the last run of
+        the daily crawl, weekly legislation update, monthly merge and the
+        legislation semantic index (read from their log files).
+        ``overall`` is "degraded" when a job is late or ended with rc != 0.
         """
         smoke = smoke_all_sync(online=False)
         from .circuit import get_all_sources_health as _get_all_health
         cb_status = _get_all_health()
         idx = get_index_status_impl()
+        smoke_ok = all(r.get("offline_ok", False) for r in smoke)
+        try:
+            from .ops_status import collect_scheduled_jobs, problem_jobs
+            jobs = collect_scheduled_jobs()
+            job_problems = problem_jobs(jobs)
+        except Exception as exc:  # log okunamazsa saglik cagrisi cokmesin
+            jobs = {"error": str(exc)}
+            job_problems = []
+        overall = "degraded" if (job_problems or not smoke_ok) else "ok"
         return {
             "ok": True,
+            "overall": overall,
             "source_smoke": {
-                "all_ok": all(r.get("offline_ok", False) for r in smoke),
+                "all_ok": smoke_ok,
                 "source_count": len(smoke),
             },
             "circuit_breakers": cb_status,
             "search_index": idx,
+            # Zamanlanmis isler: log dosyalarindan son kosu (schtasks'siz).
+            "scheduled_jobs": jobs,
+            "scheduled_jobs_problems": job_problems,
             # M-119: zaman siniri / thread havuzu durumu.
             "tool_runtime": _tool_runtime_snapshot(),
         }

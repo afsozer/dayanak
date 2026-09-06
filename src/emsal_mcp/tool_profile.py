@@ -1,7 +1,7 @@
 """FAZ M — Tool profile infrastructure (M-97).
 
 Defines tool categories, profile membership, and filtering logic so that
-``server.py`` can register only the 16-tool core surface by default (or all
+``server.py`` can register only the 11-tool core surface by default (or all
 tools with ``EMSAL_TOOL_PROFILE=full``).
 
 This module is pure data — no business logic, no I/O.  ``tests/test_tool_surface``
@@ -13,7 +13,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
-# ── Core profile (M-98: 14 araç; +2 yerel mevzuat korpusu aracı) ─────────
+# ── Core profile (11 araç) ───────────────────────────────────────────────
+# 2026-09-06: citation_check, prepare_petition, read_legal_file, list_sources
+# ve legal_research_guide extended'a alindi (core docstring butcesi doldu).
 # These are the EXACT tool names that appear in the core profile.
 # Order matches ROADMAP.md M-98.
 
@@ -26,12 +28,7 @@ CORE_TOOLS: list[str] = [
     "mevzuat_korpus_ara",
     "mevzuat_madde_getir",
     "research_topic",
-    "citation_check",
-    "prepare_petition",
     "export_document",
-    "read_legal_file",
-    "list_sources",
-    "legal_research_guide",
     "load_extended_tools",
     "health_check",
 ]
@@ -60,6 +57,19 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
     # bir araç, her sorguda gerekmiyor.
     "legislation": [
         "mevzuat_degisiklik_raporu",
+    ],
+    # 2026-09-06: core docstring butcesi (20 000 karakter) 145 karakter kala
+    # doldu; bu bes arac cekirdekten cikarilip kategorilere dagitildi.
+    "drafting": [
+        "citation_check",
+        "prepare_petition",
+    ],
+    "files": [
+        "read_legal_file",
+    ],
+    "meta": [
+        "list_sources",
+        "legal_research_guide",
     ],
     "watch": [
         "watch_add",
@@ -102,7 +112,7 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
 }
 
 # ── Extended-only tools (single-source from server.py) ──────────────────
-# Every tool that is NOT part of the core 14.  Built from CATEGORY_TOOLS.
+# Every tool that is NOT part of the core 11.  Built from CATEGORY_TOOLS.
 
 EXTENDED_TOOLS: set[str] = set()
 for _cat_tools in CATEGORY_TOOLS.values():
@@ -212,7 +222,7 @@ def get_active_profile() -> str:
     """Return the active tool profile name.
 
     Reads ``EMSAL_TOOL_PROFILE`` environment variable.
-    ``"core"`` (default) → only the 14-tool surface (M-98).
+    ``"core"`` (default) → only the 11-tool surface.
     ``"full"`` → all tools (today's 119-tool surface).
     """
     return os.environ.get("EMSAL_TOOL_PROFILE", "core")
@@ -221,7 +231,7 @@ def get_active_profile() -> str:
 def is_tool_active(tool_name: str) -> bool:
     """Return True if *tool_name* should be registered under the active profile.
 
-    In ``full`` profile every tool passes.  In ``core`` profile only the 14
+    In ``full`` profile every tool passes.  In ``core`` profile only the 11
     core tools pass.
     """
     profile = get_active_profile()

@@ -415,7 +415,7 @@ E5) recall@k farkını sayısal olarak gösterir.
 
 ## Reçete 10: Core Profil ile Ajan Bağlama + load_extended_tools Akışı
 
-**Amaç:** Core profilde (14 araç) başlayıp, legal_research_guide ile hangi
+**Amaç:** Core profilde (11 araç) başlayıp, legal_research_guide ile hangi
 genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
 `load_extended_tools` ile seçili kategorileri dinamik olarak sunucuya ekleyin.
 
@@ -427,31 +427,29 @@ genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
    ```bash
    emsal-mcp health_check --json
    ```
-   Çıktıda `"tool_count": 14` ve core araç listesi görünmeli. Core profil
-   şu 14 aracı sunar:
+   Çıktıda `"tool_count": 11` ve core araç listesi görünmeli. Core profil
+   şu 11 aracı sunar:
    `search_decisions`, `get_document`, `search_local_corpus`,
-   `search_legislation`, `get_legislation`, `research_topic`,
-   `citation_check`, `prepare_petition`, `export_document`,
-   `read_legal_file`, `list_sources`, `legal_research_guide`,
+   `search_legislation`, `get_legislation`, `mevzuat_korpus_ara`,
+   `mevzuat_madde_getir`, `research_topic`, `export_document`,
    `load_extended_tools`, `health_check`.
 
 2. **Genişletilmiş kategorileri keşfedin:**
    ```bash
    emsal-mcp legal_research_guide --json
    ```
-   Tam rehberde `extended_tools` başlığı altında 15 kategori listelenir:
-   `cache_admin`, `release`, `analytics`, `routing`, `health_admin`,
-   `citation_graph`, `dedup`, `watch`, `privacy`, `chambers`, `indexing`,
-   `drafting_advanced`, `udf_admin`, `research_admin`, `query_tools`.
+   Tam rehberde `extended_tools` başlığı altında 11 kategori listelenir:
+   `drafting`, `files`, `meta`, `legislation`, `drafting_advanced`,
+   `chambers`, `privacy`, `watch`, `indexing`, `health_admin`,
+   `udf_admin`.
 
 3. **Belirli bir kategori hakkında bilgi alın:**
    ```bash
    emsal-mcp legal_research_guide topic=extended_tools --json
    ```
    Her kategorinin tool_count ve örnek araç isimleri görüntülenir.
-   Örneğin `citation_graph` kategorisi 6 araç içerir:
-   `build_citation_graph`, `get_citation_graph`, `find_citing_documents`,
-   `find_cited_documents`, `citation_graph_stats`, `export_citation_graph`.
+   Örneğin `drafting` kategorisi 2 araç içerir:
+   `citation_check`, `prepare_petition`.
 
 4. **Seçili kategorileri yükleyin:**
    ```bash

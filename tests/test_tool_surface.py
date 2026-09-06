@@ -1,7 +1,8 @@
 """M-97: Tool surface profile tests.
 
 Verifies:
-- Core profile exposes exactly 16 tools (M-98 snapshot + 2 mevzuat korpusu).
+- Core profile exposes exactly 11 tools (2026-09-06: drafting/files/meta
+  kategorileri extended'a tasindi).
 - Full profile tool count >= previous snapshot (regression guard).
 - EMSAL_TOOL_PROFILE env var controls registration.
 """
@@ -94,7 +95,7 @@ def _closure_var(fn: object, name: str) -> object:
     return values[name]
 
 
-# ── M-98: Core profile snapshot ───────────────────────────────────────────────
+# ── Core profile snapshot ───────────────────────────────────────────────
 
 CORE_TOOLS = [
     "search_decisions",
@@ -105,24 +106,19 @@ CORE_TOOLS = [
     "mevzuat_korpus_ara",
     "mevzuat_madde_getir",
     "research_topic",
-    "citation_check",
-    "prepare_petition",
     "export_document",
-    "read_legal_file",
-    "list_sources",
-    "legal_research_guide",
     "load_extended_tools",
     "health_check",
 ]
 
 
 class TestCoreProfile:
-    """Core profile: exactly 16 tools."""
+    """Core profile: exactly 11 tools."""
 
     def test_core_profile_exact_count(self) -> None:
         tools = _capture_tools("core")
-        assert len(tools) == 16, (
-            f"Expected 16 core tools, got {len(tools)}: {sorted(tools.keys())}"
+        assert len(tools) == 11, (
+            f"Expected 11 core tools, got {len(tools)}: {sorted(tools.keys())}"
         )
 
     def test_core_profile_matches_snapshot(self) -> None:
@@ -163,6 +159,24 @@ class TestCoreProfile:
 
         assert second["ok"] is True
         assert "chamber_overview" in second["already_loaded"]
+
+    def test_moved_core_tools_load_from_their_categories(self) -> None:
+        """2026-09-06: cekirdekten cikarilan bes arac kategorilerinden gelir."""
+        tools = _capture_tools("core")
+        for name in (
+            "citation_check", "prepare_petition", "read_legal_file",
+            "list_sources", "legal_research_guide",
+        ):
+            assert name not in tools, f"{name} hala cekirdekte"
+
+        result = tools["load_extended_tools"](["drafting", "files", "meta"])
+
+        assert result["ok"] is True, result
+        for name in (
+            "citation_check", "prepare_petition", "read_legal_file",
+            "list_sources", "legal_research_guide",
+        ):
+            assert name in tools, f"{name} kategorisinden yuklenmedi"
 
     def test_load_extended_tools_invalid_category_is_structured_error(self) -> None:
         tools = _capture_tools("core")
@@ -290,4 +304,4 @@ class TestProfileEnvVar:
 
     def test_invalid_profile_falls_back_to_core(self) -> None:
         tools = _capture_tools("garbage")
-        assert len(tools) == 16, f"Invalid profile should fallback to 16 core, got {len(tools)}"
+        assert len(tools) == 11, f"Invalid profile should fallback to 11 core, got {len(tools)}"

@@ -11,14 +11,16 @@ The server exposes two tool profiles to control which MCP tools are registered:
 | Profile | Tools | Description |
 |---------|-------|-------------|
 <!-- drift:core-tools-start -->
-| `core` | 16 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`, `research_topic`, `citation_check`, `prepare_petition`, `export_document`, `read_legal_file`, `list_sources`, `legal_research_guide`, `load_extended_tools`, `health_check`. |
+| `core` | 11 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`, `research_topic`, `export_document`, `load_extended_tools`, `health_check`. |
 <!-- drift:core-tools-end -->
+
+> 2026-09-06: `citation_check` ve `prepare_petition` (`drafting`), `read_legal_file` (`files`), `list_sources` ve `legal_research_guide` (`meta`) core profilden çıkarıldı — core docstring bütçesi (20 000 karakter) dolmuştu. `load_extended_tools` ile geri gelirler.
 | `full` | 47 | Core + all extended categories. |
 
 Select via the `EMSAL_TOOL_PROFILE` environment variable:
 
 ```
-EMSAL_TOOL_PROFILE=core   # default — 16 tools
+EMSAL_TOOL_PROFILE=core   # default — 11 tools
 EMSAL_TOOL_PROFILE=full   # all 47 tools
 ```
 
@@ -41,6 +43,9 @@ Dynamically loads extended tool categories into the running server (core profile
 | `drafting_advanced` | inspect_petition_pack, build_multi_issue_pack, inspect_multi_issue_pack, list_petition_templates, get_petition_template, build_argument_chain, score_argument, get_argument_strength_report, draft_document, export_bundle |
 | `udf_admin` | udf_toolkit_status, udf_authoring_instructions, pdf_toolkit_status, promote_pdf_to_full_text |
 | `legislation` | mevzuat_degisiklik_raporu |
+| `drafting` | citation_check, prepare_petition |
+| `files` | read_legal_file |
+| `meta` | list_sources, legal_research_guide |
 <!-- drift:categories-end -->
 
 **Output**: `dict` — `ok`, `loaded_tools[]`, `already_loaded[]`, `errors[]`, `categories_requested`, `note`.
