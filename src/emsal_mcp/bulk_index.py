@@ -75,6 +75,24 @@ def source_for_file(name: str) -> str:
     return "aym" if name.startswith("aym_") else "bedesten"
 
 
+def _sidecar_chunking_version(vec_file: Path) -> int:
+    """Bir sidecar'ın hangi parçalama sürümüyle gömüldüğü.
+
+    ``<ad>.done.json`` (parquet worker) ya da ``<ad>.manifest.json`` (delta)
+    içindeki ``chunking_version``.  Alan yoksa 1: bu dosyalar düzeltmeden
+    önce, eski (örtüşmesi iki kez uygulanan) parçalayıcıyla üretilmiştir.
+    """
+    stem = str(vec_file)[: -len(".vectors.npy")]
+    for suffix in (".done.json", ".manifest.json"):
+        p = Path(stem + suffix)
+        if p.exists():
+            try:
+                return int(json.loads(p.read_text(encoding="utf-8")).get("chunking_version", 1))
+            except Exception:
+                return 1
+    return 1
+
+
 def _iter_vec_files(vec_dir: Path) -> list[tuple[Path, Path]]:
     out = []
     for v in sorted(glob.glob(str(vec_dir / "*.vectors.npy"))):
@@ -105,6 +123,13 @@ def build_bulk_index(
     if not files:
         return {"ok": False, "error": f"{vec_dir} içinde *.vectors.npy yok"}
 
+    versions = {_sidecar_chunking_version(v) for v, _ in files}
+    if len(versions) > 1:
+        return {"ok": False, "error":
+                f"sidecar'lar karışık parçalama sürümü içeriyor: {sorted(versions)}; "
+                "tek sürümlü bir vektör dizini kullanın"}
+    chunking_version = versions.pop()
+
     t0 = time.time()
     shapes = [np.load(v, mmap_mode="r").shape for v, _ in files]
     total = sum(s[0] for s in shapes)
@@ -134,6 +159,23 @@ def build_bulk_index(
     doc_num = np.empty(total, dtype=np.int64)
     chunk_ix = np.empty(total, dtype=np.int16)
     src_id = np.empty(total, dtype=np.int8)
+    # Kaynak listesi sidecar'lara göre BÜYÜR: delta sidecar'ları satır başına
+    # ``source`` taşır ve orada SOURCES'te olmayan kaynaklar bulunur
+    # (uyap_arsiv, yargitay, mevzuat).  append_sidecar aynısını yapıyordu;
+    # tam yeniden kurulumda da gerekli, yoksa ValueError ile çöker.
+    sources: list[str] = list(SOURCES)
+    sid_of: dict[str, int] = {x: i for i, x in enumerate(sources)}
+
+    def _sid(name: str) -> int:
+        i = sid_of.get(name)
+        if i is None:
+            i = len(sources)
+            if i > 127:
+                raise ValueError("kaynak sayısı int8 sınırını aştı")
+            sources.append(name)
+            sid_of[name] = i
+        return i
+
     uuids: list[str] = []
     uuid_pos: dict[str, int] = {}
     pos = 0
@@ -143,9 +185,9 @@ def build_bulk_index(
         n = len(ids)
         assert n == s[0], f"{v.name}: {n} anahtar / {s[0]} vektör"
         if "source" in keys.column_names:  # delta sidecar: satır başına kaynak
-            sids = np.array([SOURCES.index(x) for x in keys["source"].to_pylist()], dtype=np.int8)
+            sids = np.array([_sid(x) for x in keys["source"].to_pylist()], dtype=np.int8)
         else:
-            sids = np.full(n, SOURCES.index(source_for_file(v.name)), dtype=np.int8)
+            sids = np.full(n, _sid(source_for_file(v.name)), dtype=np.int8)
         nums = np.empty(n, dtype=np.int64)
         for i, d in enumerate(ids):
             if d.isdigit() and len(d) < 19:
@@ -168,6 +210,7 @@ def build_bulk_index(
         log(f"[{fi+1}/{len(files)}] {v.name}: +{n:,} → {pos:,} ({time.time()-t0:.0f} s)")
 
     paths = bulk_paths(Path(db_path), provider_id)
+    paths["index"].parent.mkdir(parents=True, exist_ok=True)  # hazırlık dizini yeni olabilir
     tmp = paths["index"].with_suffix(".faiss.tmp")
     faiss.write_index(index, str(tmp))
     os.replace(tmp, paths["index"])
@@ -175,11 +218,14 @@ def build_bulk_index(
     meta = {
         "provider": provider_id, "count": int(total), "dim": int(dim),
         "nlist": nlist, "pq_m": pq_m, "nprobe": _DEFAULT_NPROBE,
-        "sources": SOURCES, "uuids": uuids,
+        "sources": sources, "uuids": uuids,
         "files": [v.name for v, _ in files],
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "elapsed_s": round(time.time() - t0, 1),
         "model": "intfloat/multilingual-e5-small", "chunk_size": 1600, "overlap": 200,
+        # chunk_index degerleri bu surumun parcalayicisina gore anlamli
+        # (snippet icin bulk_search._best_chunk_text bunu okur).
+        "chunking_version": chunking_version,
     }
     paths["meta"].write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
     log(f"yazıldı: {paths['index']} ({paths['index'].stat().st_size/2**20:.0f} MB), "
@@ -234,6 +280,11 @@ def append_sidecar(
     meta = json.loads(paths["meta"].read_text(encoding="utf-8"))
     if v.name in meta.get("files", []):
         return {"ok": True, "skipped": True, "reason": f"{v.name} zaten indekste"}
+    idx_ver = int(meta.get("chunking_version", 1))
+    side_ver = _sidecar_chunking_version(v)
+    if side_ver != idx_ver:
+        return {"ok": False, "error": f"{name}: parçalama sürümü {side_ver}, indeks {idx_ver}; "
+                                      "sidecar'ı indeksin sürümüyle yeniden gömün"}
 
     t0 = time.time()
     mat = np.load(v, mmap_mode="r")
@@ -369,23 +420,31 @@ def _doc_id(L: _Loaded, i: int) -> str:
     return str(n) if n >= 0 else L.meta["uuids"][-n - 1]
 
 
-def _best_chunk_text(text: str, chunk_index: int, max_chars: int = 600) -> str:
-    """Belgeyi indekslemede kullanilan ayni parcalayiciyla bol, en iyi parcayi dondur."""
+def _best_chunk_text(text: str, chunk_index: int, max_chars: int = 600,
+                     chunking_version: int = 1) -> str:
+    """Belgeyi INDEKSLEMEDE kullanilan ayni parcalayiciyla bol, en iyi parcayi dondur.
+
+    ``chunk_index`` yalnizca indeksi ureten parcalama surumune gore anlamlidir;
+    surum meta.json'dan gelir (alan yoksa 1 = eski parcalayici).  Boylece
+    chunking.py duzeltildikten sonra da CANLI (v1) indeksin alintilari kaymaz.
+    """
     try:
         from .chunking import chunk_text
-        chunks = chunk_text(text)
+        chunks = chunk_text(text, version=chunking_version)
         if not chunks:
             return ""
         c = chunks[min(max(int(chunk_index), 0), len(chunks) - 1)]
         c = " ".join(c.split())
-        # Ortusme parcalari, onceki parcanin kuyrugunu basa ekliyor ve ayni metin
-        # hemen ardindan yeniden geliyor ("... takdirde k" + "... takdirde kiraci").
-        # Ilk 100 karakter ileride tekrar ediyorsa basi at.
-        head = c[:100]
-        if len(head) == 100:
-            again = c.find(head, 1)
-            if 0 < again <= 400:
-                c = c[again:]
+        if chunking_version == 1:
+            # v1 hatasi: ortusme iki kez uygulaniyor, kuyruk parcanin basinda
+            # birebir tekrar ediyor ("... takdirde k" + "... takdirde kiraci").
+            # Ilk 100 karakter ileride tekrar ediyorsa basi at.  (v2'de tekrar
+            # yok; orada bu kesme gercek metni bozabilirdi.)
+            head = c[:100]
+            if len(head) == 100:
+                again = c.find(head, 1)
+                if 0 < again <= 400:
+                    c = c[again:]
         # Kelime ortasindan baslayan kesit: ilk bosluga kadar at.
         if c and not c[0].isupper() and " " in c[:40]:
             c = c[c.index(" ") + 1:]
@@ -444,6 +503,7 @@ def bulk_search(
     # gorur (sozluksel aramadaki snippet'in karsiligi). Yalniz ilk `snippet_n`
     # belge icin full_text okunur (belge basina bir PK okumasi + parcalama).
     snippet_n = max(limit * 2, 10)
+    chunk_ver = int(L.meta.get("chunking_version", 1))
     out: list[dict[str, Any]] = []
     for rank, ((doc_id, source), (score, cix)) in enumerate(ranked[:top_n]):
         cols = "title, content_status, full_text" if rank < snippet_n else \
@@ -468,7 +528,7 @@ def bulk_search(
         }
         text = row["full_text"] if row else None
         if text:
-            snippet = _best_chunk_text(text, cix)
+            snippet = _best_chunk_text(text, cix, chunking_version=chunk_ver)
             if snippet:
                 entry["snippet"] = snippet  # related_quotes'u sunucu bundan uretir
         out.append(entry)

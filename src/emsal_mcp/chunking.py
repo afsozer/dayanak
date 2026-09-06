@@ -59,8 +59,10 @@ def _split_paragraphs(text: str) -> list[str]:
     return [text] if text else []
 
 
-def _hard_split(unit: str, chunk_size: int, overlap: int) -> list[str]:
-    """Split a single paragraph too large to fit in one chunk.
+def _hard_split_v1(unit: str, chunk_size: int, overlap: int) -> list[str]:
+    """v1 (hatalı, dondurulmuş): örtüşmeli kayan pencere.
+
+    Split a single paragraph too large to fit in one chunk.
 
     Used when a paragraph itself exceeds ``chunk_size`` (e.g. a document
     with no paragraph breaks at all, or one enormous block of text).
@@ -79,7 +81,7 @@ def _hard_split(unit: str, chunk_size: int, overlap: int) -> list[str]:
     return pieces
 
 
-def chunk_text(
+def _chunk_text_v1(
     text: str,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     overlap: int = DEFAULT_OVERLAP,
@@ -126,7 +128,7 @@ def chunk_text(
         if len(p) <= chunk_size:
             units.append(p)
         else:
-            units.extend(_hard_split(p, chunk_size, overlap))
+            units.extend(_hard_split_v1(p, chunk_size, overlap))
 
     chunks: list[str] = []
     current = ""
@@ -157,3 +159,126 @@ def chunk_text(
         chunks.append(current)
 
     return chunks
+
+
+# ---------------------------------------------------------------------------
+# v2 — örtüşme yalnız BİR kez uygulanır
+# ---------------------------------------------------------------------------
+#
+# v1'in hatası: ``_hard_split_v1`` paragraf sınırı olmayan metni ZATEN
+# ``overlap`` kadar örtüşen parçalara böler; ardından birleştirme döngüsü
+# kapanan parçanın son ``overlap`` karakterini bir sonrakinin başına yeniden
+# ekler.  Aynı örtüşme iki kez uygulanır: parça, aynı metni önce kuyruk
+# olarak sonra parçanın kendi başlangıcı olarak içerir (ölçüm: 1.600/200 ile
+# tek bloklu metinde son parça 200 karakteri birebir tekrar ediyor,
+# ``... devam eder.\n\n... devam eder.``), sınırlar da ``overlap`` kadar
+# kayar.  Tekrarlanan metin gömme vektörünü kendi kuyruğuna doğru çeker ve
+# ``_best_chunk_text`` alıntısında görünür bir tekrara yol açar
+# (bulk_index.py'deki temizleme kesmesi bu yüzden yazılmıştı).
+#
+# v2: sert bölme ÖRTÜŞMESİZ parçalar üretir (``chunk_size - overlap``
+# boyunda), örtüşmeyi yalnız birleştirme döngüsü ekler.  Kuyruk parçaya
+# sığmıyorsa tümden atılmaz, sığacak kadarı alınır; kuyruk kelime ortasından
+# başlamasın diye ilk boşluğa kadar kırpılır.
+
+#: Parçalama sürümü.  Sidecar/indeks meta'sına yazılır; bir indeks hangi
+#: sürümle gömüldüyse ``chunk_index`` değerleri o sürüme göre anlamlıdır.
+#: Eski (v1) indeksle üretilmiş meta'da alan yoktur → 1 varsayılır.
+CHUNKING_VERSION = 2
+
+
+def _hard_split_v2(unit: str, chunk_size: int, overlap: int) -> list[str]:
+    """Tek bir paragrafı örtüşmesiz parçalara böl.
+
+    Parça boyu ``chunk_size - overlap``: birleştirme döngüsü başa önceki
+    parçanın kuyruğunu eklediğinde sonuç tam ``chunk_size``a oturur ve
+    hiçbir metin iki kez yazılmaz.
+    """
+    step = max(chunk_size - overlap, 1)
+    return [unit[i : i + step] for i in range(0, len(unit), step)]
+
+
+def _chunk_text_v2(
+    text: str,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    overlap: int = DEFAULT_OVERLAP,
+) -> list[str]:
+    stripped = text.strip()
+    if len(stripped) <= chunk_size:
+        return [stripped]
+
+    # (birim, yapıştırıcı): yapıştırıcı "" ise birim bir öncekinin metinde
+    # DOĞRUDAN devamıdır (sert bölmenin parçaları) — araya "\n\n" konursa
+    # sınıra denk gelen kelime ikiye bölünür ve hiçbir parçada bütün
+    # görünmez.  Paragraflar arasında ise "\n\n" korunur.
+    units: list[tuple[str, str]] = []
+    for p in _split_paragraphs(stripped):
+        if len(p) <= chunk_size:
+            units.append((p, "\n\n"))
+        else:
+            for i, piece in enumerate(_hard_split_v2(p, chunk_size, overlap)):
+                units.append((piece, "\n\n" if i == 0 else ""))
+
+    chunks: list[str] = []
+    current = ""
+    for unit, glue in units:
+        candidate = f"{current}{glue}{unit}" if current else unit
+        if len(candidate) <= chunk_size:
+            current = candidate
+            continue
+
+        tail = ""
+        if current:
+            chunks.append(current)
+            room = chunk_size - len(unit) - len(glue)
+            if overlap > 0 and room > 0:
+                tail = current[-min(overlap, room):]
+                if glue:
+                    # Ayrı paragraf: kuyruk kelime ortasından başlamasın.
+                    sp = tail.find(" ")
+                    if 0 <= sp < len(tail) - 1:
+                        tail = tail[sp + 1:]
+        current = f"{tail}{glue}{unit}" if tail else unit
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def chunk_text(
+    text: str,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    overlap: int = DEFAULT_OVERLAP,
+    *,
+    version: int = CHUNKING_VERSION,
+) -> list[str]:
+    """Metni örtüşmeli, paragraf hizalı parçalara böl.
+
+    Args:
+        text: Belge metni (full_text ya da markdown).
+        chunk_size: Parça başına en çok karakter.
+        overlap: Bir parçanın sonundan bir sonrakinin başına taşınan
+            karakter sayısı.
+        version: 1 = eski (hatalı) parçalayıcı, YALNIZ v1 ile gömülmüş bir
+            indeksin ``chunk_index`` değerlerini yeniden çözmek için;
+            2 = güncel.  Yeni gömmeler her zaman ``CHUNKING_VERSION``.
+
+    Returns:
+        Belge sırasında parça listesi.  Boş/boşluk girdi ``[]`` döner.
+
+    Raises:
+        ValueError: ``overlap >= chunk_size``, ya da geçersiz sürüm.
+    """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if overlap < 0:
+        raise ValueError("overlap must be non-negative")
+    if overlap >= chunk_size:
+        raise ValueError("overlap must be smaller than chunk_size")
+    if not text or not text.strip():
+        return []
+    if version == 1:
+        return _chunk_text_v1(text, chunk_size, overlap)
+    if version != CHUNKING_VERSION:
+        raise ValueError(f"bilinmeyen chunking sürümü: {version}")
+    return _chunk_text_v2(text, chunk_size, overlap)

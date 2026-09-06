@@ -26,7 +26,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(0, r"D:\Emsal-mcp\src")
-from emsal_mcp.chunking import chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
+from emsal_mcp.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
 
 MODEL = "intfloat/multilingual-e5-small"
 
@@ -70,8 +70,12 @@ def main() -> None:
     keys_p, meta_p = stem.with_suffix(".keys.npz"), stem.with_suffix(".meta.json")
     in_index: set[tuple[int, int]] = set()
     sources = ["bedesten", "aym"]
+    # Delta sidecar MEVCUT indekse eklenir; parçalama sürümü indeksinkiyle
+    # aynı olmalı, yoksa chunk_index değerleri (dolayısıyla alıntılar) kayar.
+    chunk_ver = CHUNKING_VERSION
     if keys_p.exists() and meta_p.exists():
         meta = _json.loads(meta_p.read_text(encoding="utf-8"))
+        chunk_ver = int(meta.get("chunking_version", 1))
         sources = meta.get("sources", sources)
         uuid_pos = {u: i for i, u in enumerate(meta.get("uuids", []))}
         with np.load(keys_p) as kz:
@@ -127,7 +131,7 @@ def main() -> None:
             skipped += 1
             continue
         manifest.append([r["document_id"], r["source"]])
-        for i, ch in enumerate(chunk_text(text)):
+        for i, ch in enumerate(chunk_text(text, version=chunk_ver)):
             pending.append("passage: " + ch)
             ids.append(r["document_id"]); srcs.append(r["source"]); cix.append(i); tlen.append(len(text))
         if len(pending) >= 8192:
@@ -148,6 +152,7 @@ def main() -> None:
     }), vec_dir / f"{args.name}.keys.parquet", compression="zstd")
     (vec_dir / f"{args.name}.manifest.json").write_text(json.dumps(
         {"docs": manifest, "chunks": len(ids), "provider": args.provider, "model": MODEL,
+         "chunking_version": chunk_ver,
          "at": time.strftime("%Y-%m-%d %H:%M:%S")}, ensure_ascii=False), encoding="utf-8")
     print(f"yazıldı: {out_v} ({vecs.nbytes/2**20:.0f} MB)")
 

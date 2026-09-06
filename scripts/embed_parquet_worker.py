@@ -7,7 +7,9 @@ Her girdi parquet dosyası için çıktı dizinine:
     <ad>.done.json     sayılar + süre
 Tamamlanmış dosyalar (done.json varsa) atlanır → kaldığı yerden devam eder.
 
-Parçalama emsal_mcp.chunking.chunk_text ile (1600/200) — Mac ve laptop aynı kodu koşar.
+Parçalama emsal_mcp.chunking.chunk_text ile (1600/200, CHUNKING_VERSION) — Mac ve laptop
+aynı kodu koşar. done.json'a yazılan ``chunking_version`` sidecar'ın hangi parçalayıcıyla
+üretildiğini söyler; bulk_index bunu meta'ya taşır ve karışık sürümlü dizini reddeder.
 Metin filtresi import_hf_parquet.py ile aynı: len(text) >= 50.
 
 Kullanım (laptop, CUDA):
@@ -38,9 +40,9 @@ for cand in (HERE.parent / "src", HERE):
     if (cand / "emsal_mcp" / "chunking.py").exists() or (cand / "chunking.py").exists():
         sys.path.insert(0, str(cand))
 try:
-    from emsal_mcp.chunking import chunk_text
+    from emsal_mcp.chunking import CHUNKING_VERSION, chunk_text
 except ImportError:
-    from chunking import chunk_text  # laptop kopyası: chunking.py betiğin yanında
+    from chunking import CHUNKING_VERSION, chunk_text  # laptop kopyası: chunking.py betiğin yanında
 
 MODEL = "intfloat/multilingual-e5-small"
 DIM = 384
@@ -122,7 +124,8 @@ def process_file(path: str, out_dir: Path, model, batch: int, block: int, log) -
     el = time.time() - t0
     info = {"file": path, "source": src, "rows": seen, "chunks": int(len(ids)),
             "seconds": round(el, 1), "chunks_per_sec": round(len(ids) / max(el, 1e-9), 1),
-            "model": MODEL, "dtype": "float16", "dim": DIM, "chunk_size": 1600, "overlap": 200}
+            "model": MODEL, "dtype": "float16", "dim": DIM, "chunk_size": 1600, "overlap": 200,
+            "chunking_version": CHUNKING_VERSION}
     done.write_text(json.dumps(info, ensure_ascii=False, indent=1))
     log(f"{name}: BİTTİ {len(ids):,} parça {el/60:.1f} dk ({info['chunks_per_sec']} parça/sn)")
     return info

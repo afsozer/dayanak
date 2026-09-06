@@ -193,3 +193,86 @@ class TestAppend:
         # tekrar ekleme atlanır
         r2 = bulk_index.append_sidecar(corpus["vec_dir"], corpus["db_path"], "testprov", "delta-1", log=lambda m: None)
         assert r2["ok"] and r2.get("skipped")
+
+
+class TestChunkingVersionGating:
+    """Parçalama sürümü meta'ya yazılır; canlı (v1) indeks bozulmaz."""
+
+    def test_missing_done_json_means_v1(self, corpus):
+        r = _build(corpus)
+        meta = json.loads((corpus["db_path"].parent / "bulk-testprov.meta.json").read_text("utf-8"))
+        assert meta["chunking_version"] == 1
+
+    def test_version_taken_from_done_json(self, corpus):
+        for f in corpus["vec_dir"].glob("*.vectors.npy"):
+            stem = str(f)[: -len(".vectors.npy")]
+            Path(stem + ".done.json").write_text(json.dumps({"chunking_version": 2}), "utf-8")
+        _build(corpus)
+        meta = json.loads((corpus["db_path"].parent / "bulk-testprov.meta.json").read_text("utf-8"))
+        assert meta["chunking_version"] == 2
+
+    def test_mixed_versions_refused(self, corpus):
+        files = sorted(corpus["vec_dir"].glob("*.vectors.npy"))
+        stem = str(files[0])[: -len(".vectors.npy")]
+        Path(stem + ".done.json").write_text(json.dumps({"chunking_version": 2}), "utf-8")
+        r = bulk_index.build_bulk_index(
+            corpus["vec_dir"], corpus["db_path"], "testprov",
+            nlist=8, pq_m=16, train_sample=2000, log=lambda m: None,
+        )
+        assert not r["ok"] and "sürüm" in r["error"]
+
+    def test_append_refuses_version_mismatch(self, corpus):
+        _build(corpus)  # v1 indeks
+        rng = np.random.default_rng(7)
+        v = rng.normal(size=(10, DIM))
+        v /= np.linalg.norm(v, axis=1, keepdims=True)
+        _write_sidecar(corpus["vec_dir"], "delta-20260907", v,
+                       [str(900000 + i) for i in range(10)], [0] * 10)
+        (corpus["vec_dir"] / "delta-20260907.manifest.json").write_text(
+            json.dumps({"chunking_version": 2}), "utf-8")
+        r = bulk_index.append_sidecar(corpus["vec_dir"], corpus["db_path"], "testprov",
+                                      "delta-20260907", log=lambda m: None)
+        assert not r["ok"] and "sürüm" in r["error"]
+
+    def test_snippet_uses_index_version(self, corpus):
+        """v1 indekste alıntı v1 parçalayıcıyla çözülür (parça numaraları kaymaz)."""
+        text = "\n\n".join(
+            " ".join(f"Cumle{k:03d}{i:04d} burada gerekce yer almaktadir." for i in range(40))
+            for k in range(6)
+        )
+        s1 = bulk_index._best_chunk_text(text, 2, chunking_version=1)
+        s2 = bulk_index._best_chunk_text(text, 2, chunking_version=2)
+        assert s1 and s2 and s1 != s2
+
+
+class TestMultiSourceRebuild:
+    """Delta sidecar'ları SOURCES'te olmayan kaynak taşır (uyap_arsiv, mevzuat).
+
+    Tam yeniden kurulum bunlarda ValueError ile çöküyordu; kaynak listesi
+    artık sidecar'lara göre büyür ve meta'ya yazılır.
+    """
+
+    def test_build_accepts_unknown_sources(self, corpus):
+        rng = np.random.default_rng(11)
+        n = 30
+        v = rng.normal(size=(n, DIM))
+        v /= np.linalg.norm(v, axis=1, keepdims=True)
+        doc_ids = [str(800000 + i) for i in range(n)]
+        srcs = (["uyap_arsiv"] * 20) + (["mevzuat"] * 5) + (["bedesten"] * 5)
+        np.save(corpus["vec_dir"] / "delta-20260907.vectors.npy", v.astype(np.float16))
+        pq.write_table(pa.table({
+            "document_id": pa.array(doc_ids, pa.string()),
+            "source": pa.array(srcs, pa.string()),
+            "chunk_index": pa.array([0] * n, pa.int16()),
+            "text_len": pa.array([900] * n, pa.int32()),
+        }), corpus["vec_dir"] / "delta-20260907.keys.parquet")
+
+        r = _build(corpus)
+        meta = json.loads((corpus["db_path"].parent / "bulk-testprov.meta.json").read_text("utf-8"))
+        assert meta["sources"][:2] == ["bedesten", "aym"]  # eski kimlikler kaymaz
+        assert set(meta["sources"]) >= {"bedesten", "aym", "uyap_arsiv", "mevzuat"}
+        assert r["count"] == 400 * 3 + 50 + n
+
+        with np.load(corpus["db_path"].parent / "bulk-testprov.keys.npz") as kz:
+            sid = kz["source_id"]
+        assert sid.max() == meta["sources"].index("mevzuat")
