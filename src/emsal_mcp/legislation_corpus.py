@@ -29,7 +29,8 @@ import hashlib
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from statistics import median
 from typing import Any
 
 from .legislation import (
@@ -67,6 +68,22 @@ CREATE TABLE IF NOT EXISTS mevzuat_dokuman (
 
 _DOKUMAN_NO_INDEX = (
     "CREATE INDEX IF NOT EXISTS mevzuat_dokuman_no ON mevzuat_dokuman(mevzuat_no, tur);"
+)
+
+# Faz 2d: aynı adla yeniden yayımlanan tebliğ/yönetmelik sürümleri.
+# ``ad_anahtari`` HER belgede dolu (tür + normalize ad; indeksli, upsert'te tek
+# grubun yeniden hesabı tam tarama yapmasın diye). ``grup_anahtari`` YALNIZ
+# sürüm serisi sayılan gruplarda dolu, ``guncel`` serinin en yeni üyesinde 1.
+_DOKUMAN_AD_ANAHTARI_COL = "ALTER TABLE mevzuat_dokuman ADD COLUMN ad_anahtari TEXT"
+_DOKUMAN_GRUP_COL = "ALTER TABLE mevzuat_dokuman ADD COLUMN grup_anahtari TEXT"
+_DOKUMAN_GUNCEL_COL = "ALTER TABLE mevzuat_dokuman ADD COLUMN guncel INTEGER"
+_DOKUMAN_AD_INDEX = (
+    "CREATE INDEX IF NOT EXISTS mevzuat_dokuman_ad_anahtari "
+    "ON mevzuat_dokuman(ad_anahtari);"
+)
+_DOKUMAN_GRUP_INDEX = (
+    "CREATE INDEX IF NOT EXISTS mevzuat_dokuman_grup "
+    "ON mevzuat_dokuman(grup_anahtari, guncel);"
 )
 
 _MADDE_TABLE = """\
@@ -157,6 +174,15 @@ def ensure_schema(db: sqlite3.Connection) -> bool:
 
     db.execute(_DOKUMAN_TABLE)
     db.execute(_DOKUMAN_NO_INDEX)
+    dcols = {r[1] for r in db.execute("PRAGMA table_info(mevzuat_dokuman)").fetchall()}
+    if "ad_anahtari" not in dcols:
+        db.execute(_DOKUMAN_AD_ANAHTARI_COL)
+    if "grup_anahtari" not in dcols:
+        db.execute(_DOKUMAN_GRUP_COL)
+    if "guncel" not in dcols:
+        db.execute(_DOKUMAN_GUNCEL_COL)
+    db.execute(_DOKUMAN_AD_INDEX)
+    db.execute(_DOKUMAN_GRUP_INDEX)
     db.execute(_MADDE_TABLE)
     db.execute(_MADDE_NO_INDEX)
     cols = {r[1] for r in db.execute("PRAGMA table_info(mevzuat_madde)").fetchall()}
@@ -962,13 +988,14 @@ def upsert_document(
             """INSERT OR REPLACE INTO mevzuat_dokuman (
                 mevzuat_id, kaynak, tur, mevzuat_no, tertip, ad, kabul_tarihi,
                 rg_tarihi, rg_sayisi, guncelleme_tarihi, metin, metin_hash,
-                madde_sayisi, cekim_zamani, kaynak_url, meta_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                madde_sayisi, cekim_zamani, kaynak_url, meta_json, ad_anahtari
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 mevzuat_id, kaynak, tur, str(mevzuat_no), str(tertip), ad,
                 kabul_tarihi, rg_tarihi, rg_sayisi, guncelleme_tarihi, metin,
                 metin_hash, len(maddeler), now, kaynak_url,
                 json.dumps(meta or {}, ensure_ascii=False),
+                ad_anahtari(tur, ad),
             ),
         )
         db.execute("DELETE FROM mevzuat_degisiklik WHERE mevzuat_id = ?", (mevzuat_id,))
@@ -992,21 +1019,457 @@ def upsert_document(
     except Exception:
         db.rollback()
         raise
+    # Yeni bir yıl tebliği geldiğinde serinin güncel üyesi kaysın diye grup
+    # bayrakları HER yazımdan sonra yeniden hesaplanır (indeksli, tek grup).
+    grup_yenile(db, tur, ad)
     return {"status": "updated" if row else "inserted", "madde_sayisi": len(maddeler)}
 
 
 # ── Arama ───────────────────────────────────────────────────────────────────
+
+# ── Sürüm grupları (Faz 2d) ─────────────────────────────────────────────────
+#
+# Yıllık yeniden yayımlanan tebliğler ("AVUKATLIK ASGARİ ÜCRET TARİFESİ" adını
+# 21 ayrı belge taşıyor) aramada beş yılın aynı maddesini birden döndürüyordu.
+# Aynı ad + aynı türdeki belgeler bir "sürüm serisi" sayılır, RG tarihi en yeni
+# olan yürürlükteki kabul edilir, eskiler aramada katlanır.
+
+# Şapkalı harfler de katlanır: ölçüldü, "İFLÂS İDARESİ ÜCRETİ… TARİFESİ"
+# ile "İFLAS İDARESİ ÜCRETİ… TARİFESİ" aynı tarifenin iki yılı (9 → 10 üye);
+# çok üyeli grup sayısını değiştirmiyor (61 → 61), yani başka bir şeyi
+# yanlışlıkla birleştirmiyor.
+_TR_UPPER = str.maketrans("ıİşŞğĞçÇöÖüÜâÂîÎûÛ", "iisSgGcCoOuUaAiIuU")
+
+#: Yalnız bu türlerde "aynı ad = aynı belgenin yeni sürümü" varsayımı geçerli.
+#: KANUN/KHK/CBK KASTEN DIŞARIDA (ölçüldü, 6 Eyl 2026, 14.099 belge):
+#: "İŞ KANUNU" adını 1475 ve 4857 birlikte taşıyor ama 1475'in 14. maddesi
+#: (kıdem tazminatı) hâlâ yürürlükte; "BAZI KANUN VE KANUN HÜKMÜNDE
+#: KARARNAMELERDE DEĞİŞİKLİK YAPILMASINA DAİR KANUN" adını 8 AYRI kanun,
+#: "OLAĞANÜSTÜ HAL ... KHK'NIN KABULÜ ..." adını 11 ayrı kanun taşıyor.
+#: Bunları katlamak maddeyi kaybettirirdi.
+_SERI_TURLER = frozenset({"TEBLIGLER", "TEBLIG", "YONETMELIK"})
+
+#: Ardışık yayımlar arasındaki medyan gün sayısı için alt sınır. Ölçüldü:
+#: "ULUSAL MESLEK STANDARTLARINA DAİR TEBLİĞ" adını 51 AYRI tebliğ taşıyor
+#: (her biri başka bir meslek standardı; medyan aralık 27 gün) — sürüm değil.
+#: Gerçek yıllık serilerin medyanı 183-732 gün. 150 gün eşiği ikisini ayırıyor
+#: ve "aynı yılda iki kez yayımlandı" istisnasını (AAÜT 2017 ve 2020) yutmuyor.
+_SERI_MIN_MEDYAN_GUN = 150
+
+# Rumi/Hicri tarihli eski belgeler ("18.02.1331") ELENİR: yıl aralığı dışı.
+_RG_TARIH_RE = re.compile(r"(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})")
+_RG_ISO_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
+
+
+def _rg_date(rg: str | None) -> date | None:
+    s = (rg or "").strip()
+    m = _RG_TARIH_RE.match(s)
+    if m:
+        gun, ay, yil = int(m[1]), int(m[2]), int(m[3])
+    else:
+        m = _RG_ISO_RE.match(s)
+        if not m:
+            return None
+        yil, ay, gun = int(m[1]), int(m[2]), int(m[3])
+    if not (1900 <= yil <= 2100 and 1 <= ay <= 12 and 1 <= gun <= 31):
+        return None
+    try:
+        return date(yil, ay, gun)
+    except ValueError:
+        return None
+
+
+def _norm_ad(ad: str | None) -> str:
+    """Ad normalizasyonu: Türkçe harfler, büyük/küçük harf, fazla boşluk.
+
+    Sondaki yıl KASTEN kırpılmıyor: ölçüldü (14.099 belge), kırpmak aynı-adlı
+    grup sayısını 61'den 61'e, yani hiç değiştirmiyor; buna karşılık
+    "(SERİ NO: 2018/1)" gibi kimliğin parçası olan sonekleri yutma riski var.
+    """
+    return re.sub(r"\s+", " ", (ad or "").translate(_TR_UPPER).upper()).strip()
+
+
+def ad_anahtari(tur: str | None, ad: str | None) -> str:
+    """Belgenin ad kimliği (tür + normalize ad). HER belgede dolu."""
+    return f"{(tur or '').strip().upper()}|{_norm_ad(ad)}"
+
+
+def _grup_karari(uyeler: list[tuple[Any, ...]]) -> list[tuple[str | None, int, str]]:
+    """``(mevzuat_id, tur, ad, rg_tarihi)`` üyelerinden karar üret.
+
+    Dönüş: ``(grup_anahtari|None, guncel, mevzuat_id)`` — UPDATE parametresi
+    sırasında. ``grup_anahtari`` None ise grup sürüm serisi DEĞİL; o zaman her
+    belge kendi başına günceldir (``guncel = 1``).
+    """
+    if not uyeler:
+        return []
+    tekil = [(None, 1, u[0]) for u in uyeler]
+    if len(uyeler) < 2:
+        return tekil
+    tur = (uyeler[0][1] or "").strip().upper()
+    if tur not in _SERI_TURLER:
+        return tekil
+    tarih = {u[0]: _rg_date(u[3]) for u in uyeler}
+    if any(t is None for t in tarih.values()):
+        return tekil
+    ds = sorted(tarih.values())  # type: ignore[type-var]
+    araliklar = [(b - a).days for a, b in zip(ds, ds[1:])]
+    if median(araliklar) < _SERI_MIN_MEDYAN_GUN:
+        return tekil
+    key = ad_anahtari(uyeler[0][1], uyeler[0][2])
+    en_yeni = max(uyeler, key=lambda u: (tarih[u[0]], str(u[0])))[0]
+    return [(key, 1 if u[0] == en_yeni else 0, u[0]) for u in uyeler]
+
+
+def grup_yenile(db: sqlite3.Connection, tur: str | None, ad: str | None) -> dict[str, Any]:
+    """TEK bir ad grubunun ``grup_anahtari``/``guncel`` bayraklarını yeniden hesapla.
+
+    ``upsert_document`` her yazımdan sonra bunu çağırır: yeni bir yıl tebliği
+    gelince serinin güncel üyesi kendiliğinden kayar. ``ad_anahtari`` indeksli,
+    tam tablo taraması yok.
+    """
+    key = ad_anahtari(tur, ad)
+    rows = db.execute(
+        "SELECT mevzuat_id, tur, ad, rg_tarihi FROM mevzuat_dokuman WHERE ad_anahtari = ?",
+        (key,),
+    ).fetchall()
+    kararlar = _grup_karari([tuple(r) for r in rows])
+    if kararlar:
+        db.executemany(
+            "UPDATE mevzuat_dokuman SET grup_anahtari = ?, guncel = ? WHERE mevzuat_id = ?",
+            kararlar,
+        )
+        db.commit()
+    seri = bool(kararlar and kararlar[0][0])
+    return {"ad_anahtari": key, "uye": len(rows), "seri": seri}
+
+
+def gruplari_yenile(
+    db: sqlite3.Connection, *, uygula: bool = True
+) -> dict[str, Any]:
+    """Tüm korpusun sürüm gruplarını yeniden hesapla (doldurma betiği için).
+
+    ``uygula=False`` yalnız planı döndürür (kuru koşum). Tablo küçük (14 bin
+    satır), tam tarama saniyenin altında.
+    """
+    ensure_schema(db)
+    rows = db.execute(
+        "SELECT mevzuat_id, tur, ad, rg_tarihi FROM mevzuat_dokuman"
+    ).fetchall()
+    gruplar: dict[str, list[tuple[Any, ...]]] = {}
+    for r in rows:
+        gruplar.setdefault(ad_anahtari(r[1], r[2]), []).append(tuple(r))
+
+    kararlar: list[tuple[str | None, int, str]] = []
+    seriler: list[dict[str, Any]] = []
+    reddedilen: list[dict[str, Any]] = []
+    for key, uyeler in gruplar.items():
+        karar = _grup_karari(uyeler)
+        kararlar.extend(karar)
+        if karar and karar[0][0]:
+            tarihli = sorted(
+                ((_rg_date(u[3]), u[2], u[0]) for u in uyeler),
+                key=lambda t: t[0],  # type: ignore[arg-type,return-value]
+            )
+            seriler.append({
+                "grup_anahtari": key,
+                "ad": uyeler[0][2],
+                "tur": uyeler[0][1],
+                "uye": len(uyeler),
+                "ilk": str(tarihli[0][0]),
+                "guncel_rg": str(tarihli[-1][0]),
+            })
+        elif len(uyeler) > 1:
+            reddedilen.append({
+                "ad": uyeler[0][2], "tur": uyeler[0][1], "uye": len(uyeler),
+            })
+
+    if uygula:
+        db.executemany(
+            "UPDATE mevzuat_dokuman SET ad_anahtari = ? WHERE mevzuat_id = ?",
+            [(ad_anahtari(r[1], r[2]), r[0]) for r in rows],
+        )
+        db.executemany(
+            "UPDATE mevzuat_dokuman SET grup_anahtari = ?, guncel = ? WHERE mevzuat_id = ?",
+            kararlar,
+        )
+        db.commit()
+    seriler.sort(key=lambda s: -s["uye"])
+    reddedilen.sort(key=lambda s: -s["uye"])
+    return {
+        "belge": len(rows),
+        "ad_grubu": len(gruplar),
+        "cok_uyeli_grup": sum(1 for v in gruplar.values() if len(v) > 1),
+        "seri_grup": len(seriler),
+        "seri_belge": sum(s["uye"] for s in seriler),
+        "katlanan_eski_surum": sum(s["uye"] - 1 for s in seriler),
+        "seriler": seriler,
+        "seri_sayilmayan": reddedilen,
+        "uygulandi": uygula,
+    }
+
+
+# ── Sürüm katlama (arama sonrası) ───────────────────────────────────────────
+
+_KATLAMA_SNIPPET_CEVRE = 110
+
+
+def _snippet_uret(metin: str, kelimeler: list[str] | None) -> str:
+    """Güncel sürümün metninden snippet. Eşleşen kelimenin çevresi, yoksa baş."""
+    m = (metin or "").strip()
+    if kelimeler:
+        low = _lower_tr(m)
+        for k in kelimeler:
+            i = low.find(_lower_tr(k))
+            if i >= 0:
+                bas = max(0, i - _KATLAMA_SNIPPET_CEVRE)
+                son = min(len(m), i + len(k) + _KATLAMA_SNIPPET_CEVRE)
+                return (
+                    ("… " if bas else "")
+                    + " ".join(m[bas:son].split())
+                    + (" …" if son < len(m) else "")
+                )
+    kisa = " ".join(m[:400].split())
+    return kisa + (" …" if len(m) > 400 else "")
+
+
+def surum_katla(
+    db: sqlite3.Connection,
+    results: list[dict[str, Any]],
+    *,
+    limit: int | None = None,
+    kelimeler: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Sürüm serilerinin ESKİ üyelerine ait maddeleri tek satıra indir.
+
+    Sıra korunur. Eski sürüme ait bir madde, serinin güncel belgesinde aynı
+    numarayla varsa o belgenin maddesiyle DEĞİŞTİRİLİR (snippet güncel
+    metinden yeniden üretilir); yoksa satır kalır ama ``guncel: False`` ve
+    ``guncel_surum`` ile işaretlenir — madde SESSİZCE KAYBOLMAZ.
+
+    Seriye ait her satıra ``eski_surum_sayisi`` ve ``eski_surumler`` eklenir.
+    Seride olmayan sonuçlara hiçbir alan eklenmez (davranış değişmez).
+    """
+    if not results:
+        return []
+    ids = [x for x in {r.get("mevzuat_id") for r in results} if x]
+    if not ids:
+        return results if limit is None else results[:limit]
+
+    dok: dict[str, dict[str, Any]] = {}
+    try:
+        satirlar = []
+        for i in range(0, len(ids), 400):
+            parca = ids[i : i + 400]
+            satirlar.extend(db.execute(
+                "SELECT mevzuat_id, mevzuat_no, tur, ad, kaynak_url, rg_tarihi,"
+                " grup_anahtari, COALESCE(guncel, 1) FROM mevzuat_dokuman"
+                f" WHERE mevzuat_id IN ({','.join('?' * len(parca))})",
+                parca,
+            ).fetchall())
+    except sqlite3.OperationalError:
+        # Sürüm sütunları olmayan (ör. test fikstürü ya da göç edilmemiş) bir
+        # şema: katlama bir İYİLEŞTİRME, aramayı düşürmemeli.
+        return results if limit is None else results[:limit]
+    for r in satirlar:
+        dok[r[0]] = {
+            "mevzuat_no": r[1], "tur": r[2], "ad": r[3], "kaynak_url": r[4],
+            "rg_tarihi": r[5], "grup": r[6], "guncel": int(r[7] or 0),
+        }
+
+    uyeler: dict[str, list[dict[str, Any]]] = {}
+    for grup in {d["grup"] for d in dok.values() if d["grup"]}:
+        rows = db.execute(
+            "SELECT mevzuat_id, mevzuat_no, rg_tarihi, COALESCE(guncel, 1), ad,"
+            " kaynak_url, tur FROM mevzuat_dokuman WHERE grup_anahtari = ?",
+            (grup,),
+        ).fetchall()
+        uyeler[grup] = sorted(
+            (
+                {
+                    "mevzuat_id": r[0], "mevzuat_no": r[1], "rg_tarihi": r[2],
+                    "guncel": int(r[3] or 0), "ad": r[4], "kaynak_url": r[5],
+                    "tur": r[6],
+                }
+                for r in rows
+            ),
+            key=lambda u: (_rg_date(u["rg_tarihi"]) or date.min),
+            reverse=True,
+        )
+
+    madde_dizin: dict[str, dict[str, tuple[Any, ...]]] = {}
+
+    def _dizin(mid: str) -> dict[str, tuple[Any, ...]]:
+        d = madde_dizin.get(mid)
+        if d is None:
+            d = {
+                _norm_article_no(str(r[0])): tuple(r)
+                for r in db.execute(
+                    "SELECT madde_no, sira, baslik, degisiklik_notu, ust_baslik"
+                    " FROM mevzuat_madde WHERE mevzuat_id = ?",
+                    (mid,),
+                ).fetchall()
+            }
+            madde_dizin[mid] = d
+        return d
+
+    gorulen: set[tuple[Any, Any]] = set()
+    out: list[dict[str, Any]] = []
+    for r in results:
+        mid = r.get("mevzuat_id")
+        d = dok.get(mid)
+        grup = d["grup"] if d else None
+        yeni = dict(r)
+        if grup:
+            liste = uyeler.get(grup, [])
+            guncel_dok = next((u for u in liste if u["guncel"]), None)
+            if guncel_dok is not None and guncel_dok["mevzuat_id"] != mid:
+                hedef = _dizin(guncel_dok["mevzuat_id"]).get(
+                    _norm_article_no(str(r.get("madde_no") or ""))
+                )
+                if hedef is not None:
+                    metin = db.execute(
+                        "SELECT metin FROM mevzuat_madde WHERE mevzuat_id = ? AND sira = ?",
+                        (guncel_dok["mevzuat_id"], hedef[1]),
+                    ).fetchone()
+                    yeni.update({
+                        "mevzuat_id": guncel_dok["mevzuat_id"],
+                        "mevzuat_no": guncel_dok["mevzuat_no"],
+                        "mevzuat_adi": guncel_dok["ad"],
+                        "tur": guncel_dok["tur"],
+                        "kaynak_url": guncel_dok["kaynak_url"],
+                        "madde_no": hedef[0],
+                        "sira": hedef[1],
+                        "baslik": hedef[2],
+                        "degisiklik_notu": hedef[3],
+                        "snippet": _snippet_uret(
+                            (metin[0] if metin else ""), kelimeler
+                        ),
+                        # FTS satırı ESKİ sürüme aitti; snippet artık güncel
+                        # metinden geliyor, rowid'i taşımaya devam etmemeli.
+                        "_fts_rowid": None,
+                        "guncel": True,
+                        "eslesen_surum": {
+                            "mevzuat_no": d["mevzuat_no"], "rg_tarihi": d["rg_tarihi"],
+                        },
+                    })
+                else:
+                    yeni["guncel"] = False
+                    yeni["guncel_surum"] = {
+                        "mevzuat_no": guncel_dok["mevzuat_no"],
+                        "rg_tarihi": guncel_dok["rg_tarihi"],
+                        "ad": guncel_dok["ad"],
+                    }
+            else:
+                yeni["guncel"] = True
+            eski = [
+                {"mevzuat_no": u["mevzuat_no"], "rg_tarihi": u["rg_tarihi"]}
+                for u in liste
+                if not u["guncel"]
+            ]
+            yeni["eski_surum_sayisi"] = len(eski)
+            yeni["eski_surumler"] = eski[:10]
+            yeni["grup_anahtari"] = grup
+
+        key = (grup or yeni.get("mevzuat_id"), _norm_article_no(str(yeni.get("madde_no") or "")))
+        if key in gorulen:
+            continue
+        gorulen.add(key)
+        out.append(yeni)
+        if limit is not None and len(out) >= limit:
+            break
+    return out
+
+
+# ── Arama ──────────────────────────────────────────────────────────────────
 
 # FTS5'in sorgu dilinde anlamı olan her şey ("AND", tırnak, yıldız, iki nokta,
 # parantez) kullanıcı sorgusundan temizlenir: aksi hâlde "m. 6/A" gibi bir
 # ifade sözdizimi hatasıyla düşer.
 _FTS_TOKEN_RE = re.compile(r"[0-9A-Za-zÇçĞğIıİiÖöŞşÜü]+")
 
+#: AND sorgusu bu sayının ALTINDA sonuç döndürürse aynı kelimelerle OR'a
+#: düşülür. Ölçüldü: "konut kirasında kiracı tahliye taahhüdü dava yoluyla
+#: sona erme" AND ile 0 satır döndürüyor, melez arama tamamen semantik
+#: katmana kalıyordu; BM25 zaten çok kelime eşleşen maddeyi üste alır.
+_OR_ESIK = 3
 
-def _fts_query(query: str) -> str:
-    """Ham kelimeleri AND'li, tırnaklanmış bir FTS5 sorgusuna çevir."""
-    tokens = _FTS_TOKEN_RE.findall(query or "")
-    return " AND ".join(f'"{t}"' for t in tokens)
+
+def _fts_tokens(query: str) -> list[str]:
+    return _FTS_TOKEN_RE.findall(query or "")
+
+
+def _fts_query(query: str, operator: str = "AND") -> str:
+    """Ham kelimeleri AND'li (ya da OR'lu), tırnaklanmış bir FTS5 sorgusuna çevir."""
+    return f" {operator} ".join(f'"{t}"' for t in _fts_tokens(query))
+
+
+# Arama İKİ AŞAMALI: önce yalnız FTS tablosundan (rowid, bm25), sonra seçilen
+# satırlar için üstveri. Ölçüldü (6 Eyl 2026, 298.854 madde, 9 kelimelik OR
+# sorgusu, 20.536 eşleşme): tek birleşik sorgu 278 ms, iki aşamalı 55+14 ms.
+# Fark, JOIN'lerin sıralamadan ÖNCE 20 bin satıra uygulanmasından geliyordu.
+_FTS_SQL = (
+    "SELECT rowid, bm25(mevzuat_madde_fts) AS skor FROM mevzuat_madde_fts"
+    " WHERE mevzuat_madde_fts MATCH ? ORDER BY skor LIMIT ?"
+)
+
+_USTVERI_SQL = (
+    "SELECT m.rowid, d.mevzuat_id, d.mevzuat_no, d.tur, d.ad, d.kaynak_url,"
+    " m.madde_no, m.baslik, m.degisiklik_notu"
+    " FROM mevzuat_madde m JOIN mevzuat_dokuman d ON d.mevzuat_id = m.mevzuat_id"
+)
+
+# mevzuat_no süzgeci varken tek sorgu kalır: süzülen satırlar üst sıraları
+# yemesin diye eleme FTS ile AYNI sorguda olmalı.
+_SUZGECLI_SQL = (
+    "SELECT m.rowid, d.mevzuat_id, d.mevzuat_no, d.tur, d.ad, d.kaynak_url,"
+    " m.madde_no, m.baslik, m.degisiklik_notu, bm25(mevzuat_madde_fts) AS skor"
+    " FROM mevzuat_madde_fts"
+    " JOIN mevzuat_madde m ON m.rowid = mevzuat_madde_fts.rowid"
+    " JOIN mevzuat_dokuman d ON d.mevzuat_id = m.mevzuat_id"
+    " WHERE mevzuat_madde_fts MATCH ? AND d.mevzuat_no = ? ORDER BY skor LIMIT ?"
+)
+
+
+def _fts_ara(
+    db: sqlite3.Connection, match: str, mevzuat_no: str | None, limit: int
+) -> list[tuple[Any, ...]]:
+    """``(rowid, mevzuat_id, mevzuat_no, tur, ad, kaynak_url, madde_no, baslik,
+    degisiklik_notu, skor)`` satırları, BM25 sırasında."""
+    if mevzuat_no is not None and str(mevzuat_no).strip():
+        return [
+            tuple(r)
+            for r in db.execute(
+                _SUZGECLI_SQL, (match, str(mevzuat_no).strip(), limit)
+            ).fetchall()
+        ]
+    ids = db.execute(_FTS_SQL, (match, limit)).fetchall()
+    if not ids:
+        return []
+    skor = {r[0]: r[1] for r in ids}
+    ustveri = {
+        r[0]: tuple(r)
+        for r in db.execute(
+            _USTVERI_SQL + f" WHERE m.rowid IN ({','.join('?' * len(ids))})",
+            [r[0] for r in ids],
+        ).fetchall()
+    }
+    return [(*ustveri[r[0]], skor[r[0]]) for r in ids if r[0] in ustveri]
+
+
+def _fts_snippetler(
+    db: sqlite3.Connection, match: str, rowids: list[int]
+) -> dict[int, str]:
+    """Yalnız NİHAİ satırlar için snippet üret (katlama sonrası, ≤ limit tane)."""
+    if not rowids:
+        return {}
+    rows = db.execute(
+        "SELECT rowid, snippet(mevzuat_madde_fts, 2, '«', '»', ' … ', 24)"
+        " FROM mevzuat_madde_fts WHERE mevzuat_madde_fts MATCH ?"
+        f" AND rowid IN ({','.join('?' * len(rowids))})",
+        [match, *rowids],
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
 
 
 def search_madde(
@@ -1020,10 +1483,18 @@ def search_madde(
     Dönüş: ``{"ok": True, "query": ..., "results": [...], "total_matches": n}``.
     Her sonuçta mevzuat adı/numarası, madde numarası, başlık, snippet ve
     kaynak URL bulunur.
+
+    İki davranış notu:
+
+    * Kelimeler önce AND'lenir; ``_OR_ESIK``in altında sonuç gelirse aynı
+      kelimelerle OR sorgusu koşulur ve ``lexical_fallback = "or"`` işaretlenir.
+      Kullanılan sorgu her zaman ``fts_query`` alanındadır.
+    * Aynı adla yeniden yayımlanan tebliğlerin eski sürümleri ``surum_katla``
+      ile tek satıra iner (bkz. ``gruplari_yenile``).
     """
     ensure_schema(db)
-    match = _fts_query(query)
-    if not match:
+    tokens = _fts_tokens(query)
+    if not tokens:
         return {
             "ok": False,
             "errorCode": "INVALID_INPUT",
@@ -1032,46 +1503,53 @@ def search_madde(
             "total_matches": 0,
         }
 
-    sql = """
-        SELECT d.mevzuat_id, d.mevzuat_no, d.tur, d.ad, d.kaynak_url,
-               m.madde_no, m.baslik, m.degisiklik_notu,
-               snippet(mevzuat_madde_fts, 2, '«', '»', ' … ', 24) AS snip,
-               bm25(mevzuat_madde_fts) AS skor
-        FROM mevzuat_madde_fts
-        JOIN mevzuat_madde m ON m.rowid = mevzuat_madde_fts.rowid
-        JOIN mevzuat_dokuman d ON d.mevzuat_id = m.mevzuat_id
-        WHERE mevzuat_madde_fts MATCH ?
-    """
-    params: list[Any] = [match]
-    if mevzuat_no is not None and str(mevzuat_no).strip():
-        sql += " AND d.mevzuat_no = ?"
-        params.append(str(mevzuat_no).strip())
-    sql += " ORDER BY skor LIMIT ?"
-    params.append(max(1, int(limit)))
+    limit = max(1, int(limit))
+    # Katlama payı: aynı serinin 20 yılı üst sıraları doldurabilir.
+    ic_limit = min(max(limit * 3, limit + 40), 300)
+    match = " AND ".join(f'"{t}"' for t in tokens)
+    rows = _fts_ara(db, match, mevzuat_no, ic_limit)
+    fallback = None
+    if len(tokens) > 1 and len(rows) < _OR_ESIK:
+        or_match = " OR ".join(f'"{t}"' for t in tokens)
+        or_rows = _fts_ara(db, or_match, mevzuat_no, ic_limit)
+        if len(or_rows) > len(rows):
+            rows, match, fallback = or_rows, or_match, "or"
 
-    rows = db.execute(sql, params).fetchall()
     results = [
         {
-            "mevzuat_id": r[0],
-            "mevzuat_no": r[1],
-            "tur": r[2],
-            "mevzuat_adi": r[3],
-            "kaynak_url": r[4],
-            "madde_no": r[5],
-            "baslik": r[6],
-            "degisiklik_notu": r[7],
-            "snippet": r[8],
+            "mevzuat_id": r[1],
+            "mevzuat_no": r[2],
+            "tur": r[3],
+            "mevzuat_adi": r[4],
+            "kaynak_url": r[5],
+            "madde_no": r[6],
+            "baslik": r[7],
+            "degisiklik_notu": r[8],
+            "snippet": "",
             "skor": round(float(r[9]), 4),
+            "_fts_rowid": r[0],
         }
         for r in rows
     ]
-    return {
+    results = surum_katla(db, results, limit=limit, kelimeler=tokens)
+    # Snippet PAHALI: yalnız katlamadan sağ çıkan satırlar için üretilir.
+    snipler = _fts_snippetler(
+        db, match, [r["_fts_rowid"] for r in results if r.get("_fts_rowid") and not r["snippet"]]
+    )
+    for r in results:
+        rid = r.pop("_fts_rowid", None)
+        if not r["snippet"]:
+            r["snippet"] = snipler.get(rid, "")
+    out: dict[str, Any] = {
         "ok": True,
         "query": query,
         "fts_query": match,
         "results": results,
         "total_matches": len(results),
     }
+    if fallback:
+        out["lexical_fallback"] = fallback
+    return out
 
 
 def madde_degisiklikleri(
@@ -1088,6 +1566,47 @@ def madde_degisiklikleri(
         {k: v for k, v in zip(_DEGISIKLIK_ALANLAR, r) if v not in (None, "")}
         for r in rows
     ]
+
+
+def _surum_uyarisi(db: sqlite3.Connection, mevzuat_id: str) -> dict[str, Any]:
+    """Belge bir sürüm serisinin ESKİ üyesiyse güncel sürüme yönlendir.
+
+    Eski numara ile çağrı ÇALIŞMAYA DEVAM eder (kullanıcı bilerek yıl seçmiş
+    olabilir); yalnızca ``guncel_surum`` uyarısı eklenir.
+    """
+    row = db.execute(
+        "SELECT grup_anahtari, COALESCE(guncel, 1) FROM mevzuat_dokuman"
+        " WHERE mevzuat_id = ?",
+        (mevzuat_id,),
+    ).fetchone()
+    if not row or not row[0]:
+        return {}
+    grup, guncel = row[0], int(row[1] or 0)
+    uyeler = db.execute(
+        "SELECT mevzuat_no, rg_tarihi, ad, COALESCE(guncel, 1) FROM mevzuat_dokuman"
+        " WHERE grup_anahtari = ?",
+        (grup,),
+    ).fetchall()
+    eski = sorted(
+        (u for u in uyeler if not int(u[3] or 0)),
+        key=lambda u: (_rg_date(u[1]) or date.min),
+        reverse=True,
+    )
+    out: dict[str, Any] = {
+        "grup_anahtari": grup,
+        "guncel": bool(guncel),
+        "eski_surum_sayisi": len(eski),
+        "eski_surumler": [
+            {"mevzuat_no": u[0], "rg_tarihi": u[1]} for u in eski[:10]
+        ],
+    }
+    if not guncel:
+        yeni = next((u for u in uyeler if int(u[3] or 0)), None)
+        if yeni is not None:
+            out["guncel_surum"] = {
+                "mevzuat_no": yeni[0], "rg_tarihi": yeni[1], "ad": yeni[2],
+            }
+    return out
 
 
 def get_madde(
@@ -1126,7 +1645,7 @@ def get_madde(
     target = _norm_article_no(str(madde_no))
     for r in rows:
         if _norm_article_no(str(r[5])) == target:
-            return {
+            cevap = {
                 "ok": True,
                 "mevzuat_id": r[0],
                 "mevzuat_no": r[1],
@@ -1141,6 +1660,8 @@ def get_madde(
                 "degisiklik_notu": r[9],
                 "degisiklikler": madde_degisiklikleri(db, r[0], r[6]),
             }
+            cevap.update(_surum_uyarisi(db, r[0]))
+            return cevap
     return {
         "ok": False,
         "errorCode": "NOT_FOUND",

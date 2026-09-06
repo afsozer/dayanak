@@ -138,9 +138,30 @@ def test_search_madde_finds_article(db):
 
 def test_search_madde_words_are_anded(db):
     _write(db)
-    # "zamanaşımı" tek başına eşleşir; olmayan kelimeyle AND edilince eşleşmez.
-    assert lc.search_madde(db, "alacak zamanaşımına")["total_matches"] == 1
-    assert lc.search_madde(db, "alacak kadastro")["total_matches"] == 0
+    # "zamanaşımı" tek başına eşleşir; kelimeler önce AND'lenir.
+    out = lc.search_madde(db, "alacak zamanaşımına")
+    assert out["total_matches"] == 1
+    assert " AND " in out["fts_query"]
+    assert "lexical_fallback" not in out
+
+
+def test_search_madde_or_fallback(db):
+    """AND boş dönerse aynı kelimelerle OR'a düşülür (Faz 2d)."""
+    _write(db)
+    out = lc.search_madde(db, "alacak kadastro")
+    assert out["ok"] is True
+    assert out["lexical_fallback"] == "or"
+    assert out["fts_query"] == '"alacak" OR "kadastro"'
+    assert out["total_matches"] == 1          # "alacak" geçen madde
+    assert out["results"][0]["madde_no"] == "3/A"
+    # Tek kelimede düşüş YOK (AND/OR farkı yok, işaret kirletmesin).
+    assert "lexical_fallback" not in lc.search_madde(db, "kadastro")
+
+
+def test_search_madde_or_fallback_kelimeleri_hic_yoksa_bos(db):
+    _write(db)
+    out = lc.search_madde(db, "kadastro tapu")
+    assert out["ok"] is True and out["total_matches"] == 0
 
 
 def test_search_madde_filters_by_mevzuat_no(db):
@@ -699,3 +720,145 @@ def test_hiyerarsi_kanun_kunyesi_ust_basliga_yapismaz():
 ])
 def test_enum_seviye(blok, seviye):
     assert lc._enum_level(blok) == seviye
+
+
+# ── Sürüm grupları (Faz 2d) ─────────────────────────────────────────────────
+
+TARIFE = """AVUKATLIK ASGARİ ÜCRET TARİFESİ
+
+Amaç
+MADDE 1 - (1) Bu Tarifenin amacı ücreti belirlemektir.
+
+İcra ve iflas müdürlüklerindeki hukuki yardım
+MADDE 11 - (1) İcra dairelerinde takip edilen işlerde ücret {yil} yılında
+{tutar} TL'dir.
+"""
+
+
+def _tarife(db, mevzuat_id, no, rg, tutar, ad="AVUKATLIK ASGARİ ÜCRET TARİFESİ"):
+    return lc.upsert_document(
+        db,
+        mevzuat_id=mevzuat_id,
+        metin=TARIFE.format(yil=rg[-4:], tutar=tutar),
+        kaynak="mevzuatgov",
+        tur="TEBLIGLER",
+        mevzuat_no=no,
+        ad=ad,
+        rg_tarihi=rg,
+        kaynak_url=f"https://www.mevzuat.gov.tr/{no}",
+    )
+
+
+def _seri(db):
+    _tarife(db, "9.5.111", "111", "21.12.2011", "100")
+    _tarife(db, "9.5.222", "222", "20.11.2021", "500")
+    _tarife(db, "9.5.333", "333", "04.11.2025", "900")
+
+
+def test_ad_anahtari_normalize_eder():
+    a = lc.ad_anahtari("TEBLIGLER", "  Avukatlık   Asgari Ücret Tarifesi ")
+    b = lc.ad_anahtari("tebligler", "AVUKATLIK ASGARİ ÜCRET TARİFESİ")
+    assert a == b
+    # Tür ayırıcı: aynı ad farklı türde aynı gruba düşmez.
+    assert lc.ad_anahtari("KANUN", "X") != lc.ad_anahtari("YONETMELIK", "X")
+
+
+def test_grup_en_yeni_rg_tarihini_guncel_isaretler(db):
+    _seri(db)
+    rows = dict(db.execute(
+        "SELECT mevzuat_no, guncel FROM mevzuat_dokuman WHERE grup_anahtari IS NOT NULL"
+    ).fetchall())
+    assert rows == {"111": 0, "222": 0, "333": 1}
+
+
+def test_yeni_surum_gelince_guncel_bayragi_kayar(db):
+    _seri(db)
+    _tarife(db, "9.5.444", "444", "10.11.2026", "1500")
+    rows = dict(db.execute(
+        "SELECT mevzuat_no, guncel FROM mevzuat_dokuman WHERE grup_anahtari IS NOT NULL"
+    ).fetchall())
+    assert rows == {"111": 0, "222": 0, "333": 0, "444": 1}
+
+
+def test_kanun_turu_asla_katlanmaz(db):
+    """İŞ KANUNU 1475 ve 4857 aynı adı taşır; 1475 m.14 hâlâ yürürlükte."""
+    for mid, no, rg in (("1.5.1475", "1475", "01.09.1971"),
+                        ("1.5.4857", "4857", "10.06.2003")):
+        lc.upsert_document(
+            db, mevzuat_id=mid, metin="İŞ KANUNU\n\nKıdem\nMADDE 14 - (1) Kıdem tazminatı.\n",
+            tur="KANUN", mevzuat_no=no, ad="İŞ KANUNU", rg_tarihi=rg,
+        )
+    assert db.execute(
+        "SELECT COUNT(*) FROM mevzuat_dokuman WHERE grup_anahtari IS NOT NULL"
+    ).fetchone()[0] == 0
+    out = lc.search_madde(db, "kıdem tazminatı")
+    assert out["total_matches"] == 2
+
+
+def test_sik_yayimlanan_ayni_ad_seri_sayilmaz(db):
+    """51 ayrı "ULUSAL MESLEK STANDARTLARINA DAİR TEBLİĞ" örneği: medyan aralık kısa."""
+    for i, rg in enumerate(("05.11.2009", "03.02.2010", "12.05.2010", "05.07.2010")):
+        _tarife(db, f"9.5.90{i}", f"90{i}", rg, "1",
+                ad="ULUSAL MESLEK STANDARTLARINA DAİR TEBLİĞ")
+    assert db.execute(
+        "SELECT COUNT(*) FROM mevzuat_dokuman WHERE grup_anahtari IS NOT NULL"
+    ).fetchone()[0] == 0
+
+
+def test_arama_eski_surumleri_katlar(db):
+    _seri(db)
+    out = lc.search_madde(db, "icra dairelerinde takip")
+    assert out["total_matches"] == 1
+    hit = out["results"][0]
+    assert hit["mevzuat_no"] == "333"          # en yeni sürüm
+    assert hit["guncel"] is True
+    assert hit["eski_surum_sayisi"] == 2
+    assert {e["mevzuat_no"] for e in hit["eski_surumler"]} == {"111", "222"}
+    assert "900" in hit["snippet"]             # snippet güncel metinden
+
+
+def test_katlama_madde_yoksa_eski_surumu_dusurmez(db):
+    """Güncel sürümde olmayan madde SESSİZCE KAYBOLMAZ, uyarıyla gelir."""
+    _seri(db)
+    lc.upsert_document(
+        db, mevzuat_id="9.5.555", metin=TARIFE.format(yil="2015", tutar="200")
+        + "\nKaldırılan\nMADDE 20 - (1) Kadastro işlerinde ayrı ücret.\n",
+        tur="TEBLIGLER", mevzuat_no="555", ad="AVUKATLIK ASGARİ ÜCRET TARİFESİ",
+        rg_tarihi="31.12.2014",
+    )
+    out = lc.search_madde(db, "kadastro işlerinde")
+    assert out["total_matches"] == 1
+    hit = out["results"][0]
+    assert hit["mevzuat_no"] == "555" and hit["guncel"] is False
+    assert hit["guncel_surum"]["mevzuat_no"] == "333"
+
+
+def test_get_madde_eski_surumde_guncel_surume_yonlendirir(db):
+    _seri(db)
+    eski = lc.get_madde(db, "111", "11")
+    assert eski["ok"] is True
+    assert eski["mevzuat_no"] == "111"          # istenen sürüm yine gelir
+    assert eski["guncel"] is False
+    assert eski["guncel_surum"] == {
+        "mevzuat_no": "333", "rg_tarihi": "04.11.2025",
+        "ad": "AVUKATLIK ASGARİ ÜCRET TARİFESİ",
+    }
+    yeni = lc.get_madde(db, "333", "11")
+    assert yeni["guncel"] is True and yeni["eski_surum_sayisi"] == 2
+    assert "guncel_surum" not in yeni
+
+
+def test_gruplari_yenile_kuru_kosum_yazmaz(db):
+    _seri(db)
+    db.execute("UPDATE mevzuat_dokuman SET grup_anahtari = NULL, guncel = NULL")
+    db.commit()
+    rapor = lc.gruplari_yenile(db, uygula=False)
+    assert rapor["seri_grup"] == 1 and rapor["katlanan_eski_surum"] == 2
+    assert rapor["uygulandi"] is False
+    assert db.execute(
+        "SELECT COUNT(*) FROM mevzuat_dokuman WHERE grup_anahtari IS NOT NULL"
+    ).fetchone()[0] == 0
+    lc.gruplari_yenile(db, uygula=True)
+    assert db.execute(
+        "SELECT COUNT(*) FROM mevzuat_dokuman WHERE guncel = 1"
+    ).fetchone()[0] == 1

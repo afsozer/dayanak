@@ -322,7 +322,10 @@ def search(
             best[key] = (float(s), int(L.chunk_index[i]))
     if not best:
         return []
-    ranked = sorted(best.items(), key=lambda kv: kv[1][0], reverse=True)[:limit]
+    # Katlama payı: aynı tebliğin 20 yılı üst sıraları doldurabiliyor
+    # (bkz. legislation_corpus.surum_katla). Katlama sonrası limit'e inilir.
+    ic_limit = limit if mevzuat_no else min(max(limit * 3, limit + 40), 300)
+    ranked = sorted(best.items(), key=lambda kv: kv[1][0], reverse=True)[:ic_limit]
 
     out: list[dict[str, Any]] = []
     for (mid, sira), (score, cix) in ranked:
@@ -351,7 +354,12 @@ def search(
             "skor": round(float(score), 4),
             "best_chunk": cix,
         })
-    return out
+    if mevzuat_no:
+        # Kullanıcı tek mevzuat seçti (yılı bilerek seçmiş olabilir) — katlama yok.
+        return out[:limit]
+    from .legislation_corpus import surum_katla
+
+    return surum_katla(db, out, limit=limit)
 
 
 # ---------------------------------------------------------------------------

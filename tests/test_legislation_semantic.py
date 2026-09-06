@@ -195,3 +195,51 @@ class TestRRF:
         out = ls.rrf_merge(lex, sem, limit=5)
         skorlar = [x["rrf_skor"] for x in out]
         assert skorlar == sorted(skorlar, reverse=True)
+
+
+# ── Sürüm katlama (Faz 2d) ──────────────────────────────────────────────────
+
+class TestSurumKatlama:
+    """Semantik sonuçlar da eski tebliğ sürümlerini katlamalı (RRF anahtarı
+    ancak iki katman da güncel belgeyi gösterirse örtüşür)."""
+
+    @pytest.fixture()
+    def seri(self, tmp_path):
+        from emsal_mcp import legislation_corpus as lc
+
+        db_path = tmp_path / "cache.sqlite3"
+        db = sqlite3.connect(str(db_path))
+        lc.ensure_schema(db)
+        metin = ("AVUKATLIK ASGARİ ÜCRET TARİFESİ\n\nİcra\n"
+                 "MADDE 11 - (1) İcra dairelerinde ücret {t} TL'dir.\n")
+        for mid, no, rg, t in (("t1", "111", "21.12.2011", "100"),
+                               ("t2", "222", "20.11.2021", "500"),
+                               ("t3", "333", "04.11.2025", "900")):
+            lc.upsert_document(
+                db, mevzuat_id=mid, metin=metin.format(t=t), tur="TEBLIGLER",
+                mevzuat_no=no, ad="AVUKATLIK ASGARİ ÜCRET TARİFESİ", rg_tarihi=rg,
+            )
+        vec_dir = tmp_path / "vec"
+        # Üç sürümün 11. maddesi neredeyse aynı vektöre sahip (aynı metin).
+        _sidecar(vec_dir, "mevzuat-20260101", [
+            ("t1", 1, 0), ("t2", 1, 0), ("t3", 1, 0),
+        ], [[1.0, 0.0, 0.0, 0.0], [0.99, 0.14, 0.0, 0.0], [0.98, 0.2, 0.0, 0.0]])
+        assert ls.build_index(vec_dir, db_path, log=lambda *_: None)["ok"]
+        return db, db_path
+
+    def test_eski_surumler_tek_satira_iner(self, seri):
+        db, db_path = seri
+        r = ls.search(db, db_path, [1.0, 0.0, 0.0, 0.0], limit=10)
+        assert len(r) == 1
+        assert r[0]["mevzuat_no"] == "333"
+        assert r[0]["eski_surum_sayisi"] == 2
+
+    def test_mevzuat_no_verilince_katlama_yok(self, seri):
+        db, db_path = seri
+        r = ls.search(db, db_path, [1.0, 0.0, 0.0, 0.0], limit=10, mevzuat_no="111")
+        assert [x["mevzuat_no"] for x in r] == ["111"]
+
+    def test_surum_disi_sonuclar_degismez(self, kurulu):
+        db, db_path, _, _ = kurulu
+        r = ls.search(db, db_path, E1, limit=10)
+        assert "eski_surum_sayisi" not in r[0]
