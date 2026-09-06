@@ -9,8 +9,8 @@ REM Iki venv: torch (D:\emsal-bench\venv) ile faiss (D:\Emsal-mcp\.venv) ayni
 REM surecte cokuyor; asamalar ayri surec.
 setlocal
 call D:\Emsal-mcp\scripts\emsal-env.cmd
-set LOG=D:\emsal-data\crawl_logs\mevzuat_semantic_%date:~-4%%date:~3,2%%date:~0,2%.log
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmm"') do set STAMP=%%i
+set LOG=D:\emsal-data\crawl_logs\mevzuat_semantic_%STAMP%.log
 set NAME=mevzuat-%STAMP%
 echo %date% %time% basladi %NAME% > "%LOG%"
 cd /d D:\Emsal-mcp

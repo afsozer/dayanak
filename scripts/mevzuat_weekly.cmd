@@ -28,4 +28,14 @@ if %N% GEQ 6 goto :done
 timeout /t 1800 /nobreak >nul
 goto :retry
 :done
+if %RC% NEQ 0 goto :end
+REM Faz 2b/2c/3 art-islemleri: degisiklik tablosu (tum korpus, ~16 dk) ve
+REM semantik indeks (yalniz yeni/degismis maddeler gomulur). ust_baslik yeni
+REM cekimlerde upsert sirasinda ayristirici tarafindan dolduruluyor.
+echo %date% %time% degisiklik doldurma basladi >> "%LOG%"
+.venv\Scripts\python.exe -X utf8 scripts\mevzuat_degisiklik_doldur.py --db %EMSAL_CACHE_PATH% > D:\emsal-data\crawl_logs\degisiklik_doldur.log 2>&1
+echo %date% %time% degisiklik doldurma rc=%errorlevel% >> "%LOG%"
+call D:\Emsal-mcp\scripts\mevzuat_semantic.cmd
+echo %date% %time% semantik indeks rc=%errorlevel% >> "%LOG%"
+:end
 echo %date% %time% WEEKLY-EXIT %RC% >> "%LOG%"
