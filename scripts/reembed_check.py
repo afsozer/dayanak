@@ -60,8 +60,17 @@ def main() -> int:
     new_n, live_n = int(new_meta["count"]), int(live_meta.get("count", 0))
     ratio = new_n / live_n if live_n else float("inf")
     print(f"vektör: yeni {new_n:,} / canlı {live_n:,} (oran {ratio:.4f})")
-    if live_n and ratio < args.min_ratio:
-        fails.append(f"vektör sayısı canlıdan %{100*(1-ratio):.1f} düşük (sınır %{100*(1-args.min_ratio):.0f})")
+    # Vektör sayısı parçalama sürümüyle meşru olarak değişir (v2 ~%5 az parça);
+    # asıl güvence kapsanan tekil karar sayısıdır.
+    import numpy as _np
+    def _docs(path):
+        with _np.load(path, allow_pickle=False) as z:
+            return int(_np.unique(z["doc_num"]).shape[0])
+    live_docs = _docs(str(live_meta_p.with_name(f"bulk-{safe}.keys.npz"))) if live_n else 0
+    new_docs = _docs(str(new_meta_p.with_name(f"bulk-{safe}.keys.npz")))
+    print(f"tekil karar: yeni {new_docs:,} / canlı {live_docs:,}")
+    if live_docs and new_docs < live_docs * args.min_ratio:
+        fails.append(f"tekil karar sayısı canlıdan %{100*(1-new_docs/live_docs):.2f} düşük (sınır %{100*(1-args.min_ratio):.0f})")
 
     ver = int(new_meta.get("chunking_version", 1))
     print(f"chunking_version: {ver}")

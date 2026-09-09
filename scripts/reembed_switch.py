@@ -88,6 +88,16 @@ def main() -> int:
 
     log("=== sunucu durduruluyor ===")
     run(["schtasks", "/end", "/tn", args.task])
+    time.sleep(3)
+    # schtasks /end sunucu surecini oldurmuyor; portu dinleyen PID'i dogrudan kapat
+    # (port doluyken schtasks /run sessizce "Last Result 1" ile duser).
+    ns = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, errors="replace")
+    pids = {ln.split()[-1] for ln in ns.stdout.splitlines()
+            if ":8790" in ln and "LISTENING" in ln}
+    for pid in pids:
+        run(["taskkill", "/pid", pid, "/t", "/f"])
+    if pids:
+        log(f"port 8790 dinleyen surec(ler) kapatildi: {sorted(pids)}")
     time.sleep(5)
 
     backup = live / "bulk-v1-yedek"
