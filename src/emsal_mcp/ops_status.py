@@ -258,7 +258,10 @@ def read_job_status(spec: JobSpec, log_dir: Path | None = None,
                     mrc = int(m.group(1))
                     out["marker_rc"] = mrc
                     out["marker_isaret"] = ln
-                    if mrc != 0:
+                    if mrc == 3 and "SEMANTIC-EXIT" in ln:
+                        # mevzuat_semantic.cmd: 3 = yeni madde yok, indeks korundu
+                        out["not"] = "yeni madde yok, indeks korundu (rc 3)"
+                    elif mrc != 0:
                         out["sonuc"] = "hata"
                         out["rc"] = mrc
                     break
