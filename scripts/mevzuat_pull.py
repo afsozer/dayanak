@@ -120,6 +120,12 @@ async def _list_all(client, tur_name: str, code: int, page_size: int, limit: int
     return rows, total
 
 
+def _ikili(text: str) -> bool:
+    """Ham PDF/ikili icerik metin diye gelmis mi? (13.09.2026: 3.619 CB karari %PDF- ile depolandi)"""
+    head = text.lstrip()[:8]
+    return head.startswith("%PDF") or "\x00" in text[:2000]
+
+
 async def _fetch_text(mg_client, bd_client, doc_id: str, mevzuat_no: str, tur_name: str):
     """(metin, kaynak, kaynak_url, hata) — önce mevzuatgov, sonra Bedesten."""
     from emsal_mcp.models import ContentStatus
@@ -127,6 +133,8 @@ async def _fetch_text(mg_client, bd_client, doc_id: str, mevzuat_no: str, tur_na
     try:
         doc = await _with_backoff(lambda: mg_client.get_document(doc_id), f"belge {doc_id}")
         text = doc.full_text or ""
+        if _ikili(text):
+            return "", "", "", "mevzuatgov: PDF ikili icerik (taranmis belge)"
         if doc.content_status == ContentStatus.HTML_MARKDOWN and len(text) >= _MIN_TEXT:
             return text, "mevzuatgov", doc.source_url or "", ""
         mg_err = f"mevzuatgov status={doc.content_status} len={len(text)}"
@@ -143,6 +151,8 @@ async def _fetch_text(mg_client, bd_client, doc_id: str, mevzuat_no: str, tur_na
             return "", "", "", f"{mg_err}; bedesten: kayıt yok"
         bdoc = await bd_client.get_document(hits[0].document_id)
         btext = bdoc.full_text or ""
+        if _ikili(btext):
+            return "", "", "", f"{mg_err}; bedesten: PDF ikili icerik"
         if len(btext) >= _MIN_TEXT:
             return btext, "mevzuat", bdoc.source_url or "", ""
         return "", "", "", f"{mg_err}; bedesten len={len(btext)}"

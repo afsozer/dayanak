@@ -9,6 +9,8 @@ REM haftalik kosu ~200 listeleme istegi + degisen kayit kadar metin = dakikalar.
 REM
 REM Cakisma: gunluk karar crawl'i 04:30, aylik birlestirme ayin 1'i 02:00.
 REM Bu is Pazar 03:00'te baslar ve normalde 10 dk'da biter.
+REM CB_KARAR kasten disarida (13.09.2026): taranmis PDF, metin yok; kullanici karari OCR yok.
+REM Gorev ExecutionTimeLimit PT2D (6 saatlik sinir 13.09'da cmd'yi oldurup art-islemleri atlatti).
 setlocal
 call D:\Emsal-mcp\scripts\emsal-env.cmd
 cd /d D:\Emsal-mcp
@@ -19,7 +21,7 @@ set /a N+=1
 echo %date% %time% haftalik deneme %N% basladi >> "%LOG%"
 .venv\Scripts\python.exe -X utf8 scripts\mevzuat_pull.py --only-changed --gun 10 ^
   --tur KANUN --tur KHK --tur CBK --tur YONETMELIK --tur CB_YONETMELIK ^
-  --tur TEBLIGLER --tur CB_KARAR --sleep 0.5 >> "%LOG%" 2>&1
+  --tur TEBLIGLER --sleep 0.5 >> "%LOG%" 2>&1
 set RC=%errorlevel%
 echo %date% %time% haftalik deneme %N% rc=%RC% >> "%LOG%"
 if %RC% EQU 0 goto :done
