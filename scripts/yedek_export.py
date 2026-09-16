@@ -29,7 +29,7 @@ for mf in glob.glob(os.path.join(VEC, "delta-*.manifest.json")):
     elif isinstance(docs, list):
         for d in docs:
             if isinstance(d, dict): ids.add((d.get("source"), str(d.get("document_id"))))
-            elif isinstance(d, (list, tuple)) and len(d) >= 2: ids.add((d[0], str(d[1])))
+            elif isinstance(d, (list, tuple)) and len(d) >= 2: ids.add((d[1], str(d[0])))  # manifest: [document_id, source]
             else: ids.add((None, str(d)))
 print("manifest kimlik:", len(ids))
 kp = os.path.join(OUT, "karar-delta.sqlite3")
@@ -43,7 +43,8 @@ src.executemany("INSERT OR IGNORE INTO sel SELECT source, document_id FROM main.
 src.execute("INSERT OR IGNORE INTO sel SELECT source, document_id FROM main.documents_v2 WHERE source='uyap_arsiv'")
 src.execute("INSERT OR IGNORE INTO sel SELECT source, document_id FROM main.documents_v2 WHERE retrieved_at >= '2026-09-05'")
 n = src.execute("SELECT count(*) FROM sel").fetchone()[0]
-src.execute("INSERT INTO k.documents_v2 SELECT d.* FROM main.documents_v2 d JOIN sel s ON s.source=d.source AND s.document_id=d.document_id")
+# CROSS JOIN: once kucuk sel taranir, documents_v2 PK (document_id, source) ile tek tek bulunur (11 M satir taranmaz)
+src.execute("INSERT INTO k.documents_v2 SELECT d.* FROM sel s CROSS JOIN main.documents_v2 d ON d.document_id=s.document_id AND d.source=s.source")
 src.commit()
 print(f"karar-delta: {src.execute('select count(*) from k.documents_v2').fetchone()[0]:,} karar (secilen {n:,})")
 src.execute("DETACH DATABASE k")
