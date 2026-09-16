@@ -1,6 +1,6 @@
 ﻿# docs/JSON_CONTRACTS.md — Canonical JSON Contracts
 
-> **emsal-mcp v5.0.0** — 14 core MCP tools (82 in full profile), 11 sources.
+> **emsal-mcp v1.0.0** — 11 core MCP tools (47 in full profile), 11 sources.
 > All JSON contracts below are the canonical shapes returned by CLI `--json`
 > output and MCP tool responses.
 
@@ -1274,7 +1274,7 @@ Same output as `build_semantic_index` with `force_rebuild=True`. All existing FT
   "blocking_issues": [],
   "recommendation": "SHIP: v1.0.0 cikisa hazir.",
   "checks": {"...": "module/source/smoke detayları"},
-  "version": "5.0.0",
+  "version": "1.0.0",
   "generated_at": "2026-06-10T12:00:00+00:00"
 }
 ```

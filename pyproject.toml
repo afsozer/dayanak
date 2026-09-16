@@ -1,6 +1,6 @@
 [project]
 name = "emsal-mcp"
-version = "5.0.0"
+version = "1.0.0"
 description = "Citation-safe MCP hukuk araştırma ve belge hazırlık sistemi"
 readme = "README.md"
 license = "MIT"
@@ -54,6 +54,7 @@ markers = [
     "unit: Fast unit tests (no DB/IO)",
     "integration: Tests requiring DB setup or network I/O",
     "live: Hits the real upstream source; opt-in via EMSAL_LIVE_TESTS=1",
+    "load: Tool-surface load smoke (tests/test_load_smoke.py)",
 ]
 
 [tool.ruff]

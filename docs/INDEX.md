@@ -1,6 +1,6 @@
 # Emsal-mcp Documentation Index
 
-> v5.0.0
+> v1.0.0
 
 This index provides a comprehensive listing of all project documentation.
 Documents are grouped by category for easy navigation.
@@ -12,7 +12,7 @@ Documents are grouped by category for easy navigation.
 | Document | Description |
 |---|---|
 | [README.md](../README.md) | Project overview, quick start, and feature summary |
-| [CHANGELOG.md](../CHANGELOG.md) | Full release history (v0.1.0 → v5.0.0) |
+| [CHANGELOG.md](../CHANGELOG.md) | Full release history (v0.1.0 → v5.0.0 → v1.0.0) |
 | [ROADMAP.md](../ROADMAP.md) | Forward-looking roadmap (open milestones M-69+) |
 
 ## Installation & Setup

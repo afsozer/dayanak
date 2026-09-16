@@ -3,6 +3,81 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.0.0] — 2026-09-16
+
+İlk **stable** kesim. Sürüm şeması sıfırlandı: geliştirme boyunca kullanılan
+`5.0.0` numarası paketin olgunluğunu değil faz sayısını yansıtıyordu; kamuya
+açık ilk kararlı sürüm `1.0.0` olarak etiketlendi (`pyproject.toml`,
+`src/emsal_mcp/__init__.py`). `semantic.SEMANTIC_VERSION` (0.13.0) paket
+sürümünden bağımsız bir indeks şeması sürümüdür, değişmedi.
+
+### Added
+
+- **HF karar korpusu (4 Eyl).** `hamzabagirsakci/turkish-court-decisions`
+  (11.045.085 karar, CC0) `documents_v2` + FTS5 olarak alındı; günlük Bedesten
+  crawl'ı üstüne yazıyor. Ölçülen güncel hacim: **11.108.242 karar**, DB 72 GB.
+- **Toplu FAISS indeksi (4-5 Eyl).** `intfloat/multilingual-e5-small` (384
+  boyut) ile parça gömme; `IVF16384,PQ64` indeks + fp16 sidecar refine
+  (`nprobe=128`). `bulk_search` sonucuna en iyi parçanın metni (snippet) ve
+  `health_check`'e toplu indeks durumu eklendi. Ayrıntı: `docs/BULK_INDEX.md`.
+- **Aylık birleştirme (5 Eyl).** Delta kararları parçalı gömülüp toplu indekse
+  ekleniyor (`scripts/monthly_merge.cmd`, `EmsalMonthlyMerge`, ayın 1'i 02:00).
+- **Yerel mevzuat korpusu Faz 1-3 (5-6 Eyl).** Şema + çekim + madde araması;
+  değişiklik/yürürlük ayrımı; madde bazlı semantik indeks ve hibrit arama;
+  madde `ust_baslik`'ine belge boyu hiyerarşi. Ölçülen hacim: 14.298 mevzuat
+  belgesi (916 kanun, 63 KHK, 33 CBK, 8.840 yönetmelik, 4.446 tebliğ),
+  **303.454 madde**, **96.186 değişiklik kaydı**, 423.920 madde parçası vektörü.
+- **Haftalık mevzuat güncellemesi (5-6 Eyl).** only-changed çekim, arşiv, Resmî
+  Gazete deltası; değişiklik doldurma ve semantik indeks art-işlemleri aynı
+  zincire bağlandı (`EmsalMevzuatWeekly`, Pazar 03:00).
+- **`health_check` → `scheduled_jobs` (6 Eyl).** Zamanlanmış işlerin son koşusu
+  log işaretlerinden okunuyor (`src/emsal_mcp/ops_status.py`); geciken ya da
+  `rc != 0` biten iş `overall: degraded` yapıyor. `schtasks` çağrılmıyor.
+- **Sürüm katlama (6 Eyl).** Yıllık yeniden yayımlanan tebliğler tek mevzuat
+  altında gruplanıyor (`grup_anahtari` / `guncel`); FTS'te OR düşüşü.
+
+### Changed
+
+- **Çekirdek araç yüzeyi 11'e indirildi (6 Eyl).** `core` profili:
+  `search_decisions`, `get_document`, `search_local_corpus`,
+  `search_legislation`, `get_legislation`, `mevzuat_korpus_ara`,
+  `mevzuat_madde_getir`, `research_topic`, `export_document`,
+  `load_extended_tools`, `health_check`. Core docstring bütçesi (20.000
+  karakter) dolduğu için `citation_check`, `prepare_petition`,
+  `read_legal_file`, `list_sources`, `legal_research_guide` extended'a alındı.
+  Full profil 47 araç.
+- **Sync araçlar thread havuzunda (2 Eyl, M-118/M-119).** FastMCP sync aracı
+  olay döngüsü thread'inde çağırdığı için tek uzun araç bütün istemcileri
+  kilitliyordu. `EMSAL_TOOL_THREADS` (canlıda 6) ve çağrı başına
+  `EMSAL_TOOL_TIMEOUT` (180 s); sayaçlar `health_check` → `tool_runtime`.
+- **README** gerçek duruma getirildi: ölçülmüş korpus tablosu, araç yüzeyi,
+  HTTP kurulumu ve ortam değişkenleri, işletim (zamanlanmış görevler),
+  belge dizini. Koddan sapan elle tutulan "Özellikler" tablosu kaldırıldı.
+
+### Fixed
+
+- **Chunking v2 (6 Eyl).** `chunk_text` örtüşmeyi iki kez uyguluyordu; parça
+  kendi ilk 200 karakterini tekrar ediyordu. Düzeltildi, `CHUNKING_VERSION = 2`
+  bayrağıyla korpus yeniden gömüldü (29.554.075 parça vektörü, 9 Eyl).
+- **11 M kararda araç çağrısı gecikmeleri (5 Eyl).** `_attach_corpus_hint` tam
+  tablo taraması yapıyordu (araç çağrısı başına ~100 s → <1 s); `health_check`
+  `COUNT(*)` yerine FTS `docsize` (15+ dk asılma).
+- **mevzuat.gov.tr WAF (5 Eyl).** Tarayıcı dışı User-Agent'lı istekler sessizce
+  düşüyordu; tarayıcı UA'sı verildi. `.htm` ikizi olmayan türlerde doğrudan
+  iframe yolu.
+- **MCP şeması (13-16 Eyl).** `mevzuat_no`/`madde_no` sayı olarak gelince kabul
+  ediliyor; `anyOf` şeması bazı istemcilerde alanı zorunlu gösterdiği için
+  `mevzuat_no` düz `str`e çevrildi.
+- **PDF dışa aktarımı (5 Eyl).** Windows/headless LibreOffice ile gerçekten
+  çalışıyor.
+- **`test_readme_drift`.** Test, sayaç üretecini `text=True` ile çağırıp boruyu
+  ANSI kod sayfasıyla çözmeye çalışıyordu; em-dash `UnicodeDecodeError` verince
+  `stdout` `None` kalıyor, drift mesajı "None" oluyordu. `encoding="utf-8"` +
+  `PYTHONIOENCODING=utf-8` verildi.
+- **`test_tool_threading`.** Kayıtlı araç sayısı testte `46` olarak
+  sabitlenmişti; mevzuat araçları eklenince bayatladı. Artık
+  `tool_profile.TOOL_PROFILE` ile karşılaştırılıyor.
+
 ## [Unreleased]
 
 ### Fixed — mevzuat tam metni ve madde ayrıştırma (2026-08-19)

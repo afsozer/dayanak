@@ -1,7 +1,7 @@
 # ROADMAP.md — Emsal-mcp
 
-**Mevcut sürüm:** v5.0.0 · **Oluşturulma:** 2026-06-02
-**Durum:** M-01…M-107 tamamlandı (tüm fazlar tamamlandı, v5.0.0).
+**Mevcut sürüm:** v1.0.0 · **Oluşturulma:** 2026-06-02
+**Durum:** M-01…M-107 tamamlandı (tüm fazlar tamamlandı); 16 Eyl 2026'da stable kesim **v1.0.0** (sürüm şeması sıfırlandı — bkz. CHANGELOG).
 **Sıradaki ufuk:** —
 **Aktif sıradaki:** —
 

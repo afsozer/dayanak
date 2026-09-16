@@ -1,6 +1,6 @@
 # docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
-> **emsal-mcp v5.0.0** — 14 core MCP tools (default) · 47 tools in full profile.
+> **emsal-mcp v1.0.0** — 11 core MCP tools (default) · 47 tools in full profile.
 > Input parameters use Python type hints; output shapes are documented per tool.
 > Source of truth for profiles/categories: `src/emsal_mcp/tool_profile.py`.
 
