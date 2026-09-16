@@ -1376,7 +1376,7 @@ def main() -> None:
     @_tool
     def mevzuat_korpus_ara(
         query: str,
-        mevzuat_no: str | int | None = None,
+        mevzuat_no: str = "",
         limit: int = 20,
         mode: str = "hybrid",
     ) -> dict:
@@ -1388,7 +1388,7 @@ def main() -> None:
         mevzuat_no tek mevzuatla sınırlar (ör. "6098"). Sonuç: mevzuat_adi,
         madde_no, baslik, snippet, kaynak_url.
         """
-        mevzuat_no = str(mevzuat_no).strip() if mevzuat_no is not None else None  # istemciler sayi gonderebiliyor
+        mevzuat_no = str(mevzuat_no).strip() or None  # bos = filtre yok; anyOf semasi istemcileri sasirtiyor, duz str tut
         from . import legislation_semantic as _sem
         from .legislation_corpus import corpus_stats, search_madde
 
@@ -1467,7 +1467,7 @@ def main() -> None:
             c.close()
 
     @_tool
-    def mevzuat_madde_getir(mevzuat_no: str | int, madde_no: str | int) -> dict:
+    def mevzuat_madde_getir(mevzuat_no: str, madde_no: str) -> dict:
         """Yerel korpustan tek maddenin TAM metni (çevrimdışı).
 
         madde_no "390", "12/A", "Geçici 1" kabul eder. Korpusta yoksa
