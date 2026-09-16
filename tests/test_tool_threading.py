@@ -182,7 +182,13 @@ def test_fastmcp_schema_is_identical_with_and_without_wrapper(monkeypatch) -> No
     wrapped = _capture_registered("full")
 
     assert set(plain) == set(wrapped)
-    assert len(plain) == 46
+    # Arac sayisi elle sabitlenmemeli: server.py'deki ``_TOOL_PROFILES`` tek
+    # dogruluk kaynagi.  Sabit 46 rakami mevzuat araclari eklenince bayatladi.
+    from emsal_mcp.tool_profile import TOOL_PROFILE
+
+    assert len(plain) == len(TOOL_PROFILE), (
+        "kayitli arac sayisi _TOOL_PROFILES ile ortusmuyor"
+    )
 
     for name in sorted(plain):
         a = Tool.from_function(plain[name], name=name)

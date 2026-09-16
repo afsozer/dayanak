@@ -1,6 +1,7 @@
 """README drift detection — verifies documented counts match actual code state."""
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -21,9 +22,14 @@ def test_readme_headline_matches_code() -> None:
     assert m, "README line 3 must contain a version number like v3.1.0"
 
     # Run the generator in check mode using sys.executable (CI-safe)
+    # Windows'ta ``text=True`` boruyu ANSI kod sayfasiyla cozuyor; uretecin
+    # bastigi em-dash UnicodeDecodeError'a dusup ``stdout``i None birakiyordu
+    # (hata mesaji "None" oluyordu).  Kodlamayi acikca veriyoruz.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     result = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "gen_readme_counts.py"), "--check"],
-        capture_output=True, text=True, cwd=str(ROOT),
+        [sys.executable, "-X", "utf8", str(ROOT / "scripts" / "gen_readme_counts.py"), "--check"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        cwd=str(ROOT), env=env,
     )
     assert result.returncode == 0, (
         f"README drift detected:\n{result.stdout}\n{result.stderr}\n"
@@ -37,5 +43,12 @@ def test_readme_has_required_sections() -> None:
     """README must contain key sections."""
     readme = ROOT / "README.md"
     content = readme.read_text(encoding="utf-8")
-    for section in ("## Kırmızı çizgiler", "## Kurulum", "## Özellikler"):
+    # v1.0.0: "Özellikler" tablosu (surumu koddan sapan elle tutulan tablo)
+    # yerini olculmus "Korpus" + "MCP araçları" bolumlerine birakti.
+    for section in (
+        "## Kırmızı çizgiler",
+        "## Korpus",
+        "## Kurulum",
+        "## MCP araçları",
+    ):
         assert section in content, f"Missing section: {section}"
