@@ -12,9 +12,9 @@ REM Bu is Pazar 03:00'te baslar ve normalde 10 dk'da biter.
 REM CB_KARAR kasten disarida (13.09.2026): taranmis PDF, metin yok; kullanici karari OCR yok.
 REM Gorev ExecutionTimeLimit PT2D (6 saatlik sinir 13.09'da cmd'yi oldurup art-islemleri atlatti).
 setlocal
-call D:\Emsal-mcp\scripts\emsal-env.cmd
-cd /d D:\Emsal-mcp
-set LOG=D:\emsal-data\crawl_logs\mevzuat_weekly.log
+call "%~dp0emsal-env.cmd"
+cd /d "%EMSAL_REPO%"
+set LOG=%EMSAL_LOG_DIR%\mevzuat_weekly.log
 set /a N=0
 :retry
 set /a N+=1
@@ -35,9 +35,9 @@ REM Faz 2b/2c/3 art-islemleri: degisiklik tablosu (tum korpus, ~16 dk) ve
 REM semantik indeks (yalniz yeni/degismis maddeler gomulur). ust_baslik yeni
 REM cekimlerde upsert sirasinda ayristirici tarafindan dolduruluyor.
 echo %date% %time% degisiklik doldurma basladi >> "%LOG%"
-.venv\Scripts\python.exe -X utf8 scripts\mevzuat_degisiklik_doldur.py --db %EMSAL_CACHE_PATH% > D:\emsal-data\crawl_logs\degisiklik_doldur.log 2>&1
+.venv\Scripts\python.exe -X utf8 scripts\mevzuat_degisiklik_doldur.py --db %EMSAL_CACHE_PATH% > %EMSAL_LOG_DIR%\degisiklik_doldur.log 2>&1
 echo %date% %time% degisiklik doldurma rc=%errorlevel% >> "%LOG%"
-call D:\Emsal-mcp\scripts\mevzuat_semantic.cmd
+call "%~dp0mevzuat_semantic.cmd"
 echo %date% %time% semantik indeks rc=%errorlevel% >> "%LOG%"
 :end
 echo %date% %time% WEEKLY-EXIT %RC% >> "%LOG%"

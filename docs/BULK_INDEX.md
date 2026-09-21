@@ -106,12 +106,12 @@ yeniden parçalayarak üretir. Bu yüzden:
 `schtasks` görevi **EmsalReembed** (tek seferlik, `/rl limited`, 7 Eyl 2026
 23:00) → `scripts/reembed_all.cmd`:
 
-1. `embed_parquet_worker.py` → `D:\emsal-bench\vec2` (30 HF parquet dosyası,
+1. `embed_parquet_worker.py` → `<bench-dizini>\vec2` (30 HF parquet dosyası,
    ~30,4 M parça). Resumable: `done.json` olan dosya atlanır.
 2. `reembed_delta.py` → aynı dizine `delta-reembed-<tarih>` sidecar'ı: parquet
    dışında kalan kararlar (eski `vec\*.manifest.json` listesi 52.731 karar +
    `embedding_vectors`'taki 928 karar; uyap_arsiv, bedesten, mevzuat).
-3. `build_bulk_index.py --cache D:\emsal-data\staging\cache.sqlite3` →
+3. `build_bulk_index.py --cache <veri-dizini>\staging\cache.sqlite3` →
    **hazırlık** indeksi; canlı `bulk-*.faiss` dosyalarına dokunulmaz.
 4. `reembed_switch.py` → doğrula, geç (aşağıda).
 
@@ -128,7 +128,7 @@ kullanmaz — VRAM çakışması yok.
    4 örnek Türkçe sorgu sonuç + alıntı döndürüyor mu (skor ≥ 0,75).
    Başarısızsa hiçbir şey değişmez, sunucu çalışmaya devam eder.
 2. `schtasks /end /tn EmsalMcpHttp`.
-3. Canlı `bulk-*.{faiss,keys.npz,meta.json}` → `D:\emsal-data\bulk-v1-yedek\`
+3. Canlı `bulk-*.{faiss,keys.npz,meta.json}` → `<veri-dizini>\bulk-v1-yedek\`
    (**silinmez**), hazırlık üçlüsü canlı dizine taşınır. Taşıma yarıda
    kalırsa geri alınır ve sunucu eski indeksle açılır.
 4. Dizin takası: `vec` → `vec_v1`, `vec2` → `vec`. `EMSAL_BULK_VEC_DIR`
@@ -140,12 +140,12 @@ kullanmaz — VRAM çakışması yok.
 6. `schtasks /run /tn EmsalMcpHttp` + `reembed_health.ps1` (streamable-http
    ucu GET'e 406 döner; 12 deneme × 5 sn).
 
-Log: `D:\emsal-data\crawl_logs\reembed.log`, son satır `REEMBED-EXIT <rc>`
+Log: `<veri-dizini>\crawl_logs\reembed.log`, son satır `REEMBED-EXIT <rc>`
 (0 tamam, 2 parquet gömme, 3 delta gömme, 4 indeks, 10 doğrulama,
 12 taşıma+geri alma, 13 sağlık).
 
 **Geri dönüş:** sunucuyu durdur, `bulk-v1-yedek\` içindeki üçlüyü
-`D:\emsal-data`'ya geri taşı, `vec` → `vec2` ve `vec_v1` → `vec` takasını
+`<veri-dizini>`'ya geri taşı, `vec` → `vec2` ve `vec_v1` → `vec` takasını
 tersine çevir, sunucuyu başlat. Eski vektör dizini (`vec_v1`, 24 GB) ve
 yedek indeks koşudan sonra elle silinir; disk: 186 GB boş ölçüldü
 (6 Eyl 2026), vec2 için ~24 GB gerekir.

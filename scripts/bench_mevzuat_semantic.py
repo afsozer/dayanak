@@ -5,11 +5,12 @@ gecikmesi (sorgu gömme dahil, sıcak indeks).
 """
 from __future__ import annotations
 
-import os
 import sqlite3
 import sys
 import time
 from pathlib import Path
+
+import _yollar
 
 from emsal_mcp import legislation_semantic as ls
 from emsal_mcp.legislation import _norm_article_no
@@ -47,7 +48,7 @@ def _hit(results, no, maddeler) -> str:
 
 
 def main() -> None:
-    db_path = Path(os.environ.get("EMSAL_CACHE_PATH", r"D:\emsal-data\cache.sqlite3"))
+    db_path = Path(str(_yollar.CACHE_PATH))
     # search_madde ensure_schema (DDL) calistiriyor: rw baglanti gerekiyor.
     db = sqlite3.connect(str(db_path), timeout=180)
     db.execute("PRAGMA busy_timeout=180000")

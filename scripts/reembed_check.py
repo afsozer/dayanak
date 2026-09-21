@@ -12,8 +12,8 @@ Canlı indekse dokunmadan, hazırlık dizinindeki ``bulk-*.{faiss,keys.npz,meta.
 bunu koşmadan indeksi TAKAS ETMEZ.
 
     .venv\\Scripts\\python.exe -X utf8 scripts\\reembed_check.py ^
-        --new-dir D:\\emsal-data\\staging --new-vec D:\\emsal-bench\\vec2 ^
-        --live-dir D:\\emsal-data
+        --new-dir <veri-dizini>\\staging --new-vec <bench-dizini>\\vec2 ^
+        --live-dir <veri-dizini>
 """
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ import re
 import sqlite3
 import sys
 from pathlib import Path
+
+import _yollar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
@@ -39,8 +41,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--new-dir", required=True, help="yeni bulk-*.faiss'in bulunduğu dizin")
     ap.add_argument("--new-vec", required=True, help="yeni sidecar dizini (vec2)")
-    ap.add_argument("--live-dir", default=r"D:\emsal-data")
-    ap.add_argument("--db", default=os.environ.get("EMSAL_CACHE_PATH", r"D:\emsal-data\cache.sqlite3"))
+    ap.add_argument("--live-dir", default=str(_yollar.DATA_DIR))
+    ap.add_argument("--db", default=str(_yollar.CACHE_PATH))
     ap.add_argument("--provider", default="fastembed-multilingual-e5")
     ap.add_argument("--expect-chunking-version", type=int, default=2)
     ap.add_argument("--min-ratio", type=float, default=0.99)

@@ -1,4 +1,4 @@
-# Gunluk artimli crawl (sozer-pc). HF korpusu (kesim: Yargitay May 2026, Emsal Haz 2026)
+# Gunluk artimli crawl (korpus sunucusu). HF korpusu (kesim: Yargitay May 2026, Emsal Haz 2026)
 # tabani sagliyor; bu betik yalniz YENI yayimlanan kararlari ceker.
 #   * Son N ay, ay pencereleriyle (Bedesten sortDirection guvenilmez; pencere sart)
 #   * 5 tur: YARGITAYKARARI ISTINAFHUKUK YERELHUKUK DANISTAYKARAR KYB
@@ -8,7 +8,20 @@
 param([int]$Ay = 3, [int]$IstekLimiti = 10, [int]$MaxDocs = 2000, [int]$MaxPages = 150)
 $ErrorActionPreference = 'Continue'
 $root   = Split-Path -Parent $PSScriptRoot
-$logDir = 'D:\emsal-data\crawl_logs'
+# Makineye ozel yollar: ortam degiskeni > scripts\yerel-ayar.cmd ("set AD=deger") > ~\.emsal_mcp
+$yerel = Join-Path $PSScriptRoot 'yerel-ayar.cmd'
+if (Test-Path $yerel) {
+    foreach ($s in Get-Content $yerel) {
+        if ($s -match '^\s*set\s+([A-Za-z_][A-Za-z0-9_]*)=(.+?)\s*$' -and -not [Environment]::GetEnvironmentVariable($Matches[1])) {
+            [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2])
+        }
+    }
+}
+function Varsayilan($ad, $deger) { if (-not [Environment]::GetEnvironmentVariable($ad)) { [Environment]::SetEnvironmentVariable($ad, $deger) } }
+Varsayilan 'EMSAL_DATA_DIR' (Join-Path $HOME '.emsal_mcp')
+Varsayilan 'EMSAL_BENCH_DIR' (Join-Path $env:EMSAL_DATA_DIR 'bench')
+Varsayilan 'EMSAL_LOG_DIR' (Join-Path $env:EMSAL_DATA_DIR 'crawl_logs')
+$logDir = $env:EMSAL_LOG_DIR
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $log = Join-Path $logDir ("crawl_" + (Get-Date -Format 'yyyyMMdd_HHmm') + '.log')
 function L($m) { $line = (Get-Date -Format 'HH:mm:ss') + ' ' + $m; $line | Tee-Object -FilePath $log -Append | Out-Null; Write-Host $line }
@@ -17,10 +30,10 @@ $mutex = [System.Threading.Mutex]::new($false, 'Local\EmsalCrawlDaily')
 if (-not $mutex.WaitOne(0)) { L 'zaten calisiyor, cikiyorum'; exit 0 }
 
 $env:PYTHONIOENCODING = 'utf-8'
-$env:EMSAL_CACHE_PATH = 'D:\emsal-data\cache.sqlite3'
-$env:EMSAL_BULK_VEC_DIR = 'D:\emsal-bench\vec'
-$env:EMSAL_EMBEDDING_PROVIDER = 'fastembed-multilingual-e5'
-$env:EMSAL_EMBEDDING_CACHE_DIR = 'D:\emsal-data\models\fastembed'
+Varsayilan 'EMSAL_CACHE_PATH' (Join-Path $env:EMSAL_DATA_DIR 'cache.sqlite3')
+Varsayilan 'EMSAL_BULK_VEC_DIR' (Join-Path $env:EMSAL_BENCH_DIR 'vec')
+Varsayilan 'EMSAL_EMBEDDING_PROVIDER' 'fastembed-multilingual-e5'
+Varsayilan 'EMSAL_EMBEDDING_CACHE_DIR' (Join-Path $env:EMSAL_DATA_DIR 'models\fastembed')
 $env:EMSAL_RATE_LIMIT_MAX = "$IstekLimiti"
 $py = Join-Path $root '.venv\Scripts\python.exe'
 Set-Location $root

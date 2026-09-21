@@ -29,6 +29,8 @@ import sys
 import time
 from pathlib import Path
 
+import _yollar
+
 REPO = Path(__file__).resolve().parent.parent
 PROV_STEM = "bulk-fastembed-multilingual-e5"
 PARTS = (".faiss", ".keys.npz", ".meta.json")
@@ -36,12 +38,12 @@ PARTS = (".faiss", ".keys.npz", ".meta.json")
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--live-dir", default=r"D:\emsal-data")
-    ap.add_argument("--stage-dir", default=r"D:\emsal-data\staging")
-    ap.add_argument("--vec", default=r"D:\emsal-bench\vec")
-    ap.add_argument("--vec2", default=r"D:\emsal-bench\vec2")
-    ap.add_argument("--vec-old", default=r"D:\emsal-bench\vec_v1")
-    ap.add_argument("--log", default=r"D:\emsal-data\crawl_logs\reembed.log")
+    ap.add_argument("--live-dir", default=str(_yollar.DATA_DIR))
+    ap.add_argument("--stage-dir", default=str(_yollar.STAGE_DIR))
+    ap.add_argument("--vec", default=str(_yollar.VEC_DIR))
+    ap.add_argument("--vec2", default=str(_yollar.VEC2_DIR))
+    ap.add_argument("--vec-old", default=str(_yollar.VEC_OLD_DIR))
+    ap.add_argument("--log", default=str(_yollar.LOG_DIR / "reembed.log"))
     ap.add_argument("--task", default="EmsalMcpHttp")
     ap.add_argument("--delta-name", default="", help="boşsa vec2'deki en yeni delta-reembed-*")
     ap.add_argument("--dry-run", action="store_true", help="yalnız doğrulama, geçiş yok")

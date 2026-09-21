@@ -40,8 +40,6 @@ def _resolve_toolkit_dir() -> Optional[Path]:
             str(Path.cwd() / "tools" / "UDF-Toolkit"),
             str(Path.home() / "tools" / "UDF-Toolkit"),
             str(Path.home() / "UDF-Toolkit"),
-            r"C:\Users\Sozer\tools\UDF-Toolkit",
-            r"C:\Users\Sozer\UDF-Toolkit",
         ]
     )
 

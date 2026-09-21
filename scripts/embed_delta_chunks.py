@@ -1,4 +1,4 @@
-"""Aylık birleştirme, 1. aşama (torch/CUDA venv'i: D:\emsal-bench\venv).
+"""Aylık birleştirme, 1. aşama (torch/CUDA venv'i: <bench-dizini>/venv).
 
 Günlük crawl'ın delta tablosunda (embedding_vectors, belge başına tek vektör)
 biriken kararları toplu indeksle aynı yöntemle — parçalı, multilingual-e5-small
@@ -25,7 +25,9 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-sys.path.insert(0, r"D:\Emsal-mcp\src")
+import _yollar  # noqa: E402
+
+sys.path.insert(0, str(_yollar.SRC))
 from emsal_mcp.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
 
 MODEL = "intfloat/multilingual-e5-small"
@@ -33,12 +35,12 @@ MODEL = "intfloat/multilingual-e5-small"
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=os.environ.get("EMSAL_CACHE_PATH", r"D:\emsal-data\cache.sqlite3"))
-    ap.add_argument("--vec-dir", default=os.environ.get("EMSAL_BULK_VEC_DIR", r"D:\emsal-bench\vec"))
+    ap.add_argument("--db", default=str(_yollar.CACHE_PATH))
+    ap.add_argument("--vec-dir", default=str(_yollar.VEC_DIR))
     ap.add_argument("--provider", default="fastembed-multilingual-e5")
     ap.add_argument("--name", default=time.strftime("delta-%Y%m%d"))
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--model-cache", default=r"D:\emsal-bench\models")
+    ap.add_argument("--model-cache", default=str(_yollar.TORCH_MODEL_CACHE))
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()

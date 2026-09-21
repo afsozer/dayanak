@@ -2,9 +2,11 @@
 (uyap_arsiv + delta manifestindeki + 2026-09-05 sonrasi cekilenler) ayri sqlite'a.
 Buyuk documents_v2 uzerinde tam tarama YAPMAZ: rowid/retrieved_at indeksi ve kimlik listesi kullanir."""
 import glob, json, os, sqlite3, sys, time
-DB = os.environ.get("EMSAL_CACHE_PATH", r"D:\emsal-data\cache.sqlite3")
-VEC = os.environ.get("EMSAL_BULK_VEC_DIR", r"D:\emsal-bench\vec")
-OUT = sys.argv[1] if len(sys.argv) > 1 else r"D:\emsal-bench\yedek"
+
+import _yollar
+DB = str(_yollar.CACHE_PATH)
+VEC = str(_yollar.VEC_DIR)
+OUT = sys.argv[1] if len(sys.argv) > 1 else str(_yollar.YEDEK_DIR)
 os.makedirs(OUT, exist_ok=True)
 t0 = time.time()
 src = sqlite3.connect(f"file:{DB}?mode=ro", uri=True); src.execute("PRAGMA busy_timeout=600000")

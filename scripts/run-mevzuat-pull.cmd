@@ -3,9 +3,9 @@ REM Gecelik mevzuat cekimi (Faz 2 veri): yonetmelik + CB yonetmeligi + tebligler
 REM mevzuat.gov.tr zaman zaman erisilemez oluyor (5 Eyl 22:46 ConnectError); betik hash ile kaldigi
 REM yerden devam eder, o yuzden basarisiz olursa 15 dk bekleyip yeniden dener (en fazla 40 deneme ~10 sa).
 setlocal
-call D:\Emsal-mcp\scripts\emsal-env.cmd
-cd /d D:\Emsal-mcp
-set LOG=D:\emsal-data\crawl_logs\mevzuat_pull.log
+call "%~dp0emsal-env.cmd"
+cd /d "%EMSAL_REPO%"
+set LOG=%EMSAL_LOG_DIR%\mevzuat_pull.log
 set /a N=0
 :retry
 set /a N+=1

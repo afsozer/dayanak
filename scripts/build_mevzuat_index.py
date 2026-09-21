@@ -1,4 +1,4 @@
-"""Mevzuat semantik indeksi, 2. aşama (faiss venv'i: D:\\Emsal-mcp\\.venv).
+"""Mevzuat semantik indeksi, 2. aşama (faiss venv'i: repo .venv).
 
 ``scripts/embed_mevzuat_madde.py``ın yazdığı sidecar'lardan
 ``mevzuat-<provider>.faiss`` (IndexFlatIP) indeksini yeniden kurar.  torch ile
@@ -12,10 +12,12 @@ import json
 import os
 from pathlib import Path
 
+import _yollar
+
 from emsal_mcp.legislation_semantic import DEFAULT_PROVIDER, build_index
 
-_VARSAYILAN_DB = r"D:\emsal-data\cache.sqlite3"
-_VARSAYILAN_VEC = r"D:\emsal-data\mevzuat-vec"
+_VARSAYILAN_DB = str(_yollar.CACHE_PATH)
+_VARSAYILAN_VEC = str(_yollar.MEVZUAT_VEC_DIR)
 
 
 def main() -> None:

@@ -20,7 +20,7 @@ Sözleşme:
 
 Kullanım::
 
-    python scripts/mevzuat_ust_baslik_doldur.py --db D:\\emsal-data\\cache.sqlite3
+    python scripts/mevzuat_ust_baslik_doldur.py --db <veri-dizini>\\cache.sqlite3
     python scripts/mevzuat_ust_baslik_doldur.py --db ... --mevzuat-no 6098
     python scripts/mevzuat_ust_baslik_doldur.py --db ... --limit 50 --kuru
 """

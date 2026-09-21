@@ -35,3 +35,6 @@ crawl_logs/
 purged_fixtures_backup.json
 _tfidf_job.py
 tfidf_build.*
+
+# Makineye ozel ayarlar (bkz. scripts/yerel-ayar.ornek.cmd)
+scripts/yerel-ayar.cmd

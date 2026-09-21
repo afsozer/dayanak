@@ -1,6 +1,6 @@
 """Zamanlanmis islerin (Windows Gorev Zamanlayici) son kosu durumu.
 
-Neden schtasks degil: MCP sunucusu sozer-pc'de *Limited* butunlukte kosuyor;
+Neden schtasks degil: MCP sunucusu korpus makinesinde *Limited* butunlukte kosuyor;
 ``schtasks /query`` orada bazen calisir bazen yetki hatasi verir ve her
 cagrida yeni bir surec baslatir (yavas).  Isler zaten her kosuda kendi log
 dosyasina bir bitis isareti yaziyor; bu modul o isareti ve dosyanin son

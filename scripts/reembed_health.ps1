@@ -1,10 +1,16 @@
 # EmsalMcpHttp saglik kontrolu: streamable-http ucu GET'e 406 (Not Acceptable) doner.
 # Kullanim: powershell -NoProfile -ExecutionPolicy Bypass -File reembed_health.ps1 [-Url ...] [-Retries 12]
 param(
-  [string]$Url = "http://100.77.229.110:8790/mcp",
+  [string]$Url = "",
   [int]$Retries = 12,
   [int]$DelaySec = 5
 )
+# Adres: -Url > EMSAL_MCP_HOST/EMSAL_MCP_PORT (reembed_switch.py yerel-ayar.cmd'den aktarir) > 127.0.0.1:8790
+if (-not $Url) {
+  $h = if ($env:EMSAL_MCP_HOST) { $env:EMSAL_MCP_HOST } else { "127.0.0.1" }
+  $p = if ($env:EMSAL_MCP_PORT) { $env:EMSAL_MCP_PORT } else { "8790" }
+  $Url = "http://${h}:${p}/mcp"
+}
 for ($i = 1; $i -le $Retries; $i++) {
   $code = 0
   try {

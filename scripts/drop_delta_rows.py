@@ -1,10 +1,12 @@
 """Aylık birleştirme, 3. aşama: toplu indekse eklenen kararların delta vektörlerini sil, delta matrisini yenile."""
-import json, sqlite3, sys, os, subprocess
+import json, sqlite3, sys, subprocess
 from pathlib import Path
+
+import _yollar
 name = sys.argv[1]
-vec_dir = Path(os.environ.get("EMSAL_BULK_VEC_DIR", r"D:\emsal-bench\vec"))
+vec_dir = Path(str(_yollar.VEC_DIR))
 m = json.loads((vec_dir / f"{name}.manifest.json").read_text(encoding="utf-8"))
-db = sqlite3.connect(os.environ.get("EMSAL_CACHE_PATH", r"D:\emsal-data\cache.sqlite3"), timeout=600)
+db = sqlite3.connect(str(_yollar.CACHE_PATH), timeout=600)
 db.execute("PRAGMA busy_timeout=600000")
 n = 0
 for did, src in m["docs"]:

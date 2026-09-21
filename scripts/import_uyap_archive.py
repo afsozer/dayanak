@@ -8,7 +8,7 @@ NO legacy ``documents`` table, NO raw_json, NO markdown duplicate — under a
 distinct source id so it never collides with the live crawl corpus.
 
 Usage:
-    python scripts/import_uyap_archive.py --src "C:/Users/Sozer/Desktop/uyap_mevzuat_2020.sqlite" --dry-run
+    python scripts/import_uyap_archive.py --src "<arsiv-yolu>/uyap_mevzuat_2020.sqlite" --dry-run
     python scripts/import_uyap_archive.py --src "...uyap_mevzuat_2020.sqlite"   # real import
 """
 from __future__ import annotations

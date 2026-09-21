@@ -1,6 +1,8 @@
-"""Desktop dışa aktarımını (D:\emsal-data\emsal-export.sqlite3) laptop korpusuna birleştir: ON CONFLICT DO NOTHING."""
+"""Desktop dışa aktarımını (<veri-dizini>/emsal-export.sqlite3) laptop korpusuna birleştir: ON CONFLICT DO NOTHING."""
 import sqlite3, time
-DB = r"D:\emsal-data\cache.sqlite3"; EXP = r"D:\emsal-data\emsal-export.sqlite3"
+
+import _yollar
+DB = str(_yollar.CACHE_PATH); EXP = str(_yollar.DATA_DIR / "emsal-export.sqlite3")
 c = sqlite3.connect(DB, timeout=600); c.execute("PRAGMA busy_timeout=600000"); c.execute("PRAGMA journal_mode=WAL")
 c.execute(f"ATTACH DATABASE '{EXP}' AS x")
 before = c.execute("SELECT COUNT(*) FROM documents_v2_fts_docsize").fetchone()[0]

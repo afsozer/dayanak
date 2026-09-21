@@ -6,8 +6,8 @@ bu betik yalnız CLI kabuğu.
 
 Kullanım::
 
-    python scripts/mevzuat_surum_grupla.py --db D:\\emsal-data\\cache.sqlite3 --dry-run
-    python scripts/mevzuat_surum_grupla.py --db D:\\emsal-data\\cache.sqlite3
+    python scripts/mevzuat_surum_grupla.py --db <veri-dizini>\\cache.sqlite3 --dry-run
+    python scripts/mevzuat_surum_grupla.py --db <veri-dizini>\\cache.sqlite3
 
 ``--dry-run`` hiçbir şey yazmaz, yalnız serileri ve seri SAYILMAYAN aynı-adlı
 grupları listeler (yanlış katlamayı elle gözden geçirmek için).

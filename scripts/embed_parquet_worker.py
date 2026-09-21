@@ -14,8 +14,8 @@ Metin filtresi import_hf_parquet.py ile aynı: len(text) >= 50.
 
 Kullanım (laptop, CUDA):
     python embed_parquet_worker.py \
-        --files "D:/hf-datasets/turkish-court-decisions/data/yargitay/*.parquet" \
-        --out D:/emsal-bench/vec --device cuda
+        --files "<hf-dizini>/data/yargitay/*.parquet" \
+        --out <bench-dizini>/vec --device cuda
 Kullanım (Mac, MPS):
     python scripts/embed_parquet_worker.py \
         --files "~/Developer/emsal-mcp-data/hf/emsal/*.parquet" \

@@ -17,8 +17,8 @@ Gömülecek kümenin kaynağı iki yerdir:
 keys.parquet + manifest), böylece ``bulk_index.build_bulk_index`` doğrudan
 okuyabilir.
 
-    D:\\emsal-bench\\venv\\Scripts\\python.exe -X utf8 scripts\\reembed_delta.py ^
-        --old-vec D:\\emsal-bench\\vec --out D:\\emsal-bench\\vec2 --name delta-reembed-20260907
+    <bench-dizini>/venv\\Scripts\\python.exe -X utf8 scripts\\reembed_delta.py ^
+        --old-vec <bench-dizini>\\vec --out <bench-dizini>\\vec2 --name delta-reembed-20260907
 """
 from __future__ import annotations
 
@@ -31,11 +31,12 @@ import sys
 import time
 from pathlib import Path
 
+import _yollar  # noqa: E402
 import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-sys.path.insert(0, r"D:\Emsal-mcp\src")
+sys.path.insert(0, str(_yollar.SRC))
 from emsal_mcp.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402
 
 MODEL = "intfloat/multilingual-e5-small"
@@ -44,13 +45,13 @@ MAX_TEXT = 2_000_000  # tek belge bunu aşarsa atlanır (bozuk metin; MemoryErro
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=os.environ.get("EMSAL_CACHE_PATH", r"D:\emsal-data\cache.sqlite3"))
-    ap.add_argument("--old-vec", default=r"D:\emsal-bench\vec", help="manifest'lerin okunacağı ESKİ dizin")
-    ap.add_argument("--out", default=r"D:\emsal-bench\vec2")
+    ap.add_argument("--db", default=str(_yollar.CACHE_PATH))
+    ap.add_argument("--old-vec", default=str(_yollar.VEC_DIR), help="manifest'lerin okunacağı ESKİ dizin")
+    ap.add_argument("--out", default=str(_yollar.VEC2_DIR))
     ap.add_argument("--provider", default="fastembed-multilingual-e5")
     ap.add_argument("--name", default=time.strftime("delta-reembed-%Y%m%d"))
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--model-cache", default=r"D:\emsal-bench\models")
+    ap.add_argument("--model-cache", default=str(_yollar.TORCH_MODEL_CACHE))
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()

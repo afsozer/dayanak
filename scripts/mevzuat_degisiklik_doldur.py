@@ -3,7 +3,7 @@ madde başlıklarını (``baslik`` + yeni ``ust_baslik``) yeniden hesaplar.
 
 Kullanım:
 
-    python scripts/mevzuat_degisiklik_doldur.py --db D:\\emsal-data\\cache.sqlite3
+    python scripts/mevzuat_degisiklik_doldur.py --db <veri-dizini>\\cache.sqlite3
     python scripts/mevzuat_degisiklik_doldur.py --db ... --limit 20   # deneme
     python scripts/mevzuat_degisiklik_doldur.py --db ... --mevzuat-no 6098
 

@@ -1,4 +1,4 @@
-"""Mevzuat maddelerini gömme, 1. aşama (torch/CUDA venv'i: D:\\emsal-bench\\venv).
+"""Mevzuat maddelerini gömme, 1. aşama (torch/CUDA venv'i: <bench-dizini>/venv).
 
 Faz 2c: ``mevzuat_korpus_ara`` yalnız BM25 (kelimeler AND) çalışıyor; "tahliye
 taahhüdü" TBK m.352'yi bulamıyor çünkü ifade madde metninde geçmiyor.  Bu betik
@@ -35,12 +35,14 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-sys.path.insert(0, r"D:\Emsal-mcp\src")
+import _yollar  # noqa: E402
+
+sys.path.insert(0, str(_yollar.SRC))
 from emsal_mcp.chunking import chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
 
 MODEL = "intfloat/multilingual-e5-small"
-_VARSAYILAN_DB = r"D:\emsal-data\cache.sqlite3"
-_VARSAYILAN_VEC = r"D:\emsal-data\mevzuat-vec"
+_VARSAYILAN_DB = str(_yollar.CACHE_PATH)
+_VARSAYILAN_VEC = str(_yollar.MEVZUAT_VEC_DIR)
 
 _VEKTOR_TABLE = """\
 CREATE TABLE IF NOT EXISTS mevzuat_madde_vektor (
@@ -86,7 +88,7 @@ def main() -> None:
     ap.add_argument("--name", default=time.strftime("mevzuat-%Y%m%d-%H%M"))
     ap.add_argument("--provider", default="fastembed-multilingual-e5")
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--model-cache", default=r"D:\emsal-bench\models")
+    ap.add_argument("--model-cache", default=str(_yollar.TORCH_MODEL_CACHE))
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--full", action="store_true", help="manifest'i yok say, hepsini yeniden göm")

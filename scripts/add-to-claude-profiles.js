@@ -1,17 +1,23 @@
 const fs = require('fs');
-const exe = String.raw`C:\Users\Sozer\Emsal-mcp\.venv\Scripts\emsal-mcp-server.exe`;
+const os = require('os');
+const path = require('path');
+
+// Depo kokundeki .venv; Claude Code ve Claude Desktop profilleri ev dizininden turetilir.
+// Ek profil: EMSAL_CLAUDE_PROFILES ortam degiskeni (noktali virgulle ayrilmis dosya yollari).
+const repo = path.resolve(__dirname, '..');
+const exe = process.platform === 'win32'
+  ? path.join(repo, '.venv', 'Scripts', 'emsal-mcp-server.exe')
+  : path.join(repo, '.venv', 'bin', 'emsal-mcp-server');
 const entry = { command: exe, args: [] };
 
+const home = os.homedir();
+const appData = process.env.APPDATA
+  || (process.platform === 'darwin' ? path.join(home, 'Library', 'Application Support') : path.join(home, '.config'));
 const files = [
-  // work2
-  'C:/Users/Sozer/.claude-work2/.claude.json',
-  'C:/Users/Sozer/AppData/Roaming/Claude-Work2/claude_desktop_config.json',
-  // work
-  'C:/Users/Sozer/.claude-work/.claude.json',
-  'C:/Users/Sozer/AppData/Roaming/Claude-Work/claude_desktop_config.json',
-  // personal
-  'C:/Users/Sozer/.claude/.claude.json',
-  'C:/Users/Sozer/AppData/Roaming/Claude/claude_desktop_config.json',
+  path.join(home, '.claude', '.claude.json'),
+  path.join(home, '.claude.json'),
+  path.join(appData, 'Claude', 'claude_desktop_config.json'),
+  ...(process.env.EMSAL_CLAUDE_PROFILES || '').split(';').filter(Boolean),
 ];
 
 for (const p of files) {

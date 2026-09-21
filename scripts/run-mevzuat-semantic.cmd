@@ -1,3 +1,4 @@
 @echo off
-call D:\Emsal-mcp\scripts\mevzuat_semantic.cmd
-echo %date% %time% SEMANTIC-EXIT %errorlevel% >> D:\emsal-data\crawl_logs\mevzuat_semantic_marker.log
+call "%~dp0emsal-env.cmd"
+call "%~dp0mevzuat_semantic.cmd"
+echo %date% %time% SEMANTIC-EXIT %errorlevel% >> %EMSAL_LOG_DIR%\mevzuat_semantic_marker.log

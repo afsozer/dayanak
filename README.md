@@ -23,7 +23,7 @@ citation-safe arama, araştırma ve belge hazırlık için MCP sunucusu.
 
 ## Korpus
 
-Ölçüm tarihi 16 Eylül 2026, `D:\emsal-data\cache.sqlite3` (72 GB).
+Ölçüm tarihi 16 Eylül 2026, canlı korpus (`cache.sqlite3`, 72 GB).
 
 | Katman | Ölçü |
 |---|---|
@@ -80,20 +80,26 @@ emsal-mcp-server
 
 ### Ortam değişkenleri
 
-| Değişken | Ne işe yarar | Canlı değer |
+| Değişken | Ne işe yarar | Örnek değer |
 |---|---|---|
-| `EMSAL_CACHE_PATH` | Korpus SQLite dosyası | `D:\emsal-data\cache.sqlite3` |
-| `EMSAL_BULK_VEC_DIR` | fp16 vektör sidecar'ları (refine için) | `D:\emsal-bench\vec` |
+| `EMSAL_CACHE_PATH` | Korpus SQLite dosyası | `<veri-dizini>\cache.sqlite3` |
+| `EMSAL_BULK_VEC_DIR` | fp16 vektör sidecar'ları (refine için) | `<bench-dizini>\vec` |
 | `EMSAL_EMBEDDING_PROVIDER` | Gömme sağlayıcısı | `fastembed-multilingual-e5` |
-| `EMSAL_EMBEDDING_CACHE_DIR` | ONNX model önbelleği | `D:\emsal-data\models\fastembed` |
+| `EMSAL_EMBEDDING_CACHE_DIR` | ONNX model önbelleği | `<veri-dizini>\models\fastembed` |
 | `EMSAL_MCP_TRANSPORT` | `stdio` (varsayılan) veya `streamable-http` | `streamable-http` |
-| `EMSAL_MCP_HOST` / `EMSAL_MCP_PORT` | HTTP dinleme adresi | `100.77.229.110` / `8790` |
+| `EMSAL_MCP_HOST` / `EMSAL_MCP_PORT` | HTTP dinleme adresi | `127.0.0.1` / `8790` |
 | `EMSAL_TOOL_PROFILE` | `core` (varsayılan) veya `full` | `core` |
 | `EMSAL_TOOL_THREADS` | Sync araçları için thread havuzu (0 = kapalı) | `6` |
 | `EMSAL_TOOL_TIMEOUT` | Araç başına saniye sınırı | `180` |
 
 Tek seferlik CLI çağrıları için `scripts\emsal-env.cmd` aynı değişkenleri
 kurar (`call .\scripts\emsal-env.cmd && .venv\Scripts\emsal-mcp ...`).
+
+Makineye özel değerler (veri dizini, dinleme adresi, yedek hedefi) repoda
+tutulmaz: `scripts\yerel-ayar.ornek.cmd` dosyasını `scripts\yerel-ayar.cmd`
+adıyla kopyalayıp doldurun (`.gitignore`'dadır). `emsal-env.cmd`,
+`crawl_incremental.ps1` ve Python betikleri (`scripts/_yollar.py`) bu dosyayı
+okur; boş bırakılan her yol `~/.emsal_mcp` altından türetilir.
 
 ## MCP araçları
 
@@ -177,7 +183,7 @@ Notlar:
 
 ## İşletim
 
-Zamanlanmış işler (Windows Görev Zamanlayıcı, `sozer-pc`):
+Zamanlanmış işler (Windows Görev Zamanlayıcı, korpus sunucusu):
 
 | Görev | Zaman | Betik | Ne yapar |
 |---|---|---|---|

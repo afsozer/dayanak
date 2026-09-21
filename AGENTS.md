@@ -1,6 +1,6 @@
 # Çalışma Kuralları (Antigravity Agent)
 
-Bu dosya Antigravity'nin agent'ı içindir. `C:\Users\Sozer` altındaki tüm projelerde geçerlidir.
+Bu dosya Antigravity'nin agent'ı içindir. Bu depodaki çalışmalar için geçerlidir.
 
 ## İşi kendin yap ve sonuna kadar bitir
 - İşi codex/pi gibi başka bir araca **DEVRETME**. Kod değişikliklerini, komutları, build/test'i **kendin** yap.
