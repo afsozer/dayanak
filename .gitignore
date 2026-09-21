@@ -38,3 +38,7 @@ tfidf_build.*
 
 # Makineye ozel ayarlar (bkz. scripts/yerel-ayar.ornek.cmd)
 scripts/yerel-ayar.cmd
+
+# Ajan talimat dosyalari yerelde kalir
+AGENTS.md
+CLAUDE.md
