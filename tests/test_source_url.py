@@ -40,7 +40,6 @@ class TestSourceUrlFormat:
     def test_get_document_uses_mevzuat_adalet_url(self):
         import base64
         from emsal_mcp.sources.bedesten import BedestenClient
-        from emsal_mcp.models import ContentStatus
         ci = BedestenClient()
         html = "<html><body><p>" + "x" * 100 + "</p></body></html>"
         encoded = base64.b64encode(html.encode()).decode()

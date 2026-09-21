@@ -454,9 +454,9 @@ def decode_turkish_html(resp: Any, default: str = "windows-1254") -> str:
     m = _META_CHARSET_RE.search(resp.content[:4096])
     charset = m.group(1).decode("ascii", "ignore") if m else default
     try:
-        return resp.content.decode(charset, errors="replace")
+        return resp.content.decode(charset, errors="replace")  # type: ignore[no-any-return]
     except LookupError:
-        return resp.content.decode(default, errors="replace")
+        return resp.content.decode(default, errors="replace")  # type: ignore[no-any-return]
 
 
 def html_to_text(html: str) -> str:

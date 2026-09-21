@@ -59,7 +59,7 @@ def _fts5_match_expr(query: str) -> str | None:
             units.append('"' + " ".join(tokens) + '"')
 
     # Quoted spans first, then whatever is left over as individual terms.
-    remainder = _FTS5_PHRASE_RE.sub(lambda m: (_add(m.group(1)), " ")[1], query)
+    remainder = _FTS5_PHRASE_RE.sub(lambda m: (_add(m.group(1)), " ")[1], query)  # type: ignore[func-returns-value]
     for token in _FTS5_TOKEN_RE.findall(remainder):
         units.append(f'"{token}"')
 

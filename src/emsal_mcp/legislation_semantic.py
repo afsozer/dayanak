@@ -203,6 +203,15 @@ def build_index(
 class _Loaded:
     __slots__ = ("index", "mev_idx", "sira", "chunk_index", "meta", "mtime", "ids")
 
+    # faiss/numpy nesneleri lazy import edildigi icin Any; alanlar _load'da dolar.
+    index: Any
+    mev_idx: Any
+    sira: Any
+    chunk_index: Any
+    meta: dict[str, Any]
+    mtime: float
+    ids: Any
+
 
 _CACHE: dict[str, _Loaded] = {}
 
@@ -419,6 +428,6 @@ def embed_query(text: str, provider_id: str = DEFAULT_PROVIDER) -> list[float] |
     if prov is None:
         return None
     try:
-        return list(prov.embed_query(text))
+        return list(prov.embed_query(text))  # type: ignore[attr-defined]
     except Exception:  # noqa: BLE001 — sağlayıcı hatası aramayı düşürmemeli
         return None

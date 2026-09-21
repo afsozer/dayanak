@@ -2216,7 +2216,7 @@ def _score_vectors_mmap(
 
     keep = min(max(limit * 20, 200), sims.shape[0])
     idx = np.argpartition(-sims, keep - 1)[:keep]
-    idx = [int(i) for i in idx if float(sims[i]) > 0]
+    idx = [int(i) for i in idx if float(sims[i]) > 0]  # type: ignore[assignment]
     if not idx:
         return []
 
@@ -2307,7 +2307,7 @@ def _score_vectors_batched(
             sims = np.where(denom > 0, dots / denom, 0.0)
 
         take = min(keep, sims.shape[0])
-        idx = np.argpartition(-sims, take - 1)[:take] if take else []
+        idx = np.argpartition(-sims, take - 1)[:take] if take else []  # type: ignore[var-annotated]
         for i in idx:
             score = float(sims[i])
             if score > 0:

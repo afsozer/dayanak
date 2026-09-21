@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import sys
 import pytest
 
 pytestmark = [pytest.mark.integration]
@@ -320,7 +321,7 @@ class TestConvertDocxToUdf:
         )
         monkeypatch.setenv("LOCAL_YARGI_UDF_TOOLS", "1")
         monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
-        monkeypatch.setattr(udf_mod, "_discover_python", lambda: "python")
+        monkeypatch.setattr(udf_mod, "_discover_python", lambda: sys.executable)
         docx = tmp_path / "in.docx"
         docx.write_bytes(b"fake docx")
         out = tmp_path / "out.udf"

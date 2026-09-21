@@ -625,7 +625,7 @@ def _build_tree(articles: list[dict[str, Any]], full_text: str) -> dict[str, Any
         pending_qual = None
         number = re.sub(r"\s+", "", art_m.group(2))
         key = _norm_article_no(f"{qual_raw} {number}" if qual_raw else number)
-        art = by_number.get(key)
+        art = by_number.get(key)  # type: ignore[assignment]
         if art is None or key in used:
             continue
         used.add(key)

@@ -2946,6 +2946,9 @@ class TestMatrixRebuildIsAtomic:
             assert result["rebuilt"] is True
 
             del held
+            # Yeni nesil yeni bir dosya adina yazilir; POSIX'te eski nesil
+            # silinmis olur, o yuzden yol meta'dan yeniden cozulur.
+            paths = _sidecar_paths(db_path, "testprov")
             fresh = np.load(paths["matrix"], mmap_mode="r")
             assert fresh.shape[0] == 40, "matrix did not actually change"
         finally:

@@ -69,9 +69,7 @@ class TestCheckBedestenResponseError:
 class TestBedestenSearchUpstreamError:
     def test_search_raises_on_upstream_error(self):
         """After retry, persistent upstream error propagates (not empty list)."""
-        from emsal_mcp.sources import bedesten as bedesten_mod
         from emsal_mcp.sources.bedesten import BedestenClient
-        BedestenUpstreamErr = bedesten_mod.BedestenUpstreamError
         ci = BedestenClient()
         ci._upstream_retry_delay = 0.0  # no real sleep during the retry
         err_resp = _mock_resp({

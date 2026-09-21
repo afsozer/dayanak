@@ -1414,7 +1414,7 @@ def graph_build(
     """Build citation graph from cached documents."""
     from .citation_graph import build_citation_graph as build_citation_graph_impl
     result = build_citation_graph_impl(
-        limit_docs=limit_docs, resume=resume, commit_every=commit_every,
+        limit_docs=limit_docs, resume=resume, commit_every=commit_every,  # type: ignore[arg-type]
     )
     _print(result, json_out)
 

@@ -138,7 +138,7 @@ class AymClient(SourceClient):
     async def search(self, query: str, limit: int = 10, **filters) -> list[SearchResult]:
         page = int(filters.pop("page", 1) or 1)
         sp = await self.search_page(query, limit=limit, page=page, **filters)
-        return sp.results
+        return sp.results  # type: ignore[no-any-return]
 
     async def _resolve_legacy_id(self, prefix: str, appno: str) -> tuple[str | None, str | None]:
         """Resolve a legacy ``BB/YYYY/N`` / ``ND/YYYY/N`` id to (uuid, kararTipi)."""
@@ -564,7 +564,7 @@ class BtkClient(SourceClient):
             if text.strip():
                 doc = Document(
                     source=self.source_id, document_id=document_id,
-                    title=f"BTK Kararı", markdown=text, full_text=text,
+                    title="BTK Kararı", markdown=text, full_text=text,
                     source_url=url, content_status=ContentStatus.HTML_MARKDOWN,
                     content_hash=sha(text),
                 )

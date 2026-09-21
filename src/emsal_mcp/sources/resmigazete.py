@@ -109,7 +109,7 @@ class ResmiGazeteClient(SourceClient):
 
         for para in soup.find_all("p"):
             anchors = [a for a in para.find_all("a", href=True)
-                       if _ITEM_HREF_RE.match(a["href"].strip())]
+                       if _ITEM_HREF_RE.match(a["href"].strip())]  # type: ignore[union-attr]
             if not anchors:
                 text = para.get_text(" ", strip=True)
                 # Headings are set entirely in capitals; item titles are not.
@@ -121,7 +121,7 @@ class ResmiGazeteClient(SourceClient):
                 continue
 
             for anchor in anchors:
-                href_match = _ITEM_HREF_RE.match(anchor["href"].strip())
+                href_match = _ITEM_HREF_RE.match(anchor["href"].strip())  # type: ignore[union-attr]
                 if href_match is None:  # pragma: no cover - guarded above
                     continue
                 item_id = href_match.group("id")

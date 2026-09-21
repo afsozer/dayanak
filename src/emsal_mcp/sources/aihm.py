@@ -38,7 +38,7 @@ class AihmClient(SourceClient):
     name = "AİHM (HUDOC)"
     base = "https://hudoc.echr.coe.int"
 
-    _capability_status = "EXPERIMENTAL"  # set as class attribute
+    _capability_status = "EXPERIMENTAL"  # type: ignore[assignment]  # set as class attribute
     _supports_full_text = True
     _supports_pdf_link = False
     _known_limitations: list[str] = [
@@ -91,7 +91,7 @@ class AihmClient(SourceClient):
             "length": min(int(limit), 50),
         }
         async with client() as c:
-            r = await c.get(f"{self.base}/app/query/results", params=params, timeout=30)
+            r = await c.get(f"{self.base}/app/query/results", params=params, timeout=30)  # type: ignore[arg-type]
             check_http_response(r, self.source_id)
             data = r.json()
         if not isinstance(data, dict) or "results" not in data:
@@ -129,7 +129,7 @@ class AihmClient(SourceClient):
         end_date, sort_by (relevance default / date)."""
         page = int(filters.pop("page", 1) or 1)
         sp = await self.search_page(query, limit=limit, page=page, **filters)
-        return sp.results
+        return sp.results  # type: ignore[no-any-return]
 
     async def get_document(self, document_id: str, **kwargs: Any) -> Document:
         """Fetch a HUDOC document by itemid and return its Markdown text.

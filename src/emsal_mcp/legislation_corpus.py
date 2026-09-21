@@ -557,7 +557,7 @@ def _degisiklik_notu(body: str) -> str:
     parts.extend(_FOOTNOTE_RE.findall(body))
     # Aynı parantez birden çok fıkrada tekrar edebilir; sırayı bozmadan tekille.
     seen: set[str] = set()
-    uniq = [p for p in parts if not (p in seen or seen.add(p))]
+    uniq = [p for p in parts if not (p in seen or seen.add(p))]  # type: ignore[func-returns-value]
     return " | ".join(uniq)
 
 
@@ -1105,17 +1105,17 @@ def _grup_karari(uyeler: list[tuple[Any, ...]]) -> list[tuple[str | None, int, s
         return []
     tekil = [(None, 1, u[0]) for u in uyeler]
     if len(uyeler) < 2:
-        return tekil
+        return tekil  # type: ignore[return-value]
     tur = (uyeler[0][1] or "").strip().upper()
     if tur not in _SERI_TURLER:
-        return tekil
+        return tekil  # type: ignore[return-value]
     tarih = {u[0]: _rg_date(u[3]) for u in uyeler}
     if any(t is None for t in tarih.values()):
-        return tekil
+        return tekil  # type: ignore[return-value]
     ds = sorted(tarih.values())  # type: ignore[type-var]
-    araliklar = [(b - a).days for a, b in zip(ds, ds[1:])]
+    araliklar = [(b - a).days for a, b in zip(ds, ds[1:])]  # type: ignore[operator]
     if median(araliklar) < _SERI_MIN_MEDYAN_GUN:
-        return tekil
+        return tekil  # type: ignore[return-value]
     key = ad_anahtari(uyeler[0][1], uyeler[0][2])
     en_yeni = max(uyeler, key=lambda u: (tarih[u[0]], str(u[0])))[0]
     return [(key, 1 if u[0] == en_yeni else 0, u[0]) for u in uyeler]
@@ -1317,7 +1317,7 @@ def surum_katla(
     out: list[dict[str, Any]] = []
     for r in results:
         mid = r.get("mevzuat_id")
-        d = dok.get(mid)
+        d = dok.get(mid)  # type: ignore[arg-type]
         grup = d["grup"] if d else None
         yeni = dict(r)
         if grup:
@@ -1350,7 +1350,7 @@ def surum_katla(
                         "_fts_rowid": None,
                         "guncel": True,
                         "eslesen_surum": {
-                            "mevzuat_no": d["mevzuat_no"], "rg_tarihi": d["rg_tarihi"],
+                            "mevzuat_no": d["mevzuat_no"], "rg_tarihi": d["rg_tarihi"],  # type: ignore[index]
                         },
                     })
                 else:

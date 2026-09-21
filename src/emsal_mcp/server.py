@@ -1388,7 +1388,7 @@ def main() -> None:
         mevzuat_no tek mevzuatla sınırlar (ör. "6098"). Sonuç: mevzuat_adi,
         madde_no, baslik, snippet, kaynak_url.
         """
-        mevzuat_no = str(mevzuat_no).strip() or None  # bos = filtre yok; anyOf semasi istemcileri sasirtiyor, duz str tut
+        mevzuat_no = str(mevzuat_no).strip() or None  # type: ignore[assignment]  # bos = filtre yok; anyOf semasi istemcileri sasirtiyor, duz str tut
         from . import legislation_semantic as _sem
         from .legislation_corpus import corpus_stats, search_madde
 
@@ -1411,8 +1411,8 @@ def main() -> None:
                              "sozluksel (BM25) aramaya dusuldu.")
                     istenen = "lexical"
             if istenen == "semantic":
-                out = {"ok": True, "query": query, "results": sem[:limit],
-                       "total_matches": len(sem[:limit])}
+                out = {"ok": True, "query": query, "results": sem[:limit],  # type: ignore[index]
+                       "total_matches": len(sem[:limit])}  # type: ignore[index]
             else:
                 lex = search_madde(c.db, query, mevzuat_no=mevzuat_no, limit=aday)
                 if istenen == "lexical" or not lex.get("ok"):
@@ -1421,7 +1421,7 @@ def main() -> None:
                     out = lex
                     istenen = "lexical"
                 else:
-                    birlesik = _sem.rrf_merge(lex.get("results", []), sem, limit=limit)
+                    birlesik = _sem.rrf_merge(lex.get("results", []), sem, limit=limit)  # type: ignore[arg-type]
                     out = {"ok": True, "query": query,
                            "fts_query": lex.get("fts_query"),
                            "lexical_fallback": lex.get("lexical_fallback"),
@@ -2530,10 +2530,6 @@ def main() -> None:
         import httpx
         import time
         from datetime import datetime, timezone
-        import urllib3
-
-        # Disable SSL warnings for the InsecureRequestWarning when verifying=False
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         targets = {
             "bedesten": "https://bedesten.adalet.gov.tr",
@@ -2587,7 +2583,7 @@ def main() -> None:
     if _transport == "stdio":
         mcp.run()
     else:
-        mcp.run(transport=_transport)
+        mcp.run(transport=_transport)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":

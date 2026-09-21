@@ -377,11 +377,11 @@ class _CorpusIndex:
         """
         streams: list[list[dict[str, Any]]] = []
         if candidate.esas_no:
-            lst = self.by_esas.get(_normalize_no(candidate.esas_no))
+            lst = self.by_esas.get(_normalize_no(candidate.esas_no))  # type: ignore[arg-type]
             if lst:
                 streams.append(lst)
         if candidate.karar_no:
-            lst = self.by_karar.get(_normalize_no(candidate.karar_no))
+            lst = self.by_karar.get(_normalize_no(candidate.karar_no))  # type: ignore[arg-type]
             if lst:
                 streams.append(lst)
         if candidate.court:

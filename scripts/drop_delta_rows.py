@@ -1,5 +1,5 @@
 """Aylık birleştirme, 3. aşama: toplu indekse eklenen kararların delta vektörlerini sil, delta matrisini yenile."""
-import json, sqlite3, sys, subprocess
+import json, sqlite3, sys
 from pathlib import Path
 
 import _yollar

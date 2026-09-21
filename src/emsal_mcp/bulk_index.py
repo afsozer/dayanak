@@ -32,7 +32,10 @@ import re
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    import numpy as np
 
 SOURCES = ["bedesten", "aym"]  # source_id int8 → ad; yeni kaynak SONA eklenir
 _DEFAULT_NLIST = 16384
@@ -355,6 +358,17 @@ class _Loaded:
     __slots__ = ("index", "doc_num", "chunk_index", "source_id", "meta", "mtime",
                  "mats", "offsets", "refine_warning")
 
+    # faiss/numpy nesneleri lazy import edildigi icin Any; alanlar _load'da dolar.
+    index: Any
+    doc_num: Any
+    chunk_index: Any
+    source_id: Any
+    meta: dict[str, Any]
+    mtime: float
+    mats: Any
+    offsets: Any
+    refine_warning: str | None
+
 
 _CACHE: dict[str, _Loaded] = {}
 
@@ -546,4 +560,4 @@ def bulk_index_status(db_path: Path, provider_id: str) -> dict[str, Any]:
     meta.pop("uuids", None)
     meta["exists"] = True
     meta["size_mb"] = round(p["index"].stat().st_size / 2**20, 1) if p["index"].exists() else None
-    return meta
+    return meta  # type: ignore[no-any-return]

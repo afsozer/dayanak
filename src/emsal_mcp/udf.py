@@ -457,7 +457,7 @@ def _smart_paragraphs(paragraphs: list[str], title_centered: bool) -> list[dict]
             runs = [(para, True, False, False)]
         elif _LABEL_RE.match(para):
             m = _LABEL_RE.match(para)
-            runs = [(m.group(1), True, False, False), (m.group(2), False, False, False)]
+            runs = [(m.group(1), True, False, False), (m.group(2), False, False, False)]  # type: ignore[union-attr]
         elif _is_heading_line(para):
             runs = [(para, True, False, False)]
         else:
@@ -685,7 +685,7 @@ def docx_to_udf_native(
     gaps_before: list[float] = []
     for para in document.paragraphs:
         pf = para.paragraph_format
-        align = align_map.get(para.alignment, "3")
+        align = align_map.get(para.alignment, "3")  # type: ignore[arg-type]
         numbered = _docx_numbering(para)
         indent = round(pf.left_indent.pt, 2) if pf.left_indent else 0.0
         if numbered and not indent:

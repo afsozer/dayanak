@@ -13,7 +13,7 @@ from .base import (
     html_to_text,
     sha,
 )
-from emsal_mcp.models import ContentStatus, Document, SearchPage, SearchResult, SourceSmokeResult, build_error, finalize_document
+from emsal_mcp.models import ContentStatus, Document, SearchPage, SearchResult, SourceSmokeResult, finalize_document
 
 
 # ── Bedesten Solr query preprocessing ────────────────────────────────────────
@@ -189,7 +189,7 @@ class BedestenClient(SourceClient):
                 check_http_response(r2, self.source_id)
                 raw_data = r2.json()
             check_bedesten_response_error(raw_data, source=self.source_id)
-        return raw_data
+        return raw_data  # type: ignore[no-any-return]
 
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
         """Search and return only the results list.

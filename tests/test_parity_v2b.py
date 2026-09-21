@@ -5,7 +5,6 @@ Fixture'lar 2026-07-15 tarihli canlı yanıtlardan alınmıştır
 """
 from __future__ import annotations
 
-import pytest
 
 from emsal_mcp.models import ContentStatus
 from emsal_mcp.sources.aihm import AihmClient

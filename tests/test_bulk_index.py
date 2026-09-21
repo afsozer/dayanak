@@ -5,11 +5,12 @@ import json
 import sqlite3
 from pathlib import Path
 
-import numpy as np
-import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 
+# Opsiyonel toplu-indeks bagimliliklari (CI'da kurulu degil): yoksa modul atlanir.
+np = pytest.importorskip("numpy")
+pa = pytest.importorskip("pyarrow")
+pq = pytest.importorskip("pyarrow.parquet")
 faiss = pytest.importorskip("faiss")
 
 from emsal_mcp import bulk_index  # noqa: E402
@@ -170,8 +171,15 @@ class TestAppend:
             base = rng.normal(size=DIM)
             for c in range(2):
                 v = base + 0.05 * rng.normal(size=DIM)
-                vecs.append(v / np.linalg.norm(v)); ids.append(str(900000 + d)); srcs.append("bedesten"); cix.append(c)
-        v = rng.normal(size=DIM); vecs.append(v / np.linalg.norm(v)); ids.append("uuid-new"); srcs.append("aym"); cix.append(0)
+                vecs.append(v / np.linalg.norm(v))
+                ids.append(str(900000 + d))
+                srcs.append("bedesten")
+                cix.append(c)
+        v = rng.normal(size=DIM)
+        vecs.append(v / np.linalg.norm(v))
+        ids.append("uuid-new")
+        srcs.append("aym")
+        cix.append(0)
         np.save(corpus["vec_dir"] / "delta-1.vectors.npy", np.array(vecs).astype(np.float16))
         pq.write_table(pa.table({
             "document_id": pa.array(ids, pa.string()), "source": pa.array(srcs, pa.string()),
@@ -199,7 +207,7 @@ class TestChunkingVersionGating:
     """Parçalama sürümü meta'ya yazılır; canlı (v1) indeks bozulmaz."""
 
     def test_missing_done_json_means_v1(self, corpus):
-        r = _build(corpus)
+        _build(corpus)
         meta = json.loads((corpus["db_path"].parent / "bulk-testprov.meta.json").read_text("utf-8"))
         assert meta["chunking_version"] == 1
 
