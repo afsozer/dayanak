@@ -3,7 +3,7 @@ name = "emsal-mcp"
 version = "1.0.0"
 description = "Citation-safe MCP hukuk araştırma ve belge hazırlık sistemi"
 readme = "README.md"
-license = "MIT"
+license = { text = "Proprietary - All rights reserved" }
 authors = [
   { name = "Emsal Team" },
 ]

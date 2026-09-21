@@ -48,4 +48,4 @@ Last updated: 2026-05-30
 
 - **All 13 dependencies** use permissive licenses (MIT, BSD-3-Clause, Apache-2.0).
 - **Zero copyleft** concerns (no GPL, LGPL, AGPL, or MPL dependencies).
-- emsal-mcp itself is MIT-licensed.
+- emsal-mcp itself is NOT open source: all rights reserved (no license granted).

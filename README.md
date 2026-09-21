@@ -220,3 +220,8 @@ ruff check src tests scripts
 
 Canlı kaynağa giden testler varsayılan olarak atlanır; açmak için
 `EMSAL_LIVE_TESTS=1`.
+
+## Lisans
+
+Tüm hakları saklıdır. Kaynak kod yalnızca inceleme amacıyla yayımlanmıştır;
+yazılı izin olmadan kullanılamaz, kopyalanamaz, değiştirilemez veya dağıtılamaz.
