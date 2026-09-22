@@ -681,7 +681,7 @@ def build_error(
     *,
     ok: bool = False,
     source: str | None = None,
-    retryable: bool = False,
+    retryable: bool | None = None,
     warnings: list[str] | None = None,
     recommended_next_steps: list[str] | None = None,
     **extra: Any,
@@ -697,7 +697,9 @@ def build_error(
         message: Human-readable error description.
         ok: Always False for errors (kept as kwarg for clarity).
         source: Optional source identifier that produced the error.
-        retryable: Whether the operation can be retried.
+        retryable: Whether the operation can be retried.  Omitted from the
+            dict when None; an explicit False is emitted so the caller can
+            tell "retrying is pointless" from "not stated".
         warnings: Optional list of non-fatal warning strings.
         recommended_next_steps: Optional actionable next steps.
         **extra: Additional fields attached to the error dict.
@@ -712,8 +714,8 @@ def build_error(
     }
     if source is not None:
         result["source"] = source
-    if retryable:
-        result["retryable"] = True
+    if retryable is not None:
+        result["retryable"] = retryable
     if warnings:
         result["warnings"] = list(warnings)
     if recommended_next_steps:

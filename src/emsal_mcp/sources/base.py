@@ -723,11 +723,24 @@ def check_http_response(r: httpx.Response, source: str = "") -> None:
 # conclusions.  This helper surfaces such faults explicitly.
 
 
+# Bedesten fault codes that describe the REQUEST, not the service: the same
+# payload gets the same answer on every attempt, so retrying is pointless and
+# calling it "geçici hata" sends the agent down the wrong path.  Verified live
+# (22 Eyl 2026): phrase "83/a" → ADALET_PARAMETER_VALIDATION_EXCEPTION, FMTE
+# "Sadece harf ve rakam içeren aramalar yapılabilir."  Any other code carrying
+# VALIDATION is treated the same way.
+BEDESTEN_REQUEST_ERROR_CODES: frozenset[str] = frozenset({
+    "ADALET_PARAMETER_VALIDATION_EXCEPTION",
+})
+
+
 class BedestenUpstreamError(Exception):
     """Raised when Bedesten returns a structured upstream error.
 
     Carries the raw ``FMC`` (fault code) and ``FMTE`` (fault message) so the
-    MCP tool layer can produce an actionable, retryable error response.
+    MCP tool layer can produce an actionable error response.  ``retryable``
+    separates service faults (ADALET_RUNTIME_EXCEPTION, ...) from request
+    validation faults that will fail identically on every retry.
     """
 
     def __init__(self, fmc: str, fmte: str = "", *, source: str = "") -> None:
@@ -735,6 +748,15 @@ class BedestenUpstreamError(Exception):
         self.fmte = fmte
         self.source = source
         super().__init__(f"Bedesten upstream error: {fmc} — {fmte}")
+
+    @property
+    def is_request_error(self) -> bool:
+        code = self.fmc.upper()
+        return code in BEDESTEN_REQUEST_ERROR_CODES or "VALIDATION" in code
+
+    @property
+    def retryable(self) -> bool:
+        return not self.is_request_error
 
 
 def check_bedesten_response_error(raw: dict, source: str = "") -> None:

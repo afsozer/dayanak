@@ -116,7 +116,9 @@ class MevzuatClient(BedestenClient):
         # Surface upstream Solr/service faults explicitly (one short retry).
         try:
             check_bedesten_response_error(raw_data, source=self.source_id)
-        except BedestenUpstreamError:
+        except BedestenUpstreamError as exc:
+            if not exc.retryable:
+                raise
             import asyncio as _aio
             await _aio.sleep(self._upstream_retry_delay)
             async with client() as c:
@@ -183,7 +185,9 @@ class MevzuatClient(BedestenClient):
         # Surface upstream faults explicitly (one short retry).
         try:
             check_bedesten_response_error(raw, source=self.source_id)
-        except BedestenUpstreamError:
+        except BedestenUpstreamError as exc:
+            if not exc.retryable:
+                raise
             import asyncio as _aio
             await _aio.sleep(self._upstream_retry_delay)
             async with client() as c:

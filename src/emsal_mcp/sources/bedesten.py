@@ -29,6 +29,114 @@ from emsal_mcp.models import ContentStatus, Document, SearchPage, SearchResult, 
 
 _SOLR_OPERATOR_RE = re.compile(r'[+\-"()]|\b(?:AND|OR|NOT)\b', re.UNICODE)
 
+# ── Bedesten phrase character whitelist ──────────────────────────────────────
+# Bedesten validates `phrase` BEFORE Solr sees it and rejects anything outside
+# a small character set with ADALET_PARAMETER_VALIDATION_EXCEPTION ("Sadece
+# harf ve rakam içeren aramalar yapılabilir").  Measured live, 22 Eyl 2026,
+# one character at a time on YARGITAYKARARI:
+#   accepted: letters, digits, whitespace, + - " ( ), AND/OR/NOT, && || !
+#   rejected: / * ? . , ' : _ ~ % ; § [ ] \ ^ @ # = < { … – “ ”
+# So the Solr syntax that matters (+, -, quotes, parens, boolean words) works;
+# wildcards (* ?), fuzzy (~), boost (^) and every punctuation mark do not.
+# The index tokenizer splits on that punctuation anyway: "83/a" is stored as
+# the tokens "83" "a" (phrase "83 a" ≈ 35 000 hits, "83a" ≈ 7), so a
+# punctuated token maps faithfully to a quoted phrase of its parts.
+_ALLOWED_PUNCT = frozenset('+-"()&|!')
+_SMART_QUOTES = str.maketrans({"“": '"', "”": '"', "„": '"', "«": '"', "»": '"', "″": '"'})
+_WILDCARDS = frozenset("*?")
+# A (possibly operator-prefixed) quoted phrase, or a run of non-space chars.
+_QUERY_TOKEN_RE = re.compile(r'[+\-(]*"[^"]*"\)*|[^\s"]+')
+
+
+def _allowed_char(ch: str) -> bool:
+    return (ch.isalnum() and ch != "_") or ch.isspace() or ch in _ALLOWED_PUNCT
+
+
+def _split_disallowed(text: str) -> list[str]:
+    """Split ``text`` on runs of characters Bedesten rejects."""
+    parts: list[str] = []
+    cur: list[str] = []
+    for ch in text:
+        if _allowed_char(ch) and ch not in '"':
+            cur.append(ch)
+        else:
+            if cur:
+                parts.append("".join(cur))
+            cur = []
+    if cur:
+        parts.append("".join(cur))
+    return [p for p in (x.strip() for x in parts) if p]
+
+
+def sanitize_bedesten_query(query: str) -> tuple[str, list[str]]:
+    """Make a query acceptable to Bedesten's phrase validator.
+
+    Characters Bedesten rejects are removed without changing what the caller
+    asked for, as far as the index allows:
+
+    * inside a token (``83/a``, ``+83/a``, ``maaş'ın``) they become a quoted
+      phrase of the parts — ``"83 a"``, ``+"83 a"`` — so the token stays one
+      required/excluded unit instead of splitting into loose OR terms;
+    * inside a quoted phrase they become spaces (``"83/a"`` → ``"83 a"``);
+    * leading/trailing ones are dropped (``maaş.`` → ``maaş``), including the
+      unsupported wildcards ``*`` and ``?``;
+    * typographic quotes become ``"``; an unmatched ``"`` is dropped.
+
+    Returns ``(clean_query, removed_chars)``; ``removed_chars`` is empty when
+    the query was already clean (then ``clean_query`` is the input unchanged).
+    """
+    if not query:
+        return query, []
+    removed: list[str] = []
+
+    def note(text: str) -> None:
+        for ch in text:
+            if ch not in removed and not _allowed_char(ch):
+                removed.append(ch)
+
+    text = query.translate(_SMART_QUOTES)
+    if text != query:
+        removed.extend(ch for ch in "“”„«»″" if ch in query and ch not in removed)
+    if text.count('"') % 2:
+        idx = text.rfind('"')
+        text = text[:idx] + " " + text[idx + 1:]
+        removed.append('"')
+    note(text)
+    if not removed:
+        return query, []
+
+    out: list[str] = []
+    for m in _QUERY_TOKEN_RE.finditer(text):
+        tok = m.group(0)
+        q = tok.find('"')
+        if q != -1:
+            prefix, rest = tok[:q], tok[q + 1:]
+            end = rest.rfind('"')
+            inner, suffix = rest[:end], rest[end + 1:]
+            words = _split_disallowed(inner)
+            if words:
+                out.append(f'{prefix}"{" ".join(words)}"{suffix}')
+            continue
+        # Bare token: peel operator prefix and closing parens, clean the core.
+        i = 0
+        while i < len(tok) and tok[i] in "+-(":
+            i += 1
+        j = len(tok)
+        while j > i and tok[j - 1] == ")":
+            j -= 1
+        prefix, core, suffix = tok[:i], tok[i:j], tok[j:]
+        parts = _split_disallowed(core)
+        if not parts:
+            # Nothing searchable left ("*", "/", "+."): keep bare parens only
+            # so grouping stays balanced.
+            kept = "".join(c for c in prefix if c == "(") + suffix
+            if kept:
+                out.append(kept)
+            continue
+        core = parts[0] if len(parts) == 1 else f'"{" ".join(parts)}"'
+        out.append(f"{prefix}{core}{suffix}")
+    return " ".join(out), removed
+
 
 # ── Bedesten itemType vocabulary ─────────────────────────────────────────────
 # Verified live against /emsal-karar/searchDocuments (phrase="tazminat"):
@@ -101,7 +209,7 @@ def normalize_item_types(raw: list[str]) -> tuple[list[str], list[str]]:
     return valid, unknown
 
 
-def rewrite_solr_query(query: str) -> tuple[str, bool]:
+def rewrite_solr_query(query: str, has_operators: bool | None = None) -> tuple[str, bool]:
     """Rewrite a bare-term Solr query so every term is required.
 
     Bedesten's default Solr operator is OR — whitespace between bare terms
@@ -118,14 +226,22 @@ def rewrite_solr_query(query: str) -> tuple[str, bool]:
     retries the original OR query when the AND form comes back empty; see
     ``fallback_to_or``.
 
+    ``has_operators`` overrides the operator detection — ``search_page``
+    passes the verdict on the caller's ORIGINAL query, so quotes introduced
+    by sanitisation (``83/a`` → ``"83 a"``) do not disable the rewrite.
+
     Returns ``(rewritten_query, was_rewritten)``.
     """
     if not query or not query.strip():
         return query, False
     # If the query already uses any Solr operator, leave it alone.
-    if _SOLR_OPERATOR_RE.search(query):
+    if has_operators is None:
+        has_operators = bool(_SOLR_OPERATOR_RE.search(query))
+    if has_operators:
         return query, False
-    tokens = query.split()
+    # Quote-aware: a phrase produced by sanitize_bedesten_query ("83 a") is
+    # one token.
+    tokens = _QUERY_TOKEN_RE.findall(query)
     # Single token — no rewrite needed.
     if len(tokens) <= 1:
         return query, False
@@ -150,6 +266,10 @@ def _result_count(raw_data: Any) -> int:
         or data.get("items") or data.get("content") or []
     )
     return len(items) if isinstance(items, list) else 0
+
+
+class InvalidQueryError(ValueError):
+    """The query cannot be sent to Bedesten at all (nothing searchable left)."""
 
 
 class BedestenClient(SourceClient):
@@ -181,7 +301,9 @@ class BedestenClient(SourceClient):
             raw_data = r.json()
         try:
             check_bedesten_response_error(raw_data, source=self.source_id)
-        except BedestenUpstreamError:
+        except BedestenUpstreamError as exc:
+            if not exc.retryable:
+                raise
             import asyncio as _aio
             await _aio.sleep(self._upstream_retry_delay)
             async with client() as c:
@@ -209,10 +331,26 @@ class BedestenClient(SourceClient):
         """
         # ── Solr query preprocessing ────────────────────────────────────
         original_query = query
-        query, query_rewritten = rewrite_solr_query(query)
+        clean_query, removed_chars = sanitize_bedesten_query(query or "")
+        if original_query and original_query.strip() and not clean_query.strip():
+            raise InvalidQueryError(
+                f"'{original_query}' Bedesten'in kabul ettiği hiçbir terim içermiyor "
+                "(yalnızca harf, rakam ve + - \" ( ) AND OR NOT kabul edilir)."
+            )
+        query, query_rewritten = rewrite_solr_query(
+            clean_query, has_operators=bool(_SOLR_OPERATOR_RE.search(original_query or "")),
+        )
 
         # ── court_types → itemTypeList ────────────────────────────────
         warnings: list[str] = []
+        if removed_chars:
+            warnings.append(
+                f"Bedesten yalnızca harf, rakam ve + - \" ( ) operatörlerini kabul eder; "
+                f"sorgudaki {' '.join(removed_chars)} karakterleri temizlendi. "
+                f"Gönderilen sorgu: {clean_query}"
+                + (" (joker * ve ? Bedesten'de desteklenmez, kelimenin tam hâlini yazın)"
+                   if any(c in _WILDCARDS for c in removed_chars) else "")
+            )
         court_types: list[str] | None = filters.get("court_types") or filters.get("court_types_list")
         if court_types and isinstance(court_types, list) and len(court_types) > 0:
             item_type_list, unknown_types = normalize_item_types(court_types)
@@ -308,7 +446,7 @@ class BedestenClient(SourceClient):
             # Fresh payload — never mutate the one already sent, so the two
             # passes stay independently inspectable.
             or_payload = dict(payload)
-            or_payload["data"] = {**data_payload, "phrase": original_query}
+            or_payload["data"] = {**data_payload, "phrase": clean_query}
             raw_data = await self._post_search(or_payload)
             fallback_to_or = True
             query_rewritten = False
@@ -361,6 +499,9 @@ class BedestenClient(SourceClient):
             if fallback_to_or:
                 meta["fallback_to_or"] = True
                 meta["original_query"] = original_query
+            if removed_chars:
+                meta["query_sanitized"] = True
+                meta["original_query"] = original_query
             # Legacy link kept as alternate_url for callers depending on it.
             meta["alternate_url"] = f"https://emsal.uyap.gov.tr/getDokuman?id={did}"
             out.append(SearchResult(
@@ -405,7 +546,9 @@ class BedestenClient(SourceClient):
         # Surface upstream faults explicitly (do not silently return UNAVAILABLE).
         try:
             check_bedesten_response_error(raw, source=self.source_id)
-        except BedestenUpstreamError:
+        except BedestenUpstreamError as exc:
+            if not exc.retryable:
+                raise
             import asyncio as _aio
             await _aio.sleep(self._upstream_retry_delay)
             async with client() as c:

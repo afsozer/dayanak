@@ -729,7 +729,16 @@ def main() -> None:
 
         +required  must appear (+tazminat)   -excluded  must not (-bölge)
         "exact"    phrase ("iş kazası")      AND/OR/NOT UPPERCASE only
-        (grouping) sub-expressions           *          suffix wildcard
+        (grouping) sub-expressions
+
+        ⚠️ CHARACTER WHITELIST (measured live): Bedesten accepts ONLY letters,
+        digits, spaces and the operators above.  Wildcards (* ?), fuzzy (~),
+        boost (^) and ANY punctuation (/ . , ' : ; _ …) are rejected outright
+        with INVALID_QUERY — there is NO wildcard search, write the full word.
+        Article numbers: `"83 a"` not `83/a` (the index stores 83/a as the two
+        tokens 83 and a).  The tool strips/converts such characters before
+        sending (`83/a` → `"83 a"`, `maaş.` → `maaş`) and reports it in
+        `warnings` + `query_sanitized`; write them clean to avoid surprises.
 
         ⚠️ THE INDEX IS NOT STEMMED — each inflected form is its own token:
         `+taahhüdü` ≈ 16 700 hits vs `+taahhüt` ≈ 43 800.  Prefer noun stems or
@@ -899,6 +908,36 @@ def main() -> None:
             # misread as "no precedent exists", which is false: the source is
             # temporarily faulty.  See Yargı-MCP parity Görev 3.
             from .sources.base import BedestenUpstreamError
+            from .sources.bedesten import InvalidQueryError
+            if isinstance(exc, BedestenUpstreamError) and exc.is_request_error:
+                # Parameter validation fault: the SAME query fails the same
+                # way every time.  Labelling it "geçici hata / retryable"
+                # makes the agent retry or misdiagnose an outage.
+                return build_error(
+                    "INVALID_QUERY",
+                    f"Kaynak ({effective_source}) sorguyu geçersiz saydı ({exc.fmc}: "
+                    f"{exc.fmte or 'parametre doğrulama hatası'}). Tekrar denemek aynı "
+                    "sonucu verir; bu 'sonuç yok' anlamına da gelmez. Özel karakterleri "
+                    "kaldırıp düz kelimelerle tekrar arayın.",
+                    source=effective_source,
+                    retryable=False,
+                    recommended_next_steps=[
+                        "Özel karakterleri (/ * ? . , ' : vb.) kaldırıp düz kelimelerle "
+                        "tekrar arayın; madde numarasını '83/a' yerine \"83 a\" yazın.",
+                        "Bedesten'de çalışan operatörler: + - \"öbek\" ( ) AND OR NOT. "
+                        "Joker (*, ?) desteklenmez.",
+                    ],
+                    upstream_error_code=exc.fmc,
+                    upstream_error_message=exc.fmte,
+                )
+            if isinstance(exc, InvalidQueryError):
+                return build_error(
+                    "INVALID_QUERY",
+                    str(exc),
+                    source=effective_source,
+                    retryable=False,
+                    recommended_next_steps=["Sorguya en az bir harf/rakam içeren terim ekleyin."],
+                )
             if isinstance(exc, BedestenUpstreamError):
                 return build_error(
                     "SOURCE_UPSTREAM_ERROR",
@@ -1039,6 +1078,17 @@ def main() -> None:
             doc = await get_source(source).get_document(document_id)
         except Exception as exc:
             from .sources.base import BedestenUpstreamError
+            if isinstance(exc, BedestenUpstreamError) and exc.is_request_error:
+                return build_error(
+                    "INVALID_INPUT",
+                    f"Kaynak ({source}) isteği geçersiz saydı ({exc.fmc}: {exc.fmte}); "
+                    "tekrar denemek aynı sonucu verir.",
+                    source=source,
+                    retryable=False,
+                    recommended_next_steps=["document_id değerini search_decisions sonucundan aynen alın."],
+                    upstream_error_code=exc.fmc,
+                    upstream_error_message=exc.fmte,
+                )
             if isinstance(exc, BedestenUpstreamError):
                 return build_error(
                     "SOURCE_UPSTREAM_ERROR",
@@ -2339,8 +2389,12 @@ def main() -> None:
                 '  "tam ifade" — Tam eşleşme (phrase search).\n'
                 "  AND / OR   — Boolean operatörler (BÜYÜK HARFLE).\n"
                 "  NOT        — Hariç tutma (BÜYÜK HARFLE).\n"
-                "  (grup)     — Alt ifade gruplama.\n"
-                "  *          — Sonek joker (örn: tazmin*)\n\n"
+                "  (grup)     — Alt ifade gruplama.\n\n"
+                "Karakter sınırı (canlı ölçüldü): Bedesten yalnızca harf, rakam,\n"
+                "boşluk ve yukarıdaki operatörleri kabul eder. Joker (* ?), ~, ^ ve\n"
+                "her türlü noktalama (/ . , ' : ;) INVALID_QUERY ile reddedilir;\n"
+                "joker arama YOKTUR, kelimenin tam hâlini yazın. Madde numarası:\n"
+                '  "83 a" ✓   83/a ✗\n\n'
                 "Sorgu hijyeni:\n"
                 "  - Kullanıcının sorusunu AYNEN yapıştırma.\n"
                 "  - 2-5 anahtar hukuk terimine indirge.\n"

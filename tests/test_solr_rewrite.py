@@ -77,11 +77,10 @@ class TestRewriteSolrQuery:
         assert q == original
 
     def test_wildcard_alone_still_rewrites(self):
-        # A bare wildcard without other operators is still a bare-term query;
-        # the wildcard alone is not a "grouping" operator.  However our regex
-        # does not treat `*` as an operator, so this multi-token query IS
-        # rewritten (each token gets +).  This matches the spec: "boşanma
-        # tazminat*" without + is a mistake; auto-rewrite fixes it.
+        # `*` is not an operator for the rewrite, so this multi-token query IS
+        # rewritten.  NOTE: Bedesten rejects `*` outright (measured 22 Eyl
+        # 2026); search_page strips it via sanitize_bedesten_query BEFORE the
+        # rewrite runs — see test_bedesten_query_validation.
         q, rewritten = rewrite_solr_query("boşanma tazminat*")
         assert rewritten is True
         assert q == "+boşanma +tazminat*"

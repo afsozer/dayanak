@@ -3,6 +3,28 @@
 All notable changes to emsal-mcp are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Bedesten sorgu doğrulama hatası yanlış etiketleniyordu (22 Eyl).**
+  `ADALET_PARAMETER_VALIDATION_EXCEPTION` artık `SOURCE_UPSTREAM_ERROR` /
+  `retryable: true` ("geçici hata, tekrar dene") değil, `INVALID_QUERY` /
+  `retryable: false` döner; mesaj sebebi ve düzeltmeyi söyler. Bu tür hatada
+  istemci de boşuna ikinci istek atmaz. `build_error` açıkça verilen
+  `retryable=False`'u artık yanıta yazar.
+- **Bedesten karakter beyaz listesi (22 Eyl, canlı ölçüm).** Kabul edilen:
+  harf, rakam, boşluk, `+ - " ( )`, `AND/OR/NOT`, `&& || !`. Reddedilen:
+  `/ * ? . , ' : _ ~ % ; [ ] \ ^ @ # = < { … – “ ”`. Sorgu gönderilmeden
+  temizlenir: kelime içindeki işaret öbeğe çevrilir (`83/a` → `"83 a"`,
+  `+83/a` → `+"83 a"`), baştaki/sondaki işaret ve joker atılır, kıvrık tırnak
+  düzeltilir; `warnings` + `query_sanitized` ile bildirilir. Hiç terim
+  kalmazsa istek atılmadan `INVALID_QUERY`. AND→OR geri dönüşü de temiz
+  sorguyu kullanır.
+- **Operatör rehberi.** `search_decisions` docstring'i ve
+  `legal_research_guide` Solr bölümünden Bedesten'de çalışmayan `*` sonek
+  joker önerisi kaldırıldı; karakter sınırı ve madde numarası yazımı eklendi.
+
 ## [1.0.0] — 2026-09-16
 
 İlk **stable** kesim. Sürüm şeması sıfırlandı: geliştirme boyunca kullanılan

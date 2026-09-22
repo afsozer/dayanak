@@ -445,9 +445,9 @@ def get_error_codes() -> dict[str, Any]:
             "action": "Provide a non-empty watch name.",
         },
         "INVALID_QUERY": {
-            "message_pattern": "Watch query must not be empty",
-            "modules": ["research_watch"],
-            "action": "Provide a non-empty research query.",
+            "message_pattern": "Watch query must not be empty / Kaynak sorguyu geçersiz saydı",
+            "modules": ["research_watch", "server"],
+            "action": "Not retryable: remove special characters and search with plain words.",
         },
         "MERGE_FAILED": {
             "message_pattern": "str(exc)",
