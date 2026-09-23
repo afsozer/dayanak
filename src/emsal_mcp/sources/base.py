@@ -694,7 +694,7 @@ def client(timeout: float = 30) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=timeout,
         follow_redirects=True,
-        headers={"User-Agent": f"EmsalMcp/{__version__} (+https://github.com/brachindul/emsal-mcp)"},
+        headers={"User-Agent": f"EmsalMcp/{__version__} (+https://github.com/afsozer/emsal-mcp)"},
         event_hooks={"request": [_throttle_request], "response": [_throttle_response]},
         **kwargs,
     )
