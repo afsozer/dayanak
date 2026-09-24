@@ -12,7 +12,10 @@ $root   = Split-Path -Parent $PSScriptRoot
 $yerel = Join-Path $PSScriptRoot 'yerel-ayar.cmd'
 if (Test-Path $yerel) {
     foreach ($s in Get-Content $yerel) {
-        if ($s -match '^\s*set\s+([A-Za-z_][A-Za-z0-9_]*)=(.+?)\s*$' -and -not [Environment]::GetEnvironmentVariable($Matches[1])) {
+        # -cmatch (buyuk/kucuk harf duyarli) SART: -match kulturu kullanir; tr-TR'de
+        # 'I' kucultulunce noktasiz i olur ve [A-Za-z]'ye girmez, adinda I gecen her
+        # degisken (EMSAL_DATA_DIR ...) sessizce atlanir (22-24 Eyl crawl'i ~\.emsal_mcp'ye yazdi).
+        if ($s -cmatch '^\s*[Ss][Ee][Tt]\s+([A-Za-z_][A-Za-z0-9_]*)=(.+?)\s*$' -and -not [Environment]::GetEnvironmentVariable($Matches[1])) {
             [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2])
         }
     }
