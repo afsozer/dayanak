@@ -393,6 +393,14 @@ def main() -> None:
             return None
         return val if val > 0 else None
 
+    def _rg_dizin_status() -> dict[str, Any]:
+        """Resmi Gazete baslik dizini ozeti; hicbir zaman istisna atmaz."""
+        try:
+            from .rg_index import index_status_safe
+            return index_status_safe()
+        except Exception as exc:  # pragma: no cover - saglik cagrisi cokmesin
+            return {"mevcut": False, "hata": str(exc)}
+
     def _tool_runtime_snapshot() -> dict[str, Any]:
         """health_check icin canli calisma-zamani sayaclari.
 
@@ -770,10 +778,17 @@ def main() -> None:
         Args:
             source: Optional source identifier. Available sources:
                 - ``'bedesten'`` (default) — combined Yargıtay + Danıştay sweep
-                - ``'resmigazete'`` — Resmî Gazete, one issue per call.
-                  ``karar_tarihi_start='YYYY-MM-DD'`` picks the day (default
-                  today); ``query`` filters that issue locally (diacritic-
-                  insensitive), omit to list it all. Ids: ``20260731-1``.
+                - ``'resmigazete'`` — Resmî Gazete. With ``query`` and NO
+                  single day (no date, or a ``karar_tarihi_start`` /
+                  ``karar_tarihi_end`` range) it searches the local TITLE index
+                  (2000-06-27 →, titles only, not full text; accent-insensitive,
+                  prefix match, ``"quoted phrase"`` ok) across all issues,
+                  paginated; ``sort_by='date'`` = newest first. Only
+                  ``karar_tarihi_start`` = start..today. One issue: give
+                  start==end, or no query and only start (default today) to
+                  list/filter that day live. Index missing → single-day
+                  fallback + warning. Ids: ``20260731-1``, mükerrer
+                  ``20230309m1-1``.
                 - ``'aym'`` — Anayasa Mahkemesi (bireysel başvuru + norm
                   denetimi kararları, tam metin)
                 - ``'aihm'`` — AİHM/ECHR via HUDOC (EXPERIMENTAL ama arama ve
@@ -2583,6 +2598,8 @@ def main() -> None:
             # Zamanlanmis isler: log dosyalarindan son kosu (schtasks'siz).
             "scheduled_jobs": jobs,
             "scheduled_jobs_problems": job_problems,
+            # Resmi Gazete baslik dizini: oge sayisi, kapsanan aralik, son cekilme.
+            "resmigazete_dizin": _rg_dizin_status(),
             # M-119: zaman siniri / thread havuzu durumu.
             "tool_runtime": _tool_runtime_snapshot(),
         }
