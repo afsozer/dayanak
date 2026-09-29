@@ -86,8 +86,8 @@ class TestHudocQueryBuilder:
 
     def test_dates(self):
         q = AihmClient()._build_query("", {"start_date": "2020-01-01", "end_date": "2021-12-31"})
-        assert '(kpdate>="2020-01-01T00:00:00")' in q
-        assert '(kpdate<="2021-12-31T23:59:59")' in q
+        assert '(kpdate>="2020-01-01T00:00:00.0Z")' in q
+        assert '(kpdate<="2021-12-31T23:59:59.0Z")' in q
 
     def test_quote_stripping(self):
         q = AihmClient()._build_query("", {"dava_adi": 'Ka"vala'})
@@ -250,3 +250,161 @@ def test_btk_pdf_extractor_import_path():
     src = inspect.getsource(simple_public)
     assert "from .pdf_extractor import" not in src
     assert "from emsal_mcp.pdf_extractor import" in src
+
+
+# ── AIHM dil varsayilani / dusus / tarih eslemesi ────────────────────
+
+class TestAihmDil:
+    def test_multi_lang_or_group(self):
+        q = AihmClient()._build_query("", {"dil": "eng,fre"})
+        assert '(languageisocode:"ENG" OR languageisocode:"FRE")' in q
+
+    def test_hepsi_no_lang_filter(self):
+        q = AihmClient()._build_query("", {"dil": "HEPSI"})
+        assert "languageisocode" not in q
+
+    def test_karar_tarihi_aliases(self):
+        q = AihmClient()._build_query(
+            "", {"karar_tarihi_start": "2020-01-01", "karar_tarihi_end": "2022-12-31"},
+        )
+        assert '(kpdate>="2020-01-01T00:00:00.0Z")' in q
+        assert '(kpdate<="2022-12-31T23:59:59.0Z")' in q
+
+
+def _fake_hudoc(monkeypatch, counts):
+    """counts: dil-ifadesi ipucu -> resultcount. Cagri sorgularini kaydeder."""
+    seen: list[str] = []
+
+    class R:
+        status_code = 200
+        headers: dict = {}
+        def __init__(self, n):
+            self.n = n
+        def json(self):
+            rows = [{"columns": {"itemid": f"001-{i}", "docname": "X v. TURKEY",
+                                 "kpdate": "2021-01-01T00:00:00"}}
+                    for i in range(min(self.n, 2))]
+            return {"resultcount": self.n, "results": rows}
+        def raise_for_status(self):
+            return None
+
+    class C:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def get(self, url, **kw):
+            q = kw["params"]["query"]
+            seen.append(q)
+            for hint, n in counts.items():
+                if hint in q:
+                    return R(n)
+            return R(0)
+
+    monkeypatch.setattr("emsal_mcp.sources.aihm.client", lambda: C())
+    return seen
+
+
+def test_aihm_default_lang_is_tur(monkeypatch):
+    import asyncio
+    seen = _fake_hudoc(monkeypatch, {'languageisocode:"TUR"': 5})
+    sp = asyncio.run(AihmClient().search_page("Kavala"))
+    assert len(seen) == 3 and any('(languageisocode:"TUR")' in q for q in seen)  # asil + 2 sayim
+    assert sp.total == 5 and not sp.warnings
+
+
+def test_aihm_falls_back_when_tur_empty(monkeypatch):
+    import asyncio
+    seen = _fake_hudoc(monkeypatch, {'languageisocode:"TUR"': 0, 'languageisocode:"ENG"': 7})
+    sp = asyncio.run(AihmClient().search_page("nadir"))
+    assert len(seen) == 4  # 3 paralel (asil+2 sayim) + dusus
+    assert 'languageisocode:"ENG" OR languageisocode:"FRE"' in seen[-1]
+    assert sp.total == 7
+    assert any("Turkce ceviri" in w for w in sp.warnings)
+
+
+def test_aihm_explicit_lang_no_fallback(monkeypatch):
+    import asyncio
+    seen = _fake_hudoc(monkeypatch, {})
+    sp = asyncio.run(AihmClient().search_page("x", dil="ENG"))
+    assert len(seen) == 1 and '(languageisocode:"ENG")' in seen[0]
+    assert sp.total == 0 and not sp.warnings
+
+
+def test_aihm_hepsi_no_lang_filter_no_fallback(monkeypatch):
+    import asyncio
+    seen = _fake_hudoc(monkeypatch, {})
+    asyncio.run(AihmClient().search_page("x", dil="HEPSI"))
+    assert len(seen) == 1 and "languageisocode" not in seen[0]
+
+
+def test_aihm_date_filters_reach_query(monkeypatch):
+    import asyncio
+    seen = _fake_hudoc(monkeypatch, {"kpdate": 3})
+    asyncio.run(AihmClient().search_page(
+        "ifade", karar_tarihi_start="2020-01-01", karar_tarihi_end="2022-12-31"))
+    assert 'kpdate>="2020-01-01T00:00:00.0Z"' in seen[0]
+    assert 'kpdate<="2022-12-31T23:59:59.0Z"' in seen[0]
+
+
+def test_aihm_default_notes_newer_original_language(monkeypatch):
+    import asyncio
+    seen: list[str] = []
+
+    class R:
+        status_code = 200
+        headers: dict = {}
+        def __init__(self, n, date, name):
+            self.n, self.date, self.name = n, date, name
+        def json(self):
+            return {"resultcount": self.n, "results": [{"columns": {
+                "itemid": "001-1", "docname": self.name, "kpdate": self.date}}]}
+        def raise_for_status(self):
+            return None
+
+    class C:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def get(self, url, **kw):
+            q = kw["params"]["query"]
+            seen.append(q)
+            if 'languageisocode:"TUR"' in q:
+                return R(65, "2022-07-11T00:00:00", "KAVALA v. TURKEY")
+            return R(7, "2026-08-25T00:00:00", "KAVALA v. TURKIYE (No. 2)")
+
+    monkeypatch.setattr("emsal_mcp.sources.aihm.client", lambda: C())
+    sp = asyncio.run(AihmClient().search_page("Kavala"))
+    assert sp.total == 65
+    assert len(sp.warnings) == 1
+    w = sp.warnings[0]
+    assert "(65)" in w and "7 belge daha" in w
+    assert "2026-08-25" in w and "No. 2" in w
+
+
+def test_aihm_default_probe_failure_is_silent(monkeypatch):
+    import asyncio
+
+    class R:
+        status_code = 200
+        headers: dict = {}
+        def json(self):
+            return {"resultcount": 3, "results": [{"columns": {
+                "itemid": "001-1", "docname": "X", "kpdate": "2021-01-01T00:00:00"}}]}
+        def raise_for_status(self):
+            return None
+
+    class C:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def get(self, url, **kw):
+            if "ENG" in kw["params"]["query"]:
+                raise RuntimeError("boom")
+            return R()
+
+    monkeypatch.setattr("emsal_mcp.sources.aihm.client", lambda: C())
+    sp = asyncio.run(AihmClient().search_page("x"))
+    assert sp.total == 3 and sp.warnings == []
