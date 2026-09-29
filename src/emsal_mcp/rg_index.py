@@ -39,6 +39,7 @@ from .sources.resmigazete import (
     ResmiGazeteClient,
     _fold,
     _iso_from_day,
+    header_text,
     parse_issue_header,
 )
 
@@ -166,6 +167,13 @@ def store_issue(
         )
         n += 1
     return n
+
+
+def clear_page(db: sqlite3.Connection, sayfa: str) -> None:
+    """Bir fihrist sayfasinin ogelerini (FTS dahil) sil."""
+    for (rid,) in db.execute("SELECT rowid FROM rg_ogeler WHERE sayfa=?", (sayfa,)).fetchall():
+        db.execute("DELETE FROM rg_fts WHERE rowid=?", (rid,))
+    db.execute("DELETE FROM rg_ogeler WHERE sayfa=?", (sayfa,))
 
 
 def mark_day(db: sqlite3.Connection, sayfa: str, durum: str, oge_sayisi: int = 0,
@@ -300,39 +308,64 @@ def _header(html: str) -> tuple[str | None, bool]:
     sayi, muk = parse_issue_header(html)
     if sayi:
         return sayi, muk
-    flat = re.sub(r"<[^>]+>", " ", html[:20000])
-    flat = re.sub(r"\s+", " ", _html.unescape(flat))
-    m = _OLD_HEADER_RE.search(flat)
+    m = _OLD_HEADER_RE.search(_html.unescape(header_text(html)))
     return (m.group(1) if m else None), False
+
+
+_NO_ISSUE_RE = re.compile(r"gazete\s+yayimlanmamaktad")
+_P_SPLIT_RE = re.compile(r"<(?:p|dt|dd|li)\b", re.I)
+_P_END_RE = re.compile(r"</(?:p|dt|dd|li)>", re.I)
+_LEG_HREF_RE = re.compile(r"""href=["']?#(\d+)""", re.I)
+
+
+def _plain(fragment: str) -> str:
+    txt = _html.unescape(re.sub(r"<[^>]+>", "", fragment)).replace("\xa0", " ")
+    return re.sub(r"\s+", " ", txt).strip()
 
 
 def _parse_legacy(html: str, day: str) -> list[dict[str, Any]]:
     """2000-2003 civari tek sayfalik fihrist: ogeler ayri dosya degil, sayfa
-    ici ``#N`` baglantilari.  Kimlik ``YYYYMMDD-N``, url sayfa#N."""
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, "lxml")
+    ici ``#N`` baglantilari.  Kimlik ``YYYYMMDD-N``, url sayfa#N.
+
+    Bu sayfalarin HTML'i bozuk (``<a>`` ve ``<font>`` capraz kapaniyor, Turkce
+    harfler ayri ``<font>``lara bolunmus: ``say</a><font>ı</font>``), agac
+    ayristiricisi baglantiyi parcaliyor.  Bu yuzden ham metin ``<p`` sinirlarindan
+    bolunur, etiketler ayirici KOYMADAN silinir; baslik = paragrafin tam metni.
+    Kategori: kendisinden sonraki bos olmayan paragraf bir oge ise ve kisaysa.
+    """
+    page_url = f"{BASE}/eskiler/{day[0:4]}/{day[4:6]}/{day}.htm"
+    paras = []
+    for chunk in _P_SPLIT_RE.split(html)[1:]:
+        chunk = _P_END_RE.split(chunk, maxsplit=1)[0]
+        text = _plain(chunk[chunk.find(">") + 1:])
+        if text:
+            paras.append((_LEG_HREF_RE.search(chunk), text))
     section = category = None
     items: list[dict[str, Any]] = []
-    page_url = f"{BASE}/eskiler/{day[0:4]}/{day[4:6]}/{day}.htm"
-    for para in soup.find_all("p"):
-        anchors = [a for a in para.find_all("a", href=True) if _LEGACY_ANCHOR_RE.match(a["href"].strip())]
-        text = re.sub(r"\s+", " ", para.get_text("").replace("\xa0", " ")).strip()
-        if not anchors:
-            if text and len(text) <= 100:
-                if "bolumu" in _fold(text):
-                    section, category = text, None
-                elif para.find_parent(["u", "b"]) is not None or para.find("u") is not None:
-                    category = text
-            continue
-        for a in anchors:
-            n = _LEGACY_ANCHOR_RE.match(a["href"].strip()).group(1)  # type: ignore[union-attr]
-            title = re.sub(r"\s+", " ", a.get_text(" ", strip=True).replace("\xa0", " "))
-            title = re.sub(r"^[\s–—-]+", "", title).strip()
-            if not title:
+    seen: set[str] = set()
+    for i, (href, text) in enumerate(paras):
+        if href is not None:
+            n = href.group(1)
+            if n in seen:
                 continue
-            items.append({"id": f"{day}-{n}", "ext": "htm", "number": None, "title": title,
-                          "section": section, "category": category, "url": f"{page_url}#{n}"})
+            seen.add(n)
+            title = re.sub(r"^[\s–—-]+", "", text).strip()
+            if title:
+                items.append({"id": f"{day}-{n}", "ext": "htm", "number": None, "title": title,
+                              "section": section, "category": category,
+                              "url": f"{page_url}#{n}"})
+            continue
+        if len(text) > 60:
+            continue
+        if "bolumu" in _fold(text):
+            section, category = text, None
+        elif _next_is_item(paras, i):
+            category = text
     return items
+
+
+def _next_is_item(paras: list, i: int) -> bool:
+    return i + 1 < len(paras) and paras[i + 1][0] is not None
 
 
 def parse_issue(html: str, day: str) -> list[dict[str, Any]]:
@@ -438,6 +471,7 @@ async def fetch_day(fetcher: IndexFetcher, db: sqlite3.Connection, day: str) -> 
         res = await fetcher.get_index(sayfa)
         durumlar[sayfa] = res.status
         if res.status == "404":
+            clear_page(db, sayfa)   # yeniden cekimde artik olmayan sayfanin eski satirlari kalmasin
             mark_day(db, sayfa, "404")
             db.commit()
             if sayfa != day:
@@ -449,6 +483,13 @@ async def fetch_day(fetcher: IndexFetcher, db: sqlite3.Connection, day: str) -> 
             break
         sayi_no, muk = _header(res.html or "")
         items = parse_issue(res.html or "", day)
+        if not items and _NO_ISSUE_RE.search(_fold(_plain(res.html or ""))):
+            # "... Resmi Gazete yayimlanmamaktadir": sayfa var ama sayi yok (or. 2006-04-23)
+            clear_page(db, sayfa)
+            mark_day(db, sayfa, "yok")
+            db.commit()
+            durumlar[sayfa] = "yok"
+            continue
         n = store_issue(db, sayfa, items, sayi_no=sayi_no, mukerrer=(sayfa != day) or muk)
         mark_day(db, sayfa, "ok", n, sayi_no)
         db.commit()
@@ -466,17 +507,19 @@ def _days(d_from: _date, d_to: _date) -> Iterable[_date]:
 
 
 def pending_days(db: sqlite3.Connection, d_from: _date, d_to: _date,
-                 refresh_from: _date | None = None) -> list[str]:
+                 refresh_from: _date | None = None, force: bool = False) -> list[str]:
     """Araliktaki, tekrar sorulmasi gereken gunler (YYYYMMDD).
 
-    Ana sayfasi 'ok' ya da '404' olan gun bitmis sayilir (m-sayfalari da o
+    Ana sayfasi 'ok', '404' ya da 'yok' (yayin yok) olan gun bitmis sayilir (m-sayfalari da o
     turda denendi).  'hata' ve hic denenmemis gunler kalir.  ``refresh_from``
     ve sonrasindaki gunler (yakin gecmis + bugun) her seferinde yeniden cekilir:
     yayimlanmamis 404'ler ve sonradan eklenen mukerrerler icin.
     """
+    if force:
+        return [d.strftime("%Y%m%d") for d in _days(d_from, d_to)]
     done = {
         r[0] for r in db.execute(
-            "SELECT sayfa FROM rg_gunler WHERE durum IN ('ok','404') AND length(sayfa)=8 "
+            "SELECT sayfa FROM rg_gunler WHERE durum IN ('ok','404','yok') AND length(sayfa)=8 "
             "AND tarih BETWEEN ? AND ?", (d_from.isoformat(), d_to.isoformat()))
     }
     out = []
@@ -498,6 +541,7 @@ async def backfill(
     delay: float = 0.7,
     concurrency: int = 1,
     refresh_from: _date | None = None,
+    force: bool = False,
     progress: Callable[[str], None] | None = None,
     progress_every: int = 50,
 ) -> dict[str, Any]:
@@ -505,7 +549,7 @@ async def backfill(
     d_from = max(d_from, ARCHIVE_START)
     own = fetcher is None
     fetcher = fetcher or IndexFetcher(delay=delay)
-    days = pending_days(db, d_from, d_to, refresh_from)
+    days = pending_days(db, d_from, d_to, refresh_from, force)
     t0 = time.monotonic()
     stats = {"istenen_gun": (d_to - d_from).days + 1 if d_to >= d_from else 0,
              "islenen_gun": 0, "atlanan_gun": 0, "oge": 0, "gun_404": 0, "gun_hata": 0,
@@ -549,3 +593,40 @@ async def backfill(
 def last_ok_day(db: sqlite3.Connection) -> _date | None:
     row = db.execute("SELECT MAX(tarih) FROM rg_gunler WHERE durum='ok'").fetchone()
     return _date.fromisoformat(row[0]) if row and row[0] else None
+
+
+KISA_BASLIK = 12
+
+
+def audit(db: sqlite3.Connection, ornek: int = 10) -> dict[str, Any]:
+    """Suphelu kayit sayaclari (+ilk ``ornek`` ornek):
+
+    * ``bos_gun``: ana sayfa 'ok' ama 0 oge (ayristirma kacirmis olabilir)
+    * ``sayi_yok``: ana sayfa 'ok', sayi_no bulunamamis
+    * ``sayi_monoton_disi``: sayi_no onceki gunden kucuk ya da sonraki gunden buyuk
+    * ``kisa_baslik``: baslik < 12 karakter (kirpilmis olabilir)
+    """
+    out: dict[str, Any] = {}
+
+    def put(key: str, rows: list[Any]) -> None:
+        out[key] = {"adet": len(rows), "ornek": [tuple(r) if not isinstance(r, str) else r
+                                                  for r in rows[:ornek]]}
+
+    put("bos_gun", [r[0] for r in db.execute(
+        "SELECT tarih FROM rg_gunler WHERE durum='ok' AND length(sayfa)=8 AND oge_sayisi=0 ORDER BY tarih")])
+    put("sayi_yok", [r[0] for r in db.execute(
+        "SELECT tarih FROM rg_gunler WHERE durum='ok' AND length(sayfa)=8 AND sayi_no IS NULL ORDER BY tarih")])
+    seq = [(r[0], int(r[1])) for r in db.execute(
+        "SELECT tarih, sayi_no FROM rg_gunler WHERE durum='ok' AND length(sayfa)=8 "
+        "AND sayi_no GLOB '[0-9]*' ORDER BY tarih")]
+    bad = []
+    for i, (t, n) in enumerate(seq):
+        prev = seq[i - 1][1] if i else None
+        nxt = seq[i + 1][1] if i + 1 < len(seq) else None
+        if (prev is not None and n < prev) or (nxt is not None and n > nxt):
+            bad.append((t, n))
+    put("sayi_monoton_disi", bad)
+    put("kisa_baslik", [(r[0], r[1]) for r in db.execute(
+        "SELECT item_id, baslik FROM rg_ogeler WHERE length(baslik) < ? ORDER BY tarih", (KISA_BASLIK,))])
+    out["suphe_toplam"] = sum(v["adet"] for v in out.values() if isinstance(v, dict))
+    return out

@@ -73,15 +73,28 @@ def _parse_item_id(document_id: str) -> tuple[str, str] | None:
     return m.group("day"), m.group(0).lower()
 
 
-_HEADER_RE = re.compile(r"Tarihli\s+ve\s+(\d+)\s+Say\w+\s+Resm\w+\s+Gazete(?P<muk>\s*-\s*M\w*kerrer)?", re.I)
+_HEADER_RE = re.compile(
+    r"\d{1,2}\s+\w+(?:\s+\d{4})?\s+Tarihli\s+ve\s+(\d+)\s+Say\w+\s+Resm\w+\s+Gazete"
+    r"(?P<muk>\s*-\s*M\w*kerrer)?", re.I)
+# Fihrist basligi ilk oge baglantisindan ONCE gelir; eski tek sayfalik fihristte
+# govde de ayni dosyada ("21/1/1988 tarihli ve 19701 sayili Resmi Gazete'de
+# yayimlanan ..." atiflari) oldugundan arama bu bolgeyle sinirlanir.
+_FIRST_ITEM_RE = re.compile(r"""href=["']?(?:#\d+|\d{8}(?:m\d+)?-\d+\.)""", re.I)
+
+
+def header_text(html: str) -> str:
+    """Fihrist baslik bolgesinin duz metni (ilk oge baglantisina kadar, en cok 12k)."""
+    m = _FIRST_ITEM_RE.search(html)
+    head = html[: min(m.start() if m else 12000, 12000)]
+    flat = re.sub(r"<[^>]+>", "", head)
+    return re.sub(r"\s+", " ", flat.replace("&nbsp;", " "))
 
 
 def parse_issue_header(html: str) -> tuple[str | None, bool]:
     """Fihrist basligindan ``(sayi_no, mukerrer_mi)``: '9 Mart 2023 Tarihli ve
-    32127 Sayılı Resmî Gazete - Mükerrer'.  Bulunamazsa ``(None, False)``."""
-    flat = re.sub(r"<[^>]+>", " ", html[:20000])
-    flat = re.sub(r"\s+", " ", flat.replace("&nbsp;", " "))
-    m = _HEADER_RE.search(flat)
+    32127 Sayılı Resmî Gazete - Mükerrer'.  Bulunamazsa ``(None, False)``;
+    yanlis numara numarasizdan kotu, govde atiflari yakalanmaz."""
+    m = _HEADER_RE.search(header_text(html))
     if not m:
         return None, False
     return m.group(1), bool(m.group("muk"))
@@ -148,7 +161,8 @@ class ResmiGazeteClient(SourceClient):
                     continue
                 item_id = href_match.group("id").lower()
                 ext = href_match.group("ext").lower()
-                raw = anchor.get_text(" ", strip=True)
+                raw = anchor.get_text("")
+                raw = re.sub(r"\s+", " ", raw).strip()
                 raw = raw.replace("\xa0", " ")
                 # Laws and numbered decisions prefix the title with their
                 # number; everything else uses an em dash placeholder.

@@ -1926,7 +1926,7 @@ def _rg_log(msg: str) -> None:
     sys.stderr.flush()
 
 
-def _rg_run(d_from, d_to, db_path, delay, concurrency, refresh_from, json_out) -> None:
+def _rg_run(d_from, d_to, db_path, delay, concurrency, refresh_from, json_out, force=False) -> None:
     import asyncio
     from . import rg_index
 
@@ -1934,7 +1934,7 @@ def _rg_run(d_from, d_to, db_path, delay, concurrency, refresh_from, json_out) -
     try:
         stats = asyncio.run(rg_index.backfill(
             db, d_from, d_to, delay=delay, concurrency=concurrency,
-            refresh_from=refresh_from, progress=_rg_log))
+            refresh_from=refresh_from, force=force, progress=_rg_log))
         stats["dizin"] = rg_index.index_status(db)
     finally:
         db.close()
@@ -1953,12 +1953,13 @@ def rg_backfill(
     db: str = typer.Option(None, help="SQLite yolu (vars. EMSAL_RG_DB_PATH ya da cache'in yanı resmigazete.sqlite3)"),
     delay: float = typer.Option(0.7, help="İstek başlangıçları arası en az saniye"),
     concurrency: int = typer.Option(1, help="Eşzamanlı gün sayısı (1-2 önerilir)"),
+    yeniden: bool = typer.Option(False, "--yeniden", help="Aralıktaki ok/404 günleri de yeniden çek; o günün öğeleri silinip yeniden yazılır (ayrıştırıcı düzeltmesi sonrası)"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Aralığı doldurur; çekilmiş (ok/404) günleri atlar, kaldığı yerden devam eder."""
     from datetime import date as _d
     d_to = _d.fromisoformat(date_to) if date_to else _d.today()
-    _rg_run(_d.fromisoformat(date_from), d_to, db, delay, min(max(concurrency, 1), 4), None, json_out)
+    _rg_run(_d.fromisoformat(date_from), d_to, db, delay, min(max(concurrency, 1), 4), None, json_out, force=yeniden)
 
 
 @rg_app.command("update")
@@ -1994,6 +1995,23 @@ def rg_status(
     """Dizin özeti: öğe sayısı, tarih aralığı, gün durumları, son çekilme."""
     from . import rg_index
     _print(rg_index.index_status_safe(db), json_out)
+
+
+@rg_app.command("denetim")
+def rg_denetim(
+    db: str = typer.Option(None, help="SQLite yolu"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Şüpheli kayıt sayaçları: boş gün, sayı no monoton dışı/yok, kısa başlık."""
+    from . import rg_index
+    conn = rg_index.open_readonly(db)
+    if conn is None:
+        _print({"error": "dizin yok", "yol": str(db or rg_index.default_db_path())}, json_out)
+        raise typer.Exit(code=1)
+    try:
+        _print(rg_index.audit(conn), json_out)
+    finally:
+        conn.close()
 
 
 @rg_app.command("search")

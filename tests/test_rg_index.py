@@ -288,3 +288,112 @@ class TestSearchPageIntegration:
         with patch("emsal_mcp.sources.resmigazete.client", return_value=cm) as c:
             sp = self._search(query="asgari", date="2025-12-01")
         assert c.called and sp.total == 0
+
+
+# ── Eski (2000-2004) tek sayfalik fihrist: gercek sayfa kesitleri ─────────────
+
+_FX = __import__("pathlib").Path(__file__).parent / "fixtures" / "rg"
+
+
+class TestLegacyRealPages:
+    def _html(self, name):
+        return R.decode_page((_FX / name).read_bytes())
+
+    def test_20000703_header_ignores_body_citation(self):
+        """Govdedeki '21/1/1988 tarihli ve 19701 sayili Resmi Gazete' atfi sayi no
+        olarak yakalanmamali; gercek sayi basliktaki 'Sayi : 24098'."""
+        html = self._html("20000703_kesit.htm")
+        assert "19701" in html                      # atif fikstürde gercekten var
+        assert R._header(html) == ("24098", False)
+
+    def test_20000703_titles_are_whole(self):
+        items = R.parse_issue(self._html("20000703_kesit.htm"), "20000703")
+        by = {i["id"]: i for i in items}
+        assert len(items) == 7
+        assert by["20000703-5"]["title"] == (
+            "Edirne İli Sınırları Dahilinde, Orman Yangınlarının Önlenmesi Amacıyla "
+            "Alınması Gereken Tedbirler Hakkında Karar (No: 2000/01)")
+        assert by["20000703-2"]["title"] == "Mecburi Standard: ÖSG-2000/69-70 sayılı Tebliğ"
+        assert by["20000703-1"]["category"] == "Yönetmelik"
+        assert by["20000703-1"]["section"] == "YÜRÜTME VE İDARE BÖLÜMÜ"
+        assert all(len(i["title"]) >= R.KISA_BASLIK for i in items)
+
+    def test_20031215_categories_not_truncated(self):
+        items = R.parse_issue(self._html("20031215_kesit.htm"), "20031215")
+        cats = {i["category"] for i in items}
+        assert "Milletlerarası Andlaşmalar" in cats and "Mille" not in cats
+        assert "Cumhurbaşkanlığına Vekâlet Etme İşlemi" in cats
+
+    def test_modern_header_requires_date_prefix(self):
+        from emsal_mcp.sources.resmigazete import parse_issue_header
+        html = ("<p>Yönetmelik</p><a href=\"20251201-1.htm\">x</a>"
+                "<p>21/1/1988 tarihli ve 19701 sayılı Resmi Gazete'de</p>")
+        assert parse_issue_header(html) == (None, False)
+
+
+class TestForceAndAudit:
+    def test_yeniden_rewrites_ok_days_and_keeps_fts_consistent(self, db):
+        fetcher, calls = _site(PAGES)
+        _run(R.backfill(db, date(2025, 12, 1), date(2025, 12, 1), fetcher=fetcher))
+        # kaynakta sayfa degisti: oge sayisi 4 -> 1
+        changed = dict(PAGES)
+        changed["20251201"] = _page("20251201", "33094", [("20251201-1.htm", "KANUNLAR", "Yeni Baslikli Kanun")])
+        fetcher2, _ = _site(changed)
+        st = _run(R.backfill(db, date(2025, 12, 1), date(2025, 12, 1), fetcher=fetcher2))
+        assert st["islenen_gun"] == 0                      # zorlamasiz: atlanir
+        st = _run(R.backfill(db, date(2025, 12, 1), date(2025, 12, 1), fetcher=fetcher2, force=True))
+        assert st["islenen_gun"] == 1
+        assert db.execute("SELECT COUNT(*) FROM rg_ogeler WHERE sayfa='20251201'").fetchone()[0] == 1
+        assert R.search_index(db, "yeni baslikli")[0] == 1
+        assert R.search_index(db, "tarifesi")[0] == 0, "eski satir FTS'te kalmamali"
+        n = db.execute("SELECT COUNT(*) FROM rg_ogeler").fetchone()[0]
+        assert db.execute("SELECT COUNT(*) FROM rg_fts").fetchone()[0] == n
+
+    def test_yeniden_clears_rows_of_page_that_became_404(self, db):
+        fetcher, _ = _site(PAGES)
+        _run(R.backfill(db, date(2025, 12, 1), date(2025, 12, 1), fetcher=fetcher))
+        empty, _ = _site({})
+        _run(R.backfill(db, date(2025, 12, 1), date(2025, 12, 1), fetcher=empty, force=True))
+        assert db.execute("SELECT COUNT(*) FROM rg_ogeler").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM rg_fts").fetchone()[0] == 0
+
+    def test_audit_flags_suspects(self, db):
+        R.mark_day(db, "20250101", "ok", 0, "100")            # bos gun
+        R.mark_day(db, "20250102", "ok", 1, "101")
+        R.mark_day(db, "20250103", "ok", 1, "19701")           # monoton disi (yuksek)
+        R.mark_day(db, "20250104", "ok", 1, "103")
+        R.mark_day(db, "20250105", "ok", 1, None)              # sayi yok
+        R.store_issue(db, "20250102", [{"id": "20250102-1", "title": "Edirne", "ext": "htm"}], sayi_no="101")
+        a = R.audit(db)
+        assert a["bos_gun"]["adet"] == 1
+        assert a["sayi_yok"]["adet"] == 1
+        assert a["kisa_baslik"]["adet"] == 1
+        assert ("2025-01-03", 19701) in a["sayi_monoton_disi"]["ornek"]
+        assert a["suphe_toplam"] >= 4
+
+
+class TestMoreRealPages:
+    def _html(self, name):
+        return R.decode_page((_FX / name).read_bytes())
+
+    def test_header_without_year(self):
+        """2024-01-05: '5 Ocak Tarihli ve 32420 Sayılı Resmî Gazete' (yil yok)."""
+        assert R._header(self._html("20240105.htm")) == ("32420", False)
+
+    def test_definition_list_legacy_items(self):
+        """2000-10-07: '#N' baglantilari <p> degil <dt> icinde."""
+        html = self._html("20001007_kesit.htm")
+        items = R.parse_issue(html, "20001007")
+        assert len(items) >= 4 and R._header(html)[0] == "24193"
+        assert items[0]["category"] == "Bakanlar Kurulu Kararı"
+        assert items[1]["title"] == "Maliye Bakanlığına Ait Atama Kararı"
+
+    def test_no_issue_day_is_marked_yok(self, db):
+        page = (_FX / "20060423_yayin_yok.htm").read_bytes()
+        fetcher, _ = _site({"20060423": page})
+        st = _run(R.backfill(db, date(2006, 4, 23), date(2006, 4, 23), fetcher=fetcher))
+        assert db.execute("SELECT durum FROM rg_gunler WHERE sayfa='20060423'").fetchone()[0] == "yok"
+        assert st["islenen_gun"] == 1
+        st = _run(R.backfill(db, date(2006, 4, 23), date(2006, 4, 23), fetcher=fetcher))
+        assert st["islenen_gun"] == 0            # bitmis sayilir
+        assert R.audit(db)["bos_gun"]["adet"] == 0
