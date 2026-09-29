@@ -59,6 +59,8 @@ app.add_typer(privacy_app, name="privacy")
 app.add_typer(eval_app, name="eval")
 corpus_app = typer.Typer(help="Corpus builder: batch-fetch, dedup, status")
 app.add_typer(corpus_app, name="corpus")
+rg_app = typer.Typer(help="Resmî Gazete başlık dizini: geri doldur, güncelle, ara, durum")
+app.add_typer(rg_app, name="rg")
 
 
 def _print(obj, json_out: bool):
@@ -1913,6 +1915,112 @@ def corpus_status_cmd(
     """Report corpus size and composition."""
     from .corpus_builder import corpus_status
     _print(corpus_status(), json_out)
+
+
+# ── Resmî Gazete başlık dizini ───────────────────────────────────────────────
+
+
+def _rg_log(msg: str) -> None:
+    from datetime import datetime as _dt
+    sys.stderr.buffer.write((f"{_dt.now():%H:%M:%S} {msg}\n").encode("utf-8"))
+    sys.stderr.flush()
+
+
+def _rg_run(d_from, d_to, db_path, delay, concurrency, refresh_from, json_out) -> None:
+    import asyncio
+    from . import rg_index
+
+    db = rg_index.connect(db_path)
+    try:
+        stats = asyncio.run(rg_index.backfill(
+            db, d_from, d_to, delay=delay, concurrency=concurrency,
+            refresh_from=refresh_from, progress=_rg_log))
+        stats["dizin"] = rg_index.index_status(db)
+    finally:
+        db.close()
+    stats["aralik"] = f"{d_from.isoformat()}..{d_to.isoformat()}"
+    _rg_log(f"BITTI {stats['aralik']}: {stats['islenen_gun']} gun, {stats['oge']} oge, "
+            f"{stats['gun_404']} gun 404, {stats['gun_hata']} gun hata, {stats['sure_sn']} sn")
+    _print(stats, json_out)
+    if stats["gun_hata"]:
+        raise typer.Exit(code=2)
+
+
+@rg_app.command("backfill")
+def rg_backfill(
+    date_from: str = typer.Option(..., "--from", help="Başlangıç günü YYYY-MM-DD (arşiv 2000-06-27'de başlar)"),
+    date_to: str = typer.Option(None, "--to", help="Bitiş günü YYYY-MM-DD (vars. bugün)"),
+    db: str = typer.Option(None, help="SQLite yolu (vars. EMSAL_RG_DB_PATH ya da cache'in yanı resmigazete.sqlite3)"),
+    delay: float = typer.Option(0.7, help="İstek başlangıçları arası en az saniye"),
+    concurrency: int = typer.Option(1, help="Eşzamanlı gün sayısı (1-2 önerilir)"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Aralığı doldurur; çekilmiş (ok/404) günleri atlar, kaldığı yerden devam eder."""
+    from datetime import date as _d
+    d_to = _d.fromisoformat(date_to) if date_to else _d.today()
+    _rg_run(_d.fromisoformat(date_from), d_to, db, delay, min(max(concurrency, 1), 4), None, json_out)
+
+
+@rg_app.command("update")
+def rg_update(
+    days: int = typer.Option(7, help="Son N günü yeniden çek (yayımlanmamış 404'ler, sonradan eklenen mükerrerler için)"),
+    db: str = typer.Option(None, help="SQLite yolu"),
+    delay: float = typer.Option(0.7),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Son çekilen günden bugüne (ve son N günü tazeleyerek) günceller."""
+    from datetime import date as _d, timedelta
+    from . import rg_index
+
+    today = _d.today()
+    refresh_from = today - timedelta(days=max(days, 1) - 1)
+    conn = rg_index.connect(db)
+    try:
+        last = rg_index.last_ok_day(conn)
+    finally:
+        conn.close()
+    if last is None:
+        _rg_log("dizin bos; once `rg backfill --from ...` calistirin")
+        raise typer.Exit(code=3)
+    d_from = min(last, refresh_from)
+    _rg_run(d_from, today, db, delay, 1, refresh_from, json_out)
+
+
+@rg_app.command("status")
+def rg_status(
+    db: str = typer.Option(None, help="SQLite yolu"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Dizin özeti: öğe sayısı, tarih aralığı, gün durumları, son çekilme."""
+    from . import rg_index
+    _print(rg_index.index_status_safe(db), json_out)
+
+
+@rg_app.command("search")
+def rg_search(
+    query: str = typer.Argument(..., help="Anahtar kelimeler ('tırnaklı öbek' desteklenir)"),
+    date_from: str = typer.Option(None, "--from"),
+    date_to: str = typer.Option(None, "--to"),
+    sort_by: str = typer.Option(None, help="relevance | date"),
+    limit: int = typer.Option(10),
+    page: int = typer.Option(1),
+    db: str = typer.Option(None, help="SQLite yolu"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Yerel dizinde başlık araması."""
+    from . import rg_index
+    conn = rg_index.open_readonly(db)
+    if conn is None:
+        _print({"error": "dizin yok", "yol": str(db or rg_index.default_db_path())}, json_out)
+        raise typer.Exit(code=1)
+    try:
+        total, rows = rg_index.search_index(conn, query, date_from=date_from, date_to=date_to,
+                                            sort_by=sort_by, limit=limit, page=page)
+    finally:
+        conn.close()
+    _print({"total": total, "page": page, "results": [
+        {k: r[k] for k in ("item_id", "tarih", "sayi_no", "kategori", "baslik", "url")} for r in rows
+    ]}, json_out)
 
 
 if __name__ == "__main__":

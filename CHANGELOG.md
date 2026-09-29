@@ -5,6 +5,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Resmî Gazete başlık dizini (29 Eyl).** `search_decisions(source='resmigazete')`
+  artık tarihler arası anahtar kelime araması yapar: ayrı SQLite
+  (`resmigazete.sqlite3`, cache'in yanı ya da `EMSAL_RG_DB_PATH`) + FTS5, yalnız
+  başlık/kategori (tam metin yok), aksan-duyarsız, önek eşleşmeli, sayfalı.
+  Arşiv 2000-06-27'de başlar; mükerrer sayılar ayrı sayfada (`YYYYMMDDm1.htm`)
+  olduğu için ayrıca çekilir. CLI: `emsal-mcp rg backfill|update|status|search`;
+  günlük görev betiği `scripts/rg_dizin_update.cmd` (log işareti `RG-EXIT n`,
+  `health_check.scheduled_jobs.rg_dizin` + `resmigazete_dizin`). Dizin yoksa
+  eski tek-gün davranışı + uyarı. Mükerrer öğe kimlikleri küçük harfe
+  tekilleştirildi (`20230309M1-1` → `20230309m1-1`), bölünmüş başlıklar
+  (`MİLL`+`ETLERARASI`) birleştirilir, 2000-2003 tek sayfalık fihrist biçimi
+  (`#N` bağlantıları) ayrıştırılır.
+
 ### Fixed
 
 - **Bedesten sorgu doğrulama hatası yanlış etiketleniyordu (22 Eyl).**

@@ -65,6 +65,14 @@ JOBS: tuple[JobSpec, ...] = (
         exit_re=r"WEEKLY-EXIT\s+(-?\d+)",
     ),
     JobSpec(
+        key="rg_dizin",
+        task="EmsalRgDizin (onerilen)",
+        patterns=("rg_dizin.log",),
+        max_age_hours=36.0,
+        aciklama="Resmi Gazete baslik dizini gunluk guncellemesi (scripts/rg_dizin_update.cmd)",
+        exit_re=r"RG-EXIT\s+(-?\d+)",
+    ),
+    JobSpec(
         key="monthly_merge",
         task="EmsalMonthlyMerge",
         patterns=("monthly_*.log",),

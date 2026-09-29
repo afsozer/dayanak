@@ -38,7 +38,7 @@ from emsal_mcp.models import (
 )
 
 # Item ids: 20260731-1, and mükerrer issues 20260731m1-1.
-_ITEM_ID_RE = re.compile(r"^(?P<day>\d{8})(?P<muk>m\d+)?-(?P<seq>\d+)$")
+_ITEM_ID_RE = re.compile(r"^(?P<day>\d{8})(?P<muk>m\d+)?-(?P<seq>\d+)$", re.I)
 _ITEM_HREF_RE = re.compile(r"^(?P<id>\d{8}(?:m\d+)?-\d+)\.(?P<ext>html?|pdf)$", re.I)
 _META_CHARSET_RE = re.compile(rb"charset=[\"']?([\w-]+)", re.I)
 
@@ -68,7 +68,23 @@ def _parse_item_id(document_id: str) -> tuple[str, str] | None:
     m = _ITEM_ID_RE.match(document_id.strip())
     if not m:
         return None
-    return m.group("day"), m.group(0)
+    # Sunucu buyuk/kucuk harfe duyarsiz (20230309M1-1 == 20230309m1-1); sayfalar
+    # 'M' ile yaziyor, kimligi kucuk 'm' ile tekillestiriyoruz.
+    return m.group("day"), m.group(0).lower()
+
+
+_HEADER_RE = re.compile(r"Tarihli\s+ve\s+(\d+)\s+Say\w+\s+Resm\w+\s+Gazete(?P<muk>\s*-\s*M\w*kerrer)?", re.I)
+
+
+def parse_issue_header(html: str) -> tuple[str | None, bool]:
+    """Fihrist basligindan ``(sayi_no, mukerrer_mi)``: '9 Mart 2023 Tarihli ve
+    32127 Sayılı Resmî Gazete - Mükerrer'.  Bulunamazsa ``(None, False)``."""
+    flat = re.sub(r"<[^>]+>", " ", html[:20000])
+    flat = re.sub(r"\s+", " ", flat.replace("&nbsp;", " "))
+    m = _HEADER_RE.search(flat)
+    if not m:
+        return None, False
+    return m.group(1), bool(m.group("muk"))
 
 
 def _iso_from_day(day: str) -> str:
@@ -111,20 +127,26 @@ class ResmiGazeteClient(SourceClient):
             anchors = [a for a in para.find_all("a", href=True)
                        if _ITEM_HREF_RE.match(a["href"].strip())]  # type: ignore[union-attr]
             if not anchors:
-                text = para.get_text(" ", strip=True)
+                # Baslik, tek sozcugun ortasinda bile <span> ile bolunebiliyor
+                # ("MİLL" + "ETLERARASI ANDLAŞMALAR"); ayirici koymadan birlestir.
+                text = re.sub(r"\s+", " ", para.get_text("").replace("\xa0", " ")).strip()
                 # Headings are set entirely in capitals; item titles are not.
                 if text and len(text) > 3 and not any(c.islower() for c in text):
                     if _SECTION_MARKER in text:
                         section, category = text, None
                     else:
                         category = text
+                elif text and len(text) <= 100 and para.find("u") is not None:
+                    # Eski sayfalar (2003-2009 civari) kategori basliklarini
+                    # buyuk harfle degil, alti cizili karma harfle yaziyor.
+                    category = text
                 continue
 
             for anchor in anchors:
                 href_match = _ITEM_HREF_RE.match(anchor["href"].strip())  # type: ignore[union-attr]
                 if href_match is None:  # pragma: no cover - guarded above
                     continue
-                item_id = href_match.group("id")
+                item_id = href_match.group("id").lower()
                 ext = href_match.group("ext").lower()
                 raw = anchor.get_text(" ", strip=True)
                 raw = raw.replace("\xa0", " ")
@@ -148,6 +170,98 @@ class ResmiGazeteClient(SourceClient):
                 })
         return items
 
+    # ── Yerel baslik dizini (tarihler arasi arama) ────────────────────────
+    @staticmethod
+    def _iso_or_none(value: Any) -> str | None:
+        day = re.sub(r"\D", "", str(value or ""))
+        return _iso_from_day(day) if len(day) == 8 else None
+
+    def _search_local_index(
+        self, query: str, limit: int, page: int, filters: dict[str, Any],
+        warnings: list[str],
+    ) -> SearchPage | None:
+        """Tarih araligi / tarihsiz anahtar kelime aramasini yerel dizinden (rg_index)
+        cevapla.  Tek gun istendiyse (``date``, ya da baslangic==bitis) ya da dizin
+        yok/bossa None doner ve cagiran eski tek-gun yoluna duser.
+
+        Kurallar: ``date``/``resmi_gazete_tarihi`` her zaman tek gun.  ``query`` +
+        yalniz ``karar_tarihi_start`` -> baslangictan bugune aralik.  ``query`` yok
+        ama ``karar_tarihi_start`` ve ``_end`` farkli -> aralikta liste.
+        """
+        if filters.get("date") or filters.get("resmi_gazete_tarihi"):
+            return None
+        start = self._iso_or_none(filters.get("karar_tarihi_start"))
+        end = self._iso_or_none(filters.get("karar_tarihi_end"))
+        has_query = bool(query and query.strip())
+        if start and end and start == end:
+            return None
+        if not has_query and not (start and end):
+            return None            # sorgusuz + tek tarih = eski gun listeleme
+        from emsal_mcp import rg_index
+
+        db = rg_index.open_readonly()
+        try:
+            if db is None or rg_index.index_status(db)["oge_sayisi"] == 0:
+                warnings.append(
+                    "Resmî Gazete başlık dizini kurulu değil/boş; yalnızca tek gün "
+                    "(karar_tarihi_start, vars. bugün) aranabildi. Tarih aralığı araması için "
+                    "dizin gerekir: `emsal-mcp rg backfill --from YYYY-MM-DD --to YYYY-MM-DD`."
+                )
+                return None
+            if start and not end and has_query:
+                warnings.append(
+                    f"Yalnızca karar_tarihi_start verildi: {start} ile bugün arası arandı. "
+                    "Tek gün için karar_tarihi_end'e aynı günü verin."
+                )
+            total, rows = rg_index.search_index(
+                db, query or "", date_from=start, date_to=end,
+                sort_by=filters.get("sort_by"), limit=limit, page=page,
+            )
+            status = rg_index.index_status(db)
+        finally:
+            if db is not None:
+                db.close()
+        if status.get("en_yeni_oge_tarihi") and end and end > status["en_yeni_oge_tarihi"]:
+            warnings.append(
+                f"Dizin {status['en_yeni_oge_tarihi']} tarihine kadar güncel; "
+                "sonrası dizinde yok (tek gün için karar_tarihi_start=karar_tarihi_end kullanın)."
+            )
+        if status.get("en_eski_oge_tarihi") and start and start < status["en_eski_oge_tarihi"]:
+            warnings.append(
+                f"Dizin {status['en_eski_oge_tarihi']} tarihinden başlıyor; daha eski günler "
+                "henüz doldurulmamış olabilir."
+            )
+        results = [self._row_to_result(r) for r in rows]
+        limit = max(1, int(limit))
+        return SearchPage(
+            results=results, total=total, page=max(1, int(page)), page_size=limit,
+            total_pages=-(-total // limit) if total else 0, warnings=warnings,
+        )
+
+    def _row_to_result(self, r: Any) -> SearchResult:
+        is_pdf = r["ext"] == "pdf"
+        return SearchResult(
+            source=self.source_id,
+            document_id=r["item_id"],
+            title=r["baslik"],
+            court=r["kategori"] or r["bolum"],
+            chamber=r["bolum"],
+            decision_date=r["tarih"],
+            karar_no=r["numara"],
+            source_url=r["url"],
+            content_status=ContentStatus.PDF_LINK_ONLY if is_pdf else ContentStatus.METADATA_ONLY,
+            metadata={
+                "resmi_gazete_tarihi": r["tarih"],
+                "sayi_no": r["sayi_no"],
+                "bolum": r["bolum"],
+                "kategori": r["kategori"],
+                "mevzuat_no": r["numara"],
+                "format": r["ext"],
+                "mukerrer": bool(r["mukerrer"]),
+                "kaynak": "yerel_baslik_dizini",
+            },
+        )
+
     # ── Search ──────────────────────────────────────────────────────────
     async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
         sp = await self.search_page(query, limit=limit, **filters)
@@ -163,6 +277,9 @@ class ResmiGazeteClient(SourceClient):
         issue; it defaults to today, which is what "bugünkü Resmî Gazete" means.
         """
         warnings: list[str] = []
+        local = self._search_local_index(query, limit, page, filters, warnings)
+        if local is not None:
+            return local
         raw_date = (
             filters.get("date")
             or filters.get("karar_tarihi_start")
@@ -187,8 +304,9 @@ class ResmiGazeteClient(SourceClient):
                 return SearchPage(
                     results=[], total=0, page=1, page_size=limit, total_pages=0,
                     warnings=[
+                        *warnings,
                         f"{_iso_from_day(day)} tarihli Resmî Gazete sayısı bulunamadı "
-                        "(tatil günü ya da henüz yayımlanmamış olabilir)."
+                        "(tatil günü ya da henüz yayımlanmamış olabilir).",
                     ],
                 )
             check_http_response(resp, self.source_id)
