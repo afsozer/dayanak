@@ -42,9 +42,14 @@ class AihmClient(SourceClient):
     _supports_full_text = True
     _supports_pdf_link = False
     _known_limitations: list[str] = [
-        "HUDOC documents are returned in their original language (ENG/FRE); "
-        "Turkish translations are not always available.",
+        "Varsayilan arama Turkce cevirileri (dil=TUR) dondurur; sonuc yoksa "
+        "ENG/FRE'ye dusulur ve warnings'e yazilir. dil='HEPSI' tum diller.",
     ]
+
+    # Varsayilan dil ve dususte kullanilacak diller (HUDOC languageisocode).
+    DEFAULT_LANG = "TUR"
+    FALLBACK_LANG = "ENG,FRE"
+    _ALL_LANG = {"HEPSI", "ALL", "TUMU", "*"}
 
     _SELECT_FIELDS = (
         "itemid,docname,appno,conclusion,importance,kpdate,languageisocode,doctype"
@@ -66,18 +71,60 @@ class AihmClient(SourceClient):
         }
         for key, field in field_map.items():
             val = filters.get(key)
-            if val:
-                escaped = str(val).replace('"', "")
-                parts.append(f'({field}:"{escaped}")')
-        if filters.get("start_date"):
-            parts.append(f'(kpdate>="{filters["start_date"]}T00:00:00")')
-        if filters.get("end_date"):
-            parts.append(f'(kpdate<="{filters["end_date"]}T23:59:59")')
+            if not val:
+                continue
+            if key == "dil":
+                langs = [
+                    x.strip().upper().replace('"', "")
+                    for x in str(val).split(",") if x.strip()
+                ]
+                if not langs or any(x in self._ALL_LANG for x in langs):
+                    continue  # tum diller: filtre yok
+                if len(langs) == 1:
+                    parts.append(f'({field}:"{langs[0]}")')
+                else:
+                    parts.append(
+                        "(" + " OR ".join(f'{field}:"{x}"' for x in langs) + ")"
+                    )
+                continue
+            escaped = str(val).replace('"', "")
+            parts.append(f'({field}:"{escaped}")')
+        # server.py karar_tarihi_start/_end adlarini kullanir; ikisi de kabul.
+        start = filters.get("start_date") or filters.get("karar_tarihi_start")
+        end = filters.get("end_date") or filters.get("karar_tarihi_end")
+        if start:
+            parts.append(f'(kpdate>="{str(start)[:10]}T00:00:00.0Z")')
+        if end:
+            parts.append(f'(kpdate<="{str(end)[:10]}T23:59:59.0Z")')
         if query and query.strip():
             parts.append(f"({query.strip()})")
         return " AND ".join(parts)
 
     async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters: Any):
+        """Dil verilmemisse once Turkce cevirileri (TUR) ara; 0 sonucta ENG/FRE'ye
+        dus ve warnings'e yaz. Acik dil verilirse ona uyulur."""
+        if filters.get("dil"):
+            return await self._search_page_once(query, limit, page, **filters)
+        f_tur = {**filters, "dil": self.DEFAULT_LANG}
+        sp = await self._search_page_once(query, limit, page, **f_tur)
+        if sp.total == 0 or (sp.total is None and not sp.results and page == 1):
+            f_alt = {**filters, "dil": self.FALLBACK_LANG}
+            sp = await self._search_page_once(query, limit, page, **f_alt)
+            if sp.total == 0:
+                sp.warnings.append(
+                    "AIHM: dil=TUR ve ENG/FRE'de sonuc yok; sorguyu sadelestirin "
+                    "(HUDOC ceviri disi serbest metin Ingilizce/Fransizca indekslidir) "
+                    "ya da dil='HEPSI' deneyin."
+                )
+            else:
+                sp.warnings.append(
+                    "AIHM: Turkce ceviri (dil=TUR) bulunamadi; sonuclar ENG/FRE "
+                    "orijinal dilinde. Tum diller icin dil='HEPSI', tek dil icin "
+                    "dil='ENG' verin."
+                )
+        return sp
+
+    async def _search_page_once(self, query: str, limit: int = 10, page: int = 1, **filters: Any):
         from emsal_mcp.models import SearchPage
         sort = ""
         if str(filters.get("sort_by", "")).lower() == "date":
@@ -125,8 +172,8 @@ class AihmClient(SourceClient):
         self, query: str, limit: int = 10, **filters: Any
     ) -> list[SearchResult]:
         """Search HUDOC. Filters: ulke (default TUR, HEPSI=all), madde, ihlal,
-        ihlal_yok, basvuru_no, dava_adi, dil (ENG/FRE/TUR), start_date,
-        end_date, sort_by (relevance default / date)."""
+        ihlal_yok, basvuru_no, dava_adi, dil (TUR varsayilan, ENG/FRE, virgulle coklu, HEPSI=tumu),
+        start_date/end_date (ya da karar_tarihi_start/_end), sort_by (relevance default / date)."""
         page = int(filters.pop("page", 1) or 1)
         sp = await self.search_page(query, limit=limit, page=page, **filters)
         return sp.results  # type: ignore[no-any-return]

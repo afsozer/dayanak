@@ -168,9 +168,12 @@ class _BtkClient(BtkClient):
 class _AihmClient(AihmClient):
     _capability_status = SourceStatus.EXPERIMENTAL
     _known_limitations: list[str] = [
-        "HUDOC belgeleri orijinal dilinde döner (ENG/FRE); Türkçe çeviri her "
-        "kararda bulunmaz. Sorgu contentsitename:ECHR ile başlamalıdır "
-        "(adaptör bunu otomatik ekler).",
+        "Arama canlı çalışır (HUDOC /app/query/results). Varsayılan dil=TUR "
+        "(Türkçe çeviriler, ~5,5 bin belge); sonuç yoksa ENG/FRE'ye düşer ve "
+        "warnings'e yazar. Tüm karar için dil='HEPSI' (~27 bin). Türkçe "
+        "çeviri her kararda yoktur (özellikle çok yeni kararlar). Tarih "
+        "filtresi kpdate alanına bağlıdır. Sorgu contentsitename:ECHR ile "
+        "başlar (adaptör otomatik ekler).",
     ]
 
 

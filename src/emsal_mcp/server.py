@@ -699,6 +699,7 @@ def main() -> None:
         sort_by: str | None = None,
         include_snippets: bool = False,
         include_raw: bool = False,
+        dil: str | None = None,
     ) -> list[dict] | dict:
         """✅ PRIMARY, MANDATORY TOOL FOR ALL CASE-LAW / DECISION / MEVZUAT RESEARCH.
 
@@ -773,8 +774,14 @@ def main() -> None:
                   ``karar_tarihi_start='YYYY-MM-DD'`` picks the day (default
                   today); ``query`` filters that issue locally (diacritic-
                   insensitive), omit to list it all. Ids: ``20260731-1``.
-                - ``'aihm'`` — AİHM/ECHR via HUDOC (EXPERIMENTAL; search API
-                  currently unavailable — returns empty; get_document works)
+                - ``'aym'`` — Anayasa Mahkemesi (bireysel başvuru + norm
+                  denetimi kararları, tam metin)
+                - ``'aihm'`` — AİHM/ECHR via HUDOC (EXPERIMENTAL ama arama ve
+                  get_document CANLI çalışır; Türkiye aleyhine kararlar).
+                  Varsayılan olarak Türkçe çeviriler (``dil='TUR'``) döner;
+                  Türkçe yoksa ENG/FRE'ye düşer ve ``warnings``'e yazar.
+                  ``karar_tarihi_start/_end`` HUDOC kpdate alanına bağlanır.
+                  Kısa anahtar kelime/dava adı yazın (ör. "Kavala").
                 - ``'btk'`` — BTK Kurul Kararları (PARTIAL; HTML card scraping
                   with PDF download for full text)
             query: Search query string (optional when filtering by docket no /
@@ -811,6 +818,10 @@ def main() -> None:
                 the query terms) to each.  Lets you triage relevance without
                 calling get_document per result.  Results already in the local
                 corpus get a snippet for free even when this is false.
+            dil: Yalnızca source='aihm': belge dili. Verilmezse önce Türkçe
+                çeviriler ('TUR'), sonuç yoksa ENG/FRE. 'ENG', 'FRE', 'TUR',
+                virgülle çoklu ('ENG,FRE') ya da 'HEPSI' (tüm diller; Almanca,
+                Rumence vb. üçüncü dil çevirileri dahil).
             include_raw: When true, keep the raw upstream ``metadata`` block.
                 Default false: fields duplicated by the flat keys
                 (``esas_no``, ``karar_no``, ``decision_date``, ``chamber``, ...)
@@ -898,6 +909,8 @@ def main() -> None:
             filters["karar_no"] = karar_no
         if sort_by:
             filters["sort_by"] = sort_by
+        if dil and effective_source == "aihm":
+            filters["dil"] = dil
         try:
             src_client = get_source(effective_source)
             sp = await src_client.search_page(query or "", limit=limit, page=page, **filters)
