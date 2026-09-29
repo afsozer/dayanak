@@ -13,6 +13,7 @@ The document content API (``/app/conversion/docx/html/body``) is used for
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -106,9 +107,19 @@ class AihmClient(SourceClient):
         if filters.get("dil"):
             return await self._search_page_once(query, limit, page, **filters)
         f_tur = {**filters, "dil": self.DEFAULT_LANG}
-        sp = await self._search_page_once(query, limit, page, **f_tur)
+        f_alt = {**filters, "dil": self.FALLBACK_LANG}
+        # Ucuz sayim sorgulari (length=1, kpdate azalan): orijinal dildeki en yeni
+        # karar ile TUR'daki en yeni karar. Hata asil sonucu bozmaz.
+        probe = {"sort_by": "date", "sort_direction": "desc"}
+        sp, alt_probe, tur_probe = await asyncio.gather(
+            self._search_page_once(query, limit, page, **f_tur),
+            self._search_page_once(query, 1, 1, **{**f_alt, **probe}),
+            self._search_page_once(query, 1, 1, **{**f_tur, **probe}),
+            return_exceptions=True,
+        )
+        if isinstance(sp, BaseException):
+            raise sp
         if sp.total == 0 or (sp.total is None and not sp.results and page == 1):
-            f_alt = {**filters, "dil": self.FALLBACK_LANG}
             sp = await self._search_page_once(query, limit, page, **f_alt)
             if sp.total == 0:
                 sp.warnings.append(
@@ -122,6 +133,31 @@ class AihmClient(SourceClient):
                     "orijinal dilinde. Tum diller icin dil='HEPSI', tek dil icin "
                     "dil='ENG' verin."
                 )
+            return sp
+        try:
+            if isinstance(alt_probe, BaseException) or not alt_probe.total:
+                return sp
+            note = (
+                f"AIHM: Turkce ceviriler gosteriliyor ({sp.total}); orijinal dilde "
+                f"(ENG/FRE) {alt_probe.total} belge daha var - en yeni kararlar "
+                "genelde yalniz ENG/FRE'dir; dil='ENG,FRE' ya da 'HEPSI' ile bakin."
+            )
+            if alt_probe.results:
+                top = alt_probe.results[0]
+                tur_newest = ""
+                if not isinstance(tur_probe, BaseException) and tur_probe.results:
+                    tur_newest = tur_probe.results[0].decision_date or ""
+                elif sp.results:
+                    tur_newest = max((r.decision_date or "" for r in sp.results), default="")
+                if (top.decision_date or "") > tur_newest:
+                    docname = top.title.split(" | ")[0]
+                    note += (
+                        f" Orijinal dilde daha yeni karar var: {top.decision_date} "
+                        f"{docname}."
+                    )
+            sp.warnings.append(note)
+        except Exception:
+            pass
         return sp
 
     async def _search_page_once(self, query: str, limit: int = 10, page: int = 1, **filters: Any):
