@@ -28,6 +28,7 @@ from .base import (
 from emsal_mcp.models import (
     ContentStatus,
     Document,
+    SearchPage,
     SearchResult,
     SourceSmokeResult,
     finalize_document,
@@ -101,7 +102,9 @@ class AihmClient(SourceClient):
             parts.append(f"({query.strip()})")
         return " AND ".join(parts)
 
-    async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters: Any):
+    async def search_page(
+        self, query: str, limit: int = 10, page: int = 1, **filters: Any
+    ) -> SearchPage:
         """Dil verilmemisse once Turkce cevirileri (TUR) ara; 0 sonucta ENG/FRE'ye
         dus ve warnings'e yaz. Acik dil verilirse ona uyulur."""
         if filters.get("dil"):
@@ -160,8 +163,9 @@ class AihmClient(SourceClient):
             pass
         return sp
 
-    async def _search_page_once(self, query: str, limit: int = 10, page: int = 1, **filters: Any):
-        from emsal_mcp.models import SearchPage
+    async def _search_page_once(
+        self, query: str, limit: int = 10, page: int = 1, **filters: Any
+    ) -> SearchPage:
         sort = ""
         if str(filters.get("sort_by", "")).lower() == "date":
             direction = "Ascending" if str(filters.get("sort_direction", "")).lower() == "asc" else "Descending"

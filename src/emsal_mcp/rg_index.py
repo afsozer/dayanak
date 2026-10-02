@@ -551,7 +551,7 @@ async def backfill(
     fetcher = fetcher or IndexFetcher(delay=delay)
     days = pending_days(db, d_from, d_to, refresh_from, force)
     t0 = time.monotonic()
-    stats = {"istenen_gun": (d_to - d_from).days + 1 if d_to >= d_from else 0,
+    stats: dict[str, Any] = {"istenen_gun": (d_to - d_from).days + 1 if d_to >= d_from else 0,
              "islenen_gun": 0, "atlanan_gun": 0, "oge": 0, "gun_404": 0, "gun_hata": 0,
              "mukerrer_sayfa": 0}
     stats["atlanan_gun"] = max(0, stats["istenen_gun"] - len(days))
