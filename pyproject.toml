@@ -89,3 +89,13 @@ check_untyped_defs = true
 disallow_untyped_defs = false  # too many untyped params still
 warn_return_any = true
 warn_unused_ignores = false
+
+# numpy >= 2.5 stub'lari ``type X = ...`` (PEP 695) kullaniyor; python_version
+# 3.11 hedefiyle mypy onlari parse edemeyip tum kontrolu durduruyor (Python
+# 3.12 venv'inde numpy 2.5 kurulu oluyor, 3.11'de 2.4.x).  numpy'yi Any say:
+# src'de yalniz semantik vektor matematigi icin kullaniliyor.  Paket ici .pyi
+# oldugu icin follow_imports_for_stubs SART, yoksa skip stub'lara islemez.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
