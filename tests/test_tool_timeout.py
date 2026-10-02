@@ -232,10 +232,15 @@ def test_health_check_reports_tool_runtime(monkeypatch) -> None:
 
 
 def test_runaway_counter_rises_then_falls(monkeypatch) -> None:
-    """Zaman asan sync cagri kacak sayilir; govde bitince sayac duser."""
+    """Zaman asan sync cagri kacak sayilir; govde bitince sayac duser.
+
+    Sinir health_check'e de uygulanir: 0.2 sn yavas CI runner'inda
+    health_check'in kendisini TOOL_TIMEOUT'a dusurup ``tool_runtime``
+    anahtarini kaybettiriyordu (flaky).  1 sn yeterli pay birakir.
+    """
     monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "0.2")
-    _make_sync_tool_slow(monkeypatch, 1.5)
+    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "1.0")
+    _make_sync_tool_slow(monkeypatch, 2.5)
     _make_health_check_cheap(monkeypatch)
 
     tools = _capture_registered("full")
@@ -246,7 +251,7 @@ def test_runaway_counter_rises_then_falls(monkeypatch) -> None:
         # Govde hala kosuyor.
         hot = (await tools["health_check"]())["tool_runtime"]
         # Govde bitene kadar bekle.
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(2.0)  # 1.0 (zaman asimi) + 2.0 > 2.5 (govde)
         cold = (await tools["health_check"]())["tool_runtime"]
         return hot, cold
 
@@ -260,8 +265,9 @@ def test_runaway_counter_rises_then_falls(monkeypatch) -> None:
 
 def test_timed_out_total_accumulates(monkeypatch) -> None:
     monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "0.2")
-    _make_sync_tool_slow(monkeypatch, 0.6)
+    # health_check de bu sinira tabi; 0.2 sn CI'da flaky (bkz. ustteki test).
+    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "1.0")
+    _make_sync_tool_slow(monkeypatch, 1.3)
     _make_health_check_cheap(monkeypatch)
 
     tools = _capture_registered("full")
@@ -274,7 +280,7 @@ def test_timed_out_total_accumulates(monkeypatch) -> None:
 
     tr = asyncio.run(drive())
     assert tr["timed_out_total"] == 3, tr
-    time.sleep(0.8)
+    time.sleep(1.5)
 
 
 # ── 5. Sarmalayici isaretleri / sema korunuyor ────────────────────────────
