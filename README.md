@@ -4,7 +4,7 @@
 >
 > [![CI](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml)
 
-**Proje sayfası:** [avfatihsozer.com/projeler/emsal-mcp](https://avfatihsozer.com/projeler/emsal-mcp)
+**Proje sayfası:** [avfatihsozer.com/projeler/emsal-mcp](https://avfatihsozer.com/projeler/emsal-mcp) · English: [README.en.md](README.en.md)
 
 Resmî ve kamuya açık Türk hukuk kaynaklarında (emsal kararlar ve mevzuat)
 citation-safe arama, araştırma ve belge hazırlık için MCP sunucusu.
