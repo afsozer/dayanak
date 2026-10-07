@@ -1,6 +1,6 @@
 [project]
 name = "emsal-mcp"
-version = "1.1.0"
+version = "1.1.1"
 description = "Citation-safe MCP hukuk araştırma ve belge hazırlık sistemi"
 readme = "README.md"
 license = "AGPL-3.0-only"

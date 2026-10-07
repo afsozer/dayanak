@@ -1,6 +1,6 @@
 # Emsal-mcp
 
-> **v1.1.0** — 11 core + 36 extended MCP tools (47 total) · 151 CLI commands · 78 test files · 48 source modules
+> **v1.1.1** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 78 test files · 48 source modules
 >
 > [![CI](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml)
 
@@ -282,3 +282,5 @@ source code available to those users under the same licence. See
 [SECURITY.md](SECURITY.md) for how to report a vulnerability.
 
 Copyright © 2026 Alpaslan Fatih Sözer
+
+<!-- mcp-name: io.github.afsozer/emsal-mcp -->

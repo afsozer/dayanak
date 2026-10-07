@@ -79,6 +79,13 @@ def _print(obj, json_out: bool):
 
 
 @app.command()
+def serve() -> None:
+    """Start the MCP server (same as emsal-mcp-server); used by `uvx emsal-mcp serve`."""
+    from .server import main as server_main
+    server_main()
+
+
+@app.command()
 def version() -> None:
     """Print the current emsal-mcp version."""
     typer.echo(__version__)

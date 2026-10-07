@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-10-07
+
+### Added
+
+- **`emsal-mcp serve` komutu.** MCP sunucusunu `emsal-mcp-server` ile aynı şekilde başlatır;
+  böylece paket `uvx emsal-mcp serve` ile tek adla çalışır.
+- **Resmî MCP Registry kaydı.** README'ye `mcp-name: io.github.afsozer/emsal-mcp` sahiplik
+  işareti ve depoya `server.json` eklendi.
+
 ## [1.1.0] — 2026-10-07
 
 ### Added

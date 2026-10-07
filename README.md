@@ -1,6 +1,6 @@
 # Emsal-mcp
 
-> **v1.1.0** — 11 core + 36 extended MCP tools (47 total) · 151 CLI commands · 78 test files · 48 source modules
+> **v1.1.1** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 78 test files · 48 source modules
 >
 > [![CI](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml)
 
@@ -273,3 +273,5 @@ sunmanız gerekir. Güvenlik açıklarının nasıl bildirileceği [SECURITY.md]
 dosyasında anlatılıyor.
 
 Telif hakkı © 2026 Alpaslan Fatih Sözer
+
+<!-- mcp-name: io.github.afsozer/emsal-mcp -->
