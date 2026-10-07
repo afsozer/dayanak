@@ -1,6 +1,6 @@
 # Emsal-mcp
 
-> **v1.0.0** — 11 core + 36 extended MCP tools (47 total) · 151 CLI commands · 78 test files · 48 source modules
+> **v1.1.0** — 11 core + 36 extended MCP tools (47 total) · 151 CLI commands · 78 test files · 48 source modules
 >
 > [![CI](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml)
 
@@ -38,6 +38,47 @@ citation-safe arama, araştırma ve belge hazırlık için MCP sunucusu.
 Ayrıntı ve ölçümler: [`docs/BULK_INDEX.md`](docs/BULK_INDEX.md).
 
 ## Kurulum
+
+### Hızlı kurulum (korpussuz)
+
+Emsal MCP, 11 milyon kararlık yerel korpus olmadan da çalışır. Bu durumda karar ve
+mevzuat aramaları resmî kaynaklardan (Bedesten, mevzuat.gov.tr, AYM, Danıştay ve
+diğerleri) canlı yapılır, kararın tam metni de canlı getirilir. Yalnız yerel korpusta
+arayan araçlar (`search_local_corpus`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`)
+boş sonuç döndürür ve canlı araca yönlendirir. Python 3.11 ya da üstü gerekir.
+
+```bash
+# Kurmadan doğrudan çalıştırmak için (uv gerekir)
+uvx --from emsal-mcp emsal-mcp-server
+
+# ya da kalıcı kurulum
+pipx install emsal-mcp
+```
+
+Claude Code'a eklemek için:
+
+```bash
+claude mcp add emsal -- uvx --from emsal-mcp emsal-mcp-server
+```
+
+Claude Desktop ya da başka bir MCP istemcisi için yapılandırma:
+
+```json
+{
+  "mcpServers": {
+    "emsal": {
+      "command": "uvx",
+      "args": ["--from", "emsal-mcp", "emsal-mcp-server"]
+    }
+  }
+}
+```
+
+Varsayılan araç profili 11 temel araçtır; tamamı için `EMSAL_TOOL_PROFILE=full`
+ortam değişkenini verin. Çekilen belgeler `~/.emsal_mcp/cache.sqlite3` dosyasında
+önbelleğe alınır (`EMSAL_CACHE_PATH` ile değişir).
+
+### Geliştirme kurulumu (korpusla)
 
 ```powershell
 # Windows

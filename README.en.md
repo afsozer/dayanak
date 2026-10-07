@@ -1,6 +1,6 @@
 # Emsal-mcp
 
-> **v1.0.0** — 11 core + 36 extended MCP tools (47 total) · 151 CLI commands · 78 test files · 48 source modules
+> **v1.1.0** — 11 core + 36 extended MCP tools (47 total) · 151 CLI commands · 78 test files · 48 source modules
 >
 > [![CI](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml)
 
@@ -43,6 +43,48 @@ Measured on 16 September 2026, live corpus (`cache.sqlite3`, 72 GB).
 Details and measurements: [`docs/BULK_INDEX.md`](docs/BULK_INDEX.md).
 
 ## Installation
+
+### Quick install (without the corpus)
+
+Emsal MCP also works without the 11-million-decision local corpus. In that case
+decision and legislation searches run live against the official sources (Bedesten,
+mevzuat.gov.tr, the Constitutional Court, the Council of State and others), and full
+decision texts are fetched live as well. Only the tools that search the local corpus
+(`search_local_corpus`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`) return empty
+results and point to the live tools. Python 3.11 or later is required.
+
+```bash
+# Run without installing (requires uv)
+uvx --from emsal-mcp emsal-mcp-server
+
+# or install permanently
+pipx install emsal-mcp
+```
+
+To add it to Claude Code:
+
+```bash
+claude mcp add emsal -- uvx --from emsal-mcp emsal-mcp-server
+```
+
+Configuration for Claude Desktop or another MCP client:
+
+```json
+{
+  "mcpServers": {
+    "emsal": {
+      "command": "uvx",
+      "args": ["--from", "emsal-mcp", "emsal-mcp-server"]
+    }
+  }
+}
+```
+
+The default tool profile exposes 11 core tools; set `EMSAL_TOOL_PROFILE=full` for all
+of them. Fetched documents are cached in `~/.emsal_mcp/cache.sqlite3` (change it with
+`EMSAL_CACHE_PATH`).
+
+### Development install (with the corpus)
 
 ```powershell
 # Windows

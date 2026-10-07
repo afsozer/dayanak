@@ -5,6 +5,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-07
+
+### Added
+
+- **PyPI paketi ve korpussuz kurulum.** `uvx --from emsal-mcp emsal-mcp-server` ya da
+  `pipx install emsal-mcp`; yerel korpus olmadan canlı kaynaklarla çalışır (README "Hızlı
+  kurulum"). `mcp` artık çekirdek bağımlılık, `[mcp]` ekstrası geriye dönük duruyor.
+  Paket metadata'sı: SPDX lisans ifadesi, yazar, proje bağlantıları, sınıflandırıcılar.
+
 ### Changed
 
 - **Lisans AGPL-3.0-only oldu (7 Eki).** "Tüm hakları saklıdır" yerine GNU Affero
