@@ -1,6 +1,6 @@
 # LICENSES.md — emsal-mcp Dependency Licenses
 
-Last updated: 2026-05-30
+Last updated: 2026-10-07
 
 ## Core Dependencies
 
@@ -48,4 +48,5 @@ Last updated: 2026-05-30
 
 - **All 13 dependencies** use permissive licenses (MIT, BSD-3-Clause, Apache-2.0).
 - **Zero copyleft** concerns (no GPL, LGPL, AGPL, or MPL dependencies).
-- emsal-mcp itself is NOT open source: all rights reserved (no license granted).
+- emsal-mcp itself is licensed under AGPL-3.0-only (see [LICENSE](../LICENSE)); every dependency
+  above is compatible with it.

@@ -5,8 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Lisans AGPL-3.0-only oldu (7 Eki).** "Tüm hakları saklıdır" yerine GNU Affero
+  Genel Kamu Lisansı sürüm 3 (`LICENSE`); `pyproject.toml`, README'ler ve
+  `docs/LICENSES.md` buna göre güncellendi.
+
 ### Added
 
+- **`SECURITY.md` (7 Eki).** Güvenlik bakımcısı, GitHub üzerinden gizli açık
+  bildirimi, yanıt süreleri, koordineli açıklama (GHSA, uygunsa CVE) ve kapsam.
 - **Resmî Gazete başlık dizini (29 Eyl).** `search_decisions(source='resmigazete')`
   artık tarihler arası anahtar kelime araması yapar: ayrı SQLite
   (`resmigazete.sqlite3`, cache'in yanı ya da `EMSAL_RG_DB_PATH`) + FTS5, yalnız

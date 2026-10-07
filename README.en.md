@@ -233,4 +233,10 @@ Tests that hit live sources are skipped by default; set
 
 ## License
 
-All rights reserved. The source code is published for review only; it may not be used, copied, modified or distributed without written permission.
+Licensed under the GNU Affero General Public License, version 3 only
+(`AGPL-3.0-only`); the full text is in [LICENSE](LICENSE). If you modify the
+software and offer it to others over a network, you must make your modified
+source code available to those users under the same licence. See
+[SECURITY.md](SECURITY.md) for how to report a vulnerability.
+
+Copyright © 2026 Alpaslan Fatih Sözer
