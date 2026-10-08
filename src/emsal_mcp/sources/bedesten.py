@@ -249,6 +249,40 @@ def rewrite_solr_query(query: str, has_operators: bool | None = None) -> tuple[s
     return rewritten, True
 
 
+# ── Bedesten date filters ────────────────────────────────────────────────────
+# kararTarihiStart/End are deserialised as java.time.LocalDateTime upstream; a
+# bare `2026-01-01` fails with DateTimeParseException ("could not be parsed at
+# index 10"), which Bedesten wraps as ADALET_EMPTY_EXCEPTION.  Measured live,
+# 8 Eki 2026: `2026-01-01T00:00:00.000Z` works.  Bare dates (ISO or the
+# DD.MM.YYYY form search results print) are widened to the start/end of the
+# day; values that already carry a time part are passed through untouched.
+
+_ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+_TR_DATE_RE = re.compile(r"^(\d{1,2})[./](\d{1,2})[./](\d{4})$")
+
+
+def normalize_bedesten_date(value: Any, *, end: bool = False) -> Any:
+    """Turn a bare date into the LocalDateTime string Bedesten accepts.
+
+    ``2026-01-01`` → ``2026-01-01T00:00:00.000Z`` (``T23:59:59.999Z`` when
+    ``end``); ``01.01.2026`` is read as day-month-year.  Anything else is
+    returned unchanged so callers that already send a timestamp keep working.
+    """
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    m = _ISO_DATE_RE.match(text)
+    if m:
+        y, mo, d = m.groups()
+    else:
+        m = _TR_DATE_RE.match(text)
+        if not m:
+            return value
+        d, mo, y = m.groups()
+    suffix = "T23:59:59.999Z" if end else "T00:00:00.000Z"
+    return f"{y}-{int(mo):02d}-{int(d):02d}{suffix}"
+
+
 def _result_count(raw_data: Any) -> int:
     """How many records the upstream reports for a search response.
 
@@ -412,9 +446,11 @@ class BedestenClient(SourceClient):
         if birim:
             data_payload["birimAdi"] = birim
         if filters.get("start_date") or filters.get("karar_tarihi_start"):
-            data_payload["kararTarihiStart"] = filters.get("start_date") or filters.get("karar_tarihi_start")
+            data_payload["kararTarihiStart"] = normalize_bedesten_date(
+                filters.get("start_date") or filters.get("karar_tarihi_start"))
         if filters.get("end_date") or filters.get("karar_tarihi_end"):
-            data_payload["kararTarihiEnd"] = filters.get("end_date") or filters.get("karar_tarihi_end")
+            data_payload["kararTarihiEnd"] = normalize_bedesten_date(
+                filters.get("end_date") or filters.get("karar_tarihi_end"), end=True)
         if esas_yil is not None:
             data_payload["esasNoYil"] = esas_yil
         if esas_sira is not None:

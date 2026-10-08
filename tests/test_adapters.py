@@ -575,8 +575,9 @@ class TestBedestenMocked:
             mc.return_value = cm
             asyncio.run(ci.search("test", limit=5, karar_tarihi_start="2023-01-01", karar_tarihi_end="2024-12-31"))
         data_payload = sent_payload[0].get("data", {})
-        assert data_payload.get("kararTarihiStart") == "2023-01-01"
-        assert data_payload.get("kararTarihiEnd") == "2024-12-31"
+        # Bedesten parses these as LocalDateTime; a bare date is rejected upstream.
+        assert data_payload.get("kararTarihiStart") == "2023-01-01T00:00:00.000Z"
+        assert data_payload.get("kararTarihiEnd") == "2024-12-31T23:59:59.999Z"
 
     def test_search_legacy_chamber_still_works(self):
         """Old 'chamber' parameter still maps to birimAdi (backward compat)."""
@@ -616,8 +617,8 @@ class TestBedestenMocked:
             mc.return_value = cm
             asyncio.run(ci.search("test", limit=5, start_date="2023-01-01", end_date="2024-01-01"))
         data_payload = sent_payload[0].get("data", {})
-        assert data_payload.get("kararTarihiStart") == "2023-01-01"
-        assert data_payload.get("kararTarihiEnd") == "2024-01-01"
+        assert data_payload.get("kararTarihiStart") == "2023-01-01T00:00:00.000Z"
+        assert data_payload.get("kararTarihiEnd") == "2024-01-01T23:59:59.999Z"
 
 
 class TestYargitayMocked:

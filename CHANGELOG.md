@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Bedesten tarih filtresi düz tarihi kabul ediyor (8 Eki).** `search_decisions`
+  `karar_tarihi_start/_end` (ve eski `start_date/end_date`) değerini olduğu gibi
+  gönderiyordu; Bedesten bu alanı `LocalDateTime` olarak okuduğu için `2026-01-01`
+  ADALET_EMPTY_EXCEPTION ile reddediliyor, araç da bunu "geçici hata" diye
+  sunuyordu. Düz tarih (`YYYY-MM-DD` ya da sonuçlarda görünen `GG.AA.YYYY`) artık
+  başlangıçta `T00:00:00.000Z`, bitişte `T23:59:59.999Z` ile tamamlanıyor; saat
+  kısmı olan değerler (crawl CLI) değişmeden geçiyor.
+
 ## [1.1.1] — 2026-10-07
 
 ### Added
