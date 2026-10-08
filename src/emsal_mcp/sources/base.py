@@ -733,6 +733,26 @@ BEDESTEN_REQUEST_ERROR_CODES: frozenset[str] = frozenset({
     "ADALET_PARAMETER_VALIDATION_EXCEPTION",
 })
 
+# ADALET_EMPTY_EXCEPTION is a catch-all wrapper: it also carries Jackson
+# failures to read OUR payload.  Verified live (8 Eki 2026): kararTarihiStart
+# "2026-01-01" → ADALET_EMPTY_EXCEPTION, FMTE "Cannot deserialize value of type
+# `java.time.LocalDateTime` from String ... DateTimeParseException ... (through
+# reference chain: ...EmsalKararSearchDto["kararTarihiStart"])".  Such a fault
+# repeats on every attempt; an EMPTY_EXCEPTION without these markers stays
+# retryable because we have not seen what else it wraps.
+BEDESTEN_WRAPPER_ERROR_CODE = "ADALET_EMPTY_EXCEPTION"
+BEDESTEN_PARSE_ERROR_MARKERS: tuple[str, ...] = (
+    "Cannot deserialize",
+    "DateTimeParseException",
+    "could not be parsed",
+    "JSON parse error",
+    "InvalidFormatException",
+    "MismatchedInputException",
+    "Unrecognized field",
+    "NumberFormatException",
+)
+_REFERENCE_FIELD_RE = re.compile(r'\["([^"\]]+)"\]')
+
 
 class BedestenUpstreamError(Exception):
     """Raised when Bedesten returns a structured upstream error.
@@ -750,9 +770,28 @@ class BedestenUpstreamError(Exception):
         super().__init__(f"Bedesten upstream error: {fmc} — {fmte}")
 
     @property
+    def is_parameter_format_error(self) -> bool:
+        """Upstream could not deserialise a payload field (date, number, ...)."""
+        if self.fmc.upper() != BEDESTEN_WRAPPER_ERROR_CODE:
+            return False
+        return any(m in self.fmte for m in BEDESTEN_PARSE_ERROR_MARKERS)
+
+    @property
+    def rejected_field(self) -> str | None:
+        """Payload field named last in Jackson's reference chain, if any."""
+        if not self.is_parameter_format_error:
+            return None
+        fields = _REFERENCE_FIELD_RE.findall(self.fmte)
+        return fields[-1] if fields else None
+
+    @property
     def is_request_error(self) -> bool:
         code = self.fmc.upper()
-        return code in BEDESTEN_REQUEST_ERROR_CODES or "VALIDATION" in code
+        return (
+            code in BEDESTEN_REQUEST_ERROR_CODES
+            or "VALIDATION" in code
+            or self.is_parameter_format_error
+        )
 
     @property
     def retryable(self) -> bool:

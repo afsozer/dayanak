@@ -937,6 +937,28 @@ def main() -> None:
             # temporarily faulty.  See Yargı-MCP parity Görev 3.
             from .sources.base import BedestenUpstreamError
             from .sources.bedesten import InvalidQueryError
+            if isinstance(exc, BedestenUpstreamError) and exc.is_parameter_format_error:
+                # Upstream could not deserialise a filter value (e.g. a date
+                # without time part).  Not a phrase problem, not transient.
+                field = exc.rejected_field
+                field_txt = f" (alan: {field})" if field else ""
+                return build_error(
+                    "INVALID_INPUT",
+                    f"Kaynak ({effective_source}) bir filtre değerini okuyamadı{field_txt} "
+                    f"({exc.fmc}). Tekrar denemek aynı sonucu verir; bu 'sonuç yok' "
+                    "anlamına da gelmez. Filtre değerini düzeltip yeniden arayın.",
+                    source=effective_source,
+                    retryable=False,
+                    recommended_next_steps=[
+                        "Tarihleri YYYY-MM-DD, GG.AA.YYYY ya da tam zaman damgası "
+                        "(2026-01-01T00:00:00.000Z) olarak verin.",
+                        "Esas/karar numarasını YYYY/NNNN biçiminde verin; hangi değerin "
+                        "okunamadığı upstream_error_message içinde yazar.",
+                    ],
+                    upstream_error_code=exc.fmc,
+                    upstream_error_message=exc.fmte,
+                    rejected_field=field,
+                )
             if isinstance(exc, BedestenUpstreamError) and exc.is_request_error:
                 # Parameter validation fault: the SAME query fails the same
                 # way every time.  Labelling it "geçici hata / retryable"

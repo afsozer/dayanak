@@ -14,6 +14,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   sunuyordu. Düz tarih (`YYYY-MM-DD` ya da sonuçlarda görünen `GG.AA.YYYY`) artık
   başlangıçta `T00:00:00.000Z`, bitişte `T23:59:59.999Z` ile tamamlanıyor; saat
   kısmı olan değerler (crawl CLI) değişmeden geçiyor.
+- **Bedesten'in kalıcı ayrıştırma hataları artık "geçici hata" sayılmıyor (8 Eki).**
+  `ADALET_EMPTY_EXCEPTION` gövdesinde Jackson ayrıştırma izi (DateTimeParseException,
+  "Cannot deserialize", NumberFormatException vb.) varsa `BedestenUpstreamError`
+  bunu istek hatası sayar: istemci yeniden denemez, `search_decisions`
+  `INVALID_INPUT` / `retryable=false` döner ve okunamayan alanı (`rejected_field`,
+  ör. `kararTarihiStart`) bildirir. Bu iz olmayan `ADALET_EMPTY_EXCEPTION` önceki
+  gibi geçici sayılır.
 
 ## [1.1.1] — 2026-10-07
 

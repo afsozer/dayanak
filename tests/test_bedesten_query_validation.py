@@ -1,5 +1,7 @@
 """Bedesten phrase validation: query sanitising + error classification.
 
+Also covers ADALET_EMPTY_EXCEPTION wrapping a payload parse fault (8 Eki 2026).
+
 Olay (22 Eyl 2026): `+"83/a" +muvafakat +maaş +"takipten sonra"` →
 ADALET_PARAMETER_VALIDATION_EXCEPTION ("Sadece harf ve rakam içeren aramalar
 yapılabilir").  The tool reported it as SOURCE_UPSTREAM_ERROR / retryable,
@@ -33,6 +35,21 @@ _VALIDATION = {
     },
 }
 _RUNTIME = {"data": None, "metadata": {"FMTY": "ERROR", "FMC": "ADALET_RUNTIME_EXCEPTION"}}
+# Olay (8 Eki 2026): kararTarihiStart="2026-01-01" → Jackson parse fault wrapped
+# as ADALET_EMPTY_EXCEPTION; the tool called it "geçici hata, tekrar dene".
+_DATE_PARSE_FMTE = (
+    "Cannot deserialize value of type `java.time.LocalDateTime` from String "
+    "\"2026-01-01\": Failed to deserialize java.time.LocalDateTime: "
+    "(java.time.format.DateTimeParseException) Text '2026-01-01' could not be "
+    "parsed at index 10\n at [Source: REDACTED (`StreamReadFeature."
+    "INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 108] (through "
+    "reference chain: tr.gov.adalet.core.model.request.AdaletRequestDto[\"data\"]"
+    "->tr.gov.adalet.service.yuksekyargi.emsal.karar.dto.EmsalKararSearchDto"
+    "[\"kararTarihiStart\"])"
+)
+_EMPTY_PARSE = {"data": None, "metadata": {
+    "FMTY": "ERROR", "FMC": "ADALET_EMPTY_EXCEPTION", "FMTE": _DATE_PARSE_FMTE}}
+_EMPTY_PLAIN = {"data": None, "metadata": {"FMTY": "ERROR", "FMC": "ADALET_EMPTY_EXCEPTION"}}
 _OK = {"data": {"total": 50, "emsalKararList": [
     {"id": str(i), "itemType": {"description": "Y"}} for i in range(10)
 ]}}
@@ -143,6 +160,32 @@ class TestClassification:
         assert exc.is_request_error is False
         assert exc.retryable is True
 
+    def test_empty_exception_with_parse_fault_is_request_error(self):
+        exc = BedestenUpstreamError("ADALET_EMPTY_EXCEPTION", fmte=_DATE_PARSE_FMTE)
+        assert exc.is_parameter_format_error is True
+        assert exc.is_request_error is True
+        assert exc.retryable is False
+        assert exc.rejected_field == "kararTarihiStart"
+
+    @pytest.mark.parametrize("fmte", [
+        "JSON parse error: Unrecognized field \"foo\"",
+        "java.lang.NumberFormatException: For input string: \"abc\"",
+        "MismatchedInputException: Cannot construct instance",
+    ])
+    def test_other_parse_faults_are_request_errors(self, fmte):
+        exc = BedestenUpstreamError("ADALET_EMPTY_EXCEPTION", fmte=fmte)
+        assert exc.retryable is False
+        assert exc.rejected_field is None
+
+    def test_plain_empty_exception_stays_retryable(self):
+        exc = BedestenUpstreamError("ADALET_EMPTY_EXCEPTION", fmte="beklenmeyen hata")
+        assert exc.is_parameter_format_error is False
+        assert exc.retryable is True
+
+    def test_parse_markers_only_reclassify_empty_wrapper(self):
+        exc = BedestenUpstreamError("ADALET_RUNTIME_EXCEPTION", fmte=_DATE_PARSE_FMTE)
+        assert exc.retryable is True
+
 
 class TestClientBehaviour:
     def test_sanitised_phrase_is_sent(self):
@@ -179,6 +222,19 @@ class TestClientBehaviour:
         finally:
             mc.stop()
         assert type(ei.value).__name__ == "BedestenUpstreamError"
+        assert len(captured) == 1
+
+    def test_parse_fault_not_retried(self):
+        captured: list[dict] = []
+        ci = BedestenClient()
+        ci._upstream_retry_delay = 0.0
+        mc = _patched_client(captured, [_EMPTY_PARSE])
+        try:
+            with pytest.raises(BedestenUpstreamError) as ei:
+                asyncio.run(ci.search_page("maaş", limit=10))
+        finally:
+            mc.stop()
+        assert ei.value.retryable is False
         assert len(captured) == 1
 
     def test_runtime_error_retried_once(self):
@@ -221,6 +277,35 @@ class TestToolErrors:
         tool = _search_decisions()
         captured: list[dict] = []
         mc = _patched_client(captured, [_RUNTIME])
+        try:
+            with patch.object(BedestenClient, "_upstream_retry_delay", 0.0):
+                res = asyncio.run(tool(query="maaş haczi"))
+        finally:
+            mc.stop()
+        assert res["errorCode"] == "SOURCE_UPSTREAM_ERROR"
+        assert res["retryable"] is True
+
+    def test_parse_fault_is_invalid_input_not_transient(self):
+        tool = _search_decisions()
+        captured: list[dict] = []
+        mc = _patched_client(captured, [_EMPTY_PARSE])
+        try:
+            res = asyncio.run(tool(query="maaş haczi"))
+        finally:
+            mc.stop()
+        assert res["ok"] is False
+        assert res["errorCode"] == "INVALID_INPUT"
+        assert res["retryable"] is False
+        assert res["upstream_error_code"] == "ADALET_EMPTY_EXCEPTION"
+        assert res["rejected_field"] == "kararTarihiStart"
+        assert "kararTarihiStart" in res["message"]
+        assert "geçici" not in res["message"]
+        assert len(captured) == 1
+
+    def test_plain_empty_exception_stays_upstream_retryable(self):
+        tool = _search_decisions()
+        captured: list[dict] = []
+        mc = _patched_client(captured, [_EMPTY_PLAIN])
         try:
             with patch.object(BedestenClient, "_upstream_retry_delay", 0.0):
                 res = asyncio.run(tool(query="maaş haczi"))
