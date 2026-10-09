@@ -1,0 +1,28 @@
+[project]
+name = "emsal-mcp"
+version = "1.2.0"
+description = "emsal-mcp artik Dayanak: bu paket yalnizca `dayanak`i kurar (renamed to dayanak)"
+readme = "README.md"
+license = "AGPL-3.0-only"
+authors = [
+  { name = "Alpaslan Fatih Sözer" },
+]
+requires-python = ">=3.11"
+dependencies = ["dayanak>=2.0.0"]
+classifiers = ["Development Status :: 7 - Inactive"]
+
+[project.urls]
+Homepage = "https://avfatihsozer.com/en/projects/dayanak"
+Source = "https://github.com/afsozer/dayanak"
+
+# Eski komut adlari yeni pakete yonlenir.
+[project.scripts]
+emsal-mcp = "dayanak.cli:app"
+emsal-mcp-server = "dayanak.server:main"
+
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
