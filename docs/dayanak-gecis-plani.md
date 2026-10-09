@@ -29,22 +29,22 @@ korpusun diskteki yeri (`D:\emsal-data`).
 ## Aşamalar
 
 ### 1. Depo içi (bu oturum, yerel commit)
-- [ ] `src/emsal_mcp` → `src/dayanak`, tüm import ve referanslar
-- [ ] `EMSAL_*` → `DAYANAK_*`; `dayanak/__init__.py` eski adları yeni adlara kopyalar
-- [ ] veri dizini çözümleyicisi (yeni yoksa eski dizin)
-- [ ] betikler: `emsal-env.cmd` → `dayanak-env.cmd`, `.exe` adları, yerel-ayar eski adları da kabul eder
-- [ ] pyproject, server.json, README (TR/EN), INSTALL, SECURITY, docs
-- [ ] eski PyPI adı için uyumluluk paketi `compat/emsal-mcp` (1.2.0: `dayanak`'ı çeker,
+- [x] `src/emsal_mcp` → `src/dayanak`, tüm import ve referanslar
+- [x] `EMSAL_*` → `DAYANAK_*`; `dayanak/__init__.py` eski adları yeni adlara kopyalar
+- [x] veri dizini çözümleyicisi (yeni yoksa eski dizin)
+- [x] betikler: `emsal-env.cmd` → `dayanak-env.cmd`, `.exe` adları, yerel-ayar eski adları da kabul eder
+- [x] pyproject, server.json, README (TR/EN), INSTALL, SECURITY, docs
+- [x] eski PyPI adı için uyumluluk paketi `compat/emsal-mcp` (1.2.0: `dayanak`'ı çeker,
       `emsal_mcp` importunu ve eski komutları yönlendirir, uyarı basar)
-- [ ] publish.yml: `v*` → dayanak, `emsal-mcp-v*` → uyumluluk paketi
-- [ ] CHANGELOG 2.0.0, testler yeşil
+- [x] publish.yml: `v*` → dayanak, `emsal-mcp-v*` → uyumluluk paketi
+- [x] CHANGELOG 2.0.0, testler yeşil
 
 ### 2. Dış hesaplar (kullanıcı onayıyla)
-- [ ] GitHub repo rename `afsozer/emsal-mcp` → `afsozer/dayanak` (eski URL yönlenir), açıklama/konu
-- [ ] PyPI: `dayanak` için pending trusted publisher (repo `afsozer/dayanak`, `publish.yml`, ortam `pypi`);
+- [x] GitHub repo rename `afsozer/emsal-mcp` → `afsozer/dayanak` (eski URL yönlenir), açıklama/konu
+- [x] PyPI: `dayanak` için pending trusted publisher (repo `afsozer/dayanak`, `publish.yml`, ortam `pypi`);
       `emsal-mcp` projesinin trusted publisher'ı yeni repo adına güncellenir (kullanıcı, pypi.org)
-- [ ] push + `v2.0.0` etiketi → `dayanak` yayımı; `emsal-mcp-v1.2.0` etiketi → uyumluluk sürümü
-- [ ] MCP Registry: `io.github.afsozer/dayanak` yayımı, eski kayıt `deprecated`
+- [x] push + `v2.0.0` etiketi → `dayanak` yayımı; `emsal-mcp-v1.2.0` etiketi → uyumluluk sürümü
+- [x] MCP Registry: `io.github.afsozer/dayanak` yayımı, eski kayıt `deprecated`
 - [ ] mcprush listesi: ad, açıklama, repo ve kurulum komutu
 - [ ] avfatihsozer.com: proje sayfaları (TR/EN) yeni slug + 301, `KORPUS`/`PROJELER`
 - [ ] diğer depolardaki atıflar: doktor-mcp, belgelik, telekumanda (yalnız metin/URL)
@@ -54,6 +54,20 @@ korpusun diskteki yeri (`D:\emsal-data`).
       `EmsalMcpHttp` ve diğer görevlerin çağırdığı betikleri doğrula, `/health`
 - [ ] istemci ayarları (Mac + sozer-pc + desktop): MCP sunucu adı `emsal` → `dayanak`
       (araç adları `mcp__dayanak__*` olur), URL aynı kalır
-- [ ] Mac klasörü `~/Developer/emsal-mcp` → `~/Developer/dayanak` (venv yeniden kurulur,
+- [x] Mac klasörü `~/Developer/emsal-mcp` → `~/Developer/dayanak` (venv yeniden kurulur,
       Claude proje hafıza dizini taşınır, kasaya `Projeler/dayanak` bağlanır)
 - [ ] hafıza notları ve CV/LinkedIn'deki proje adı
+
+## Durum (10 Eki 2026)
+
+- PyPI: `dayanak` 2.0.0 ve `emsal-mcp` 1.2.0 (yalnız `dayanak>=2.0.0` çeker) yayında,
+  ikisi de trusted publishing ile `afsozer/dayanak` deposundan. Temiz venv'de
+  `pip install emsal-mcp==1.2.0` + eski `emsal-mcp-server` komutuyla MCP el sıkışması denendi.
+- GitHub: `afsozer/dayanak` (eski URL yönleniyor), açıklama ve ana sayfa güncel, CI yeşil.
+- Registry: `io.github.afsozer/dayanak` 2.0.0 aktif, `io.github.afsozer/emsal-mcp` deprecated.
+- mcprush: listeler resmi Registry'den içe aktarılıyor, Studio'da ad değiştirme yok
+  (sihirbaz yalnız ağ geçidi/barındırma için). `dayanak` kaydı içe aktarılınca claim edilecek,
+  eski `afsozer/emsal-mcp` listesi ayrıca ele alınacak.
+- Mac klasörü `~/Developer/dayanak`; venv yeniden kuruldu (pyarrow + faiss dahil), 2217 test geçti.
+- Bekleyen: site yayını (avfatihsozer-web commit `07dfb4c`), sozer-pc kurulumu, istemci
+  ayarlarında sunucu adı, kasa bağlantısı, belgelik.
