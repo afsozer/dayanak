@@ -7,14 +7,14 @@ uzun suren tek bir sync arac tum istemcileri kilitliyordu: sunucu yeni
 baglanti kabul ediyor ama hicbir istege cevap veremiyordu.
 
 ``server.main()`` icindeki ``_tool`` dekoratoru artik sync araclari
-``anyio.to_thread.run_sync`` ile calistiran, ``__emsal_threaded__`` isaretli
+``anyio.to_thread.run_sync`` ile calistiran, ``__dayanak_threaded__`` isaretli
 bir async sarmalayiciyla kaydediyor.  Buradaki testler sarmalayicinin
 
 1. gercekten olay dongusu disinda bir thread kullandigini,
 2. FastMCP'nin sema uretimi icin gereken imza/docstring/annotation'i
    bozmadigini (tools/list ciktisi degismemeli),
 3. zaten async olan araclara dokunmadigini,
-4. ``EMSAL_TOOL_THREADS=0`` ile kapatilabildigini
+4. ``DAYANAK_TOOL_THREADS=0`` ile kapatilabildigini
 
 dogrular.
 """
@@ -52,20 +52,20 @@ def _capture_registered(profile: str = "full") -> dict:
     mock_mcp.tool = capture_tool
     mock_mcp.run = MagicMock()
 
-    prev = os.environ.get("EMSAL_TOOL_PROFILE")
-    os.environ["EMSAL_TOOL_PROFILE"] = profile
+    prev = os.environ.get("DAYANAK_TOOL_PROFILE")
+    os.environ["DAYANAK_TOOL_PROFILE"] = profile
     try:
         with patch(
             "mcp.server.fastmcp.FastMCP", return_value=mock_mcp
         ), patch.object(sys.stdin, "isatty", return_value=False):
-            import emsal_mcp.server
+            import dayanak.server
 
-            emsal_mcp.server.main()
+            dayanak.server.main()
     finally:
         if prev is None:
-            os.environ.pop("EMSAL_TOOL_PROFILE", None)
+            os.environ.pop("DAYANAK_TOOL_PROFILE", None)
         else:
-            os.environ["EMSAL_TOOL_PROFILE"] = prev
+            os.environ["DAYANAK_TOOL_PROFILE"] = prev
     return registered
 
 
@@ -77,7 +77,7 @@ ASYNC_TOOLS = ("search_decisions", "get_document", "check_government_servers_hea
 
 @pytest.fixture()
 def threaded_tools(monkeypatch):
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
     return _capture_registered("full")
 
 
@@ -85,7 +85,7 @@ def threaded_tools(monkeypatch):
 
 def test_sync_tool_is_registered_as_async_wrapper(threaded_tools) -> None:
     tool = threaded_tools[SYNC_TOOL]
-    assert getattr(tool, "__emsal_threaded__", False) is True
+    assert getattr(tool, "__dayanak_threaded__", False) is True
     assert inspect.iscoroutinefunction(tool), (
         "FastMCP sadece coroutine fonksiyonlari await eder "
         "(tools/base.py::_is_async_callable)"
@@ -94,13 +94,13 @@ def test_sync_tool_is_registered_as_async_wrapper(threaded_tools) -> None:
 
 def test_sync_tool_body_runs_on_a_worker_thread(monkeypatch) -> None:
     """Aracin GOVDESI, olay dongusunun thread'inden farkli bir thread'de kosmali."""
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
 
     seen: dict[str, int] = {}
 
     # ``main()`` ``birim_enum.list_birim_codes``i cagri aninda import ettigi
     # icin modul uzerinden casuslamak yeterli.
-    import emsal_mcp.birim_enum as birim_enum
+    import dayanak.birim_enum as birim_enum
 
     original = birim_enum.list_birim_codes
 
@@ -127,11 +127,11 @@ def test_sync_tool_body_runs_on_a_worker_thread(monkeypatch) -> None:
 
 
 def test_sync_tool_body_blocks_the_loop_when_disabled(monkeypatch) -> None:
-    """EMSAL_TOOL_THREADS=0 ile ayni govde olay dongusu thread'inde kosar."""
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "0")
+    """DAYANAK_TOOL_THREADS=0 ile ayni govde olay dongusu thread'inde kosar."""
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "0")
 
     seen: dict[str, int] = {}
-    import emsal_mcp.birim_enum as birim_enum
+    import dayanak.birim_enum as birim_enum
 
     original = birim_enum.list_birim_codes
 
@@ -176,15 +176,15 @@ def test_fastmcp_schema_is_identical_with_and_without_wrapper(monkeypatch) -> No
     """FastMCP'nin urettigi arac semasi sarmalayiciyla birebir ayni kalmali."""
     from mcp.server.fastmcp.tools.base import Tool
 
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "0")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "0")
     plain = _capture_registered("full")
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
     wrapped = _capture_registered("full")
 
     assert set(plain) == set(wrapped)
     # Arac sayisi elle sabitlenmemeli: server.py'deki ``_TOOL_PROFILES`` tek
     # dogruluk kaynagi.  Sabit 46 rakami mevzuat araclari eklenince bayatladi.
-    from emsal_mcp.tool_profile import TOOL_PROFILE
+    from dayanak.tool_profile import TOOL_PROFILE
 
     assert len(plain) == len(TOOL_PROFILE), (
         "kayitli arac sayisi _TOOL_PROFILES ile ortusmuyor"
@@ -205,7 +205,7 @@ def test_async_tools_are_not_rewrapped(threaded_tools) -> None:
     for name in ASYNC_TOOLS:
         tool = threaded_tools[name]
         assert inspect.iscoroutinefunction(tool)
-        assert not getattr(tool, "__emsal_threaded__", False), (
+        assert not getattr(tool, "__dayanak_threaded__", False), (
             f"{name} zaten async, sarmalanmamaliydi"
         )
 
@@ -219,25 +219,25 @@ def test_every_registered_tool_is_awaitable(threaded_tools) -> None:
 # ── 4. Kapatma anahtari ───────────────────────────────────────────────────
 
 def test_threads_zero_disables_the_wrapper(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "0")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "0")
     tools = _capture_registered("full")
     tool = tools[SYNC_TOOL]
     assert not inspect.iscoroutinefunction(tool)
-    assert not getattr(tool, "__emsal_threaded__", False)
+    assert not getattr(tool, "__dayanak_threaded__", False)
 
 
 def test_invalid_thread_count_falls_back_to_default(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "abc")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "abc")
     tools = _capture_registered("full")
-    assert getattr(tools[SYNC_TOOL], "__emsal_threaded__", False) is True
+    assert getattr(tools[SYNC_TOOL], "__dayanak_threaded__", False) is True
 
 
 # ── 5. M-99 dinamik yukleme yolu da sarmalayicidan geciyor ────────────────
 
 def test_extended_tools_are_wrapped_too(monkeypatch) -> None:
     """``load_extended_tools`` ile sonradan kaydedilenler de thread'de kosmali."""
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_PROFILE", "core")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_PROFILE", "core")
 
     registered: dict = {}
     mock_mcp = MagicMock()
@@ -258,15 +258,15 @@ def test_extended_tools_are_wrapped_too(monkeypatch) -> None:
     with patch(
         "mcp.server.fastmcp.FastMCP", return_value=mock_mcp
     ), patch.object(sys.stdin, "isatty", return_value=False):
-        import emsal_mcp.server
+        import dayanak.server
 
-        emsal_mcp.server.main()
+        dayanak.server.main()
 
     loader = registered["load_extended_tools"]
     # loader'in kendisi de sarmalanmistir; implementasyonu cagir.
-    impl = loader.__wrapped__ if getattr(loader, "__emsal_threaded__", False) else loader
+    impl = loader.__wrapped__ if getattr(loader, "__dayanak_threaded__", False) else loader
     result = impl(["chambers"])
 
     assert result["ok"] is True, result
     assert "chamber_overview" in registered, "dinamik yukleme kaydetmedi"
-    assert getattr(registered["chamber_overview"], "__emsal_threaded__", False) is True
+    assert getattr(registered["chamber_overview"], "__dayanak_threaded__", False) is True

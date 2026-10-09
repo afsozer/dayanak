@@ -14,12 +14,12 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.dedup import find_duplicates
-from emsal_mcp.embeddings import LocalHashProvider
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.safety import citation_check
-from emsal_mcp.semantic import build_semantic_index, hybrid_search
+from dayanak.cache import Cache
+from dayanak.dedup import find_duplicates
+from dayanak.embeddings import LocalHashProvider
+from dayanak.models import ContentStatus, Document
+from dayanak.safety import citation_check
+from dayanak.semantic import build_semantic_index, hybrid_search
 
 
 # ---------------------------------------------------------------------------

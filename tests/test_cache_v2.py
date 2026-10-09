@@ -6,10 +6,10 @@ import json
 
 import pytest
 
-from emsal_mcp.cache import Cache, CACHE_SCHEMA_VERSION
+from dayanak.cache import Cache, CACHE_SCHEMA_VERSION
 
 pytestmark = [pytest.mark.integration]
-from emsal_mcp.models import CachedDocument, ContentStatus, Document
+from dayanak.models import CachedDocument, ContentStatus, Document
 
 
 class TestCachedDocumentModel:
@@ -593,13 +593,13 @@ class TestFts5MatchExpr:
     """The MATCH builder turns free text into a safe, AND-ed FTS5 expression."""
 
     def test_terms_are_anded(self):
-        from emsal_mcp.cache import _fts5_match_expr
+        from dayanak.cache import _fts5_match_expr
         assert _fts5_match_expr("tahliye taahhüdü geçerlilik") == (
             '"tahliye" AND "taahhüdü" AND "geçerlilik"'
         )
 
     def test_quoted_span_becomes_a_phrase(self):
-        from emsal_mcp.cache import _fts5_match_expr
+        from dayanak.cache import _fts5_match_expr
         assert _fts5_match_expr('"tahliye taahhüdü" geçerlilik') == (
             '"tahliye taahhüdü" AND "geçerlilik"'
         )
@@ -607,13 +607,13 @@ class TestFts5MatchExpr:
     def test_operators_in_user_text_are_neutralised(self):
         """A stray AND/OR/NOT/* must be data, not syntax — otherwise the query
         shape changes or FTS5 raises."""
-        from emsal_mcp.cache import _fts5_match_expr
+        from dayanak.cache import _fts5_match_expr
         assert _fts5_match_expr("tazminat AND OR NOT *") == (
             '"tazminat" AND "AND" AND "OR" AND "NOT"'
         )
 
     def test_punctuation_only_returns_none(self):
-        from emsal_mcp.cache import _fts5_match_expr
+        from dayanak.cache import _fts5_match_expr
         assert _fts5_match_expr("!!! ???") is None
         assert _fts5_match_expr("") is None
         assert _fts5_match_expr("   ") is None
@@ -645,7 +645,7 @@ class TestSearchLocalUsesFts5:
         for doc in docs:
             cache.store_document(doc)
         # The FTS5 table is created by the semantic layer, not by Cache itself.
-        from emsal_mcp.semantic import _ensure_fts5
+        from dayanak.semantic import _ensure_fts5
         _ensure_fts5(cache.db)
 
     def test_scattered_terms_match(self, tmp_path):
@@ -778,7 +778,7 @@ class TestPurgeSyntheticDocuments:
     def test_purge_removes_rows_and_derived_indexes(self, tmp_path):
         cache = Cache(tmp_path / "test.sqlite3")
         self._seed(cache)
-        from emsal_mcp.semantic import (
+        from dayanak.semantic import (
             _ensure_embedding_vectors,
             _ensure_fts5,
             _ensure_search_vectors,
@@ -816,7 +816,7 @@ class TestPurgeSyntheticDocuments:
         """The concrete regression: 'kıdem tazminatı' must not surface yg-004."""
         cache = Cache(tmp_path / "test.sqlite3")
         self._seed(cache)
-        from emsal_mcp.semantic import _ensure_fts5
+        from dayanak.semantic import _ensure_fts5
         _ensure_fts5(cache.db)
         assert any(r["document_id"] == "yg-004" for r in cache.search_local("kıdem tazminatı"))
         cache.purge_synthetic_documents(dry_run=False)

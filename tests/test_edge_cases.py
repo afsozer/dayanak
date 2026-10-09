@@ -12,27 +12,27 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from emsal_mcp.citation import (
+from dayanak.citation import (
     extract_citation_candidates,
     format_legal_citation,
     verify_legal_citation,
 )
-from emsal_mcp.models import ContentStatus, Document, build_error
-from emsal_mcp.petition import (
+from dayanak.models import ContentStatus, Document, build_error
+from dayanak.petition import (
     inspect_petition_pack,
     prepare_controlled_petition_draft,
     prepare_drafting_input_pack,
     prepare_petition_outline,
 )
-from emsal_mcp.safety import build_input_pack, citation_check
-from emsal_mcp.semantic import (
+from dayanak.safety import build_input_pack, citation_check
+from dayanak.semantic import (
     _build_query_vector,
     _cosine_similarity,
     _expand_query,
     _generate_snippet,
     _tokenize,
 )
-from emsal_mcp.legislation import (
+from dayanak.legislation import (
     format_legislation_citation,
     search_legislation,
 )

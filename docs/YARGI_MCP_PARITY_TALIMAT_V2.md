@@ -24,7 +24,7 @@
 **Sorun:** `get_document` MCP aracı aynı karar metnini 4 kopya döndürüyor:
 `metadata.content` (base64 HTML), `raw.data.content` (aynı base64), `full_text` ve `markdown`. Tek karar ~15k token tutuyor; hosted yargı-mcp aynı belgeyi tek Markdown olarak veriyor.
 
-**Konum:** `src/emsal_mcp/server.py` `get_document` aracı (≈ satır 678–714, `doc.model_dump(mode="json")` dönüşü) ve `src/emsal_mcp/models.py` `Document` modeli; base64 alanlar `src/emsal_mcp/sources/bedesten.py` `get_document` içinde `metadata`/`raw`'a yazılıyor.
+**Konum:** `src/dayanak/server.py` `get_document` aracı (≈ satır 678–714, `doc.model_dump(mode="json")` dönüşü) ve `src/dayanak/models.py` `Document` modeli; base64 alanlar `src/dayanak/sources/bedesten.py` `get_document` içinde `metadata`/`raw`'a yazılıyor.
 
 **Yapılacaklar:**
 1. `Document` modeline bir yardımcı ekle: `to_tool_payload(include_raw: bool = False) -> dict`. Varsayılan çıktıda:
@@ -43,7 +43,7 @@
 
 **Sorun:** Hosted yargı-mcp `total: 543 · sayfa 1/55` veriyor; bizim araç sadece sonuç listesi döndürüyor. Sayfalayan ajan toplamı bilemiyor.
 
-**Konum:** `src/emsal_mcp/sources/bedesten.py` `BedestenClient.search` (≈ satır 167–191): upstream yanıtı `data` dict'inde toplam kayıt sayısı alanı var (muhtemel adaylar: `total`, `totalCount`, `recordsTotal` — **önce gerçek yanıtı logla ve alan adını doğrula, tahmin etme**). `src/emsal_mcp/server.py` `search_decisions` (≈ satır 419+).
+**Konum:** `src/dayanak/sources/bedesten.py` `BedestenClient.search` (≈ satır 167–191): upstream yanıtı `data` dict'inde toplam kayıt sayısı alanı var (muhtemel adaylar: `total`, `totalCount`, `recordsTotal` — **önce gerçek yanıtı logla ve alan adını doğrula, tahmin etme**). `src/dayanak/server.py` `search_decisions` (≈ satır 419+).
 
 **Yapılacaklar:**
 1. `SourceClient.search` imzasını bozmadan toplamı taşı: en pratik yol, ilk `SearchResult.metadata`'ya `search_total: int` ve `search_page: int` koymak YERİNE, `BedestenClient.search`'ün sonuna toplamı `self._last_search_total` gibi state'e yazmak KIRILGANDIR — bunu yapma. Doğru yol: `search()` dönüş tipini `list[SearchResult]`'tan `SearchResponse(results=..., total=..., page=..., page_size=...)` modeline geçirmekse tüm adaptörlere dokunur; bu görevde İZİN VERİLEN kapsamlı değişiklik budur ve şu şekilde sınırlanır:
@@ -60,7 +60,7 @@
 
 **Sorun:** Arama sonuçlarında `content_status: metadata_only` + "Bu kayıtta tam metin yok; ... resmi kaynaktan doğrulayın" deniyor; oysa snippet mevcut ve tam metin `get_document` ile alınabiliyor. Mesaj, LLM'i kaynağı kullanmamaya itiyor.
 
-**Konum:** `recommended_next_step` üretimi — `src/emsal_mcp/server.py` veya `src/emsal_mcp/server_utils.py` içinde "Bu kayıtta tam metin yok" metnini grep'le bul.
+**Konum:** `recommended_next_step` üretimi — `src/dayanak/server.py` veya `src/dayanak/server_utils.py` içinde "Bu kayıtta tam metin yok" metnini grep'le bul.
 
 **Yapılacaklar:**
 1. Bedesten kaynaklı arama sonuçlarında mesajı şu anlama gelecek şekilde değiştir: "Arama sonucu özet niteliğindedir; tam metin için `get_document(source='bedesten', document_id='<id>')` çağırın." (`content_status` alanı `metadata_only` kalabilir — yalan söyleme, sadece yönlendirmeyi düzelt.)
@@ -88,7 +88,7 @@
 
 **Sorun:** AİHM içtihadı hiç yok. HUDOC'un resmi JSON API'si var — scraping gerekmez.
 
-**Konum:** YENİ dosya `src/emsal_mcp/sources/aihm.py`; kayıt `src/emsal_mcp/sources/registry.py`; araç yüzeyi `server.py` `search_decisions`'a `source="aihm"` olarak.
+**Konum:** YENİ dosya `src/dayanak/sources/aihm.py`; kayıt `src/dayanak/sources/registry.py`; araç yüzeyi `server.py` `search_decisions`'a `source="aihm"` olarak.
 
 **API bilgisi (doğrula, sonra kullan):**
 - Arama: `GET https://hudoc.echr.coe.int/app/query/results?query=<lucene>&select=itemid,docname,appno,conclusion,importance,kpdate,languageisocode,doctype&sort=&start=0&length=20`
@@ -106,7 +106,7 @@
 
 **Sorun:** Hosted `mevzuat_icinde_ara`: tek kanun içinde `AND/OR/NOT/"phrase"/()`  operatörlü, madde-düzeyi snippet'li lokal arama. Bizde `search_legislation(scope='article')` var ama operatör desteği ve snippet zayıf.
 
-**Konum:** `src/emsal_mcp/legislation.py` (madde ağacı zaten çekiliyor: `get_legislation part='article_tree'`); `src/emsal_mcp/snippet.py`.
+**Konum:** `src/dayanak/legislation.py` (madde ağacı zaten çekiliyor: `get_legislation part='article_tree'`); `src/dayanak/snippet.py`.
 
 **Yapılacaklar:**
 1. `legislation.py`'ye saf bir boolean değerlendirici ekle: BÜYÜK harf `AND`/`OR`/`NOT`, `"tam ifade"`, `()` gruplama; bitişik kelimeler örtük AND; Türkçe büyük/küçük harf duyarsız (İ/i, I/ı doğru katlansın — `casefold` yetmez, mevcut kodda Türkçe fold yardımcısı varsa onu kullan, yoksa `str.translate` tablosu yaz); kelime KÖKten ileri eşleşme (`tazminat` → `tazminatı` eşleşir).
@@ -121,7 +121,7 @@
 
 **Sorun:** `AymClient` iskeleti var (`sources/simple_public.py`, registry'de `EXPERIMENTAL`) ama norm denetimi / bireysel başvuru ayrımı ve güvenilir arama yok.
 
-**Konum:** `src/emsal_mcp/sources/simple_public.py` `AymClient`.
+**Konum:** `src/dayanak/sources/simple_public.py` `AymClient`.
 
 **Yapılacaklar:**
 1. Önce mevcut `AymClient.search`'ü canlı çalıştır, ne döndürdüğünü rapora yaz. Çalışan kısmı koru.
@@ -141,11 +141,11 @@ Ortak gereksinimler (dördü için):
 - `search_page()` override et → `total`/`total_pages` dön (Görev 2 sözleşmesi). `search()` mevcut `list[SearchResult]` sözleşmesini koru.
 - Geniş `except Exception` kullanacaksan hata sınıfını `metadata["error"]`'a yaz (Görev 5b/7b'de yerleşen kural).
 - Her alt görev için offline fixture testi (kaydedilmiş gerçek yanıt parçası) + tam suite yeşil.
-- PDF çıkarımı gereken yerlerde mevcut `src/emsal_mcp/pdf_extractor.py` kullan; yeni bağımlılık ekleme.
+- PDF çıkarımı gereken yerlerde mevcut `src/dayanak/pdf_extractor.py` kullan; yeni bağımlılık ekleme.
 
 ### Görev 8a — GİB özelge (mevcut adaptörü olgunlaştır)
 
-`GibClient` (`src/emsal_mcp/sources/simple_public.py`) zaten çalışıyor. Eksik: toplam sayı ve doğrulama.
+`GibClient` (`src/dayanak/sources/simple_public.py`) zaten çalışıyor. Eksik: toplam sayı ve doğrulama.
 
 **Canlı doğrulanmış uç:** `POST https://gib.gov.tr/api/gibportal/mevzuat/ozelge/list?page=0&size=10&sortFieldName=ozelgeTarih&sortType=DESC`, JSON gövde `{"status":2,"deleted":false,"ktype":99,"title":Q,"kanunNo":Q,"description":Q}`. Yanıt: `resultContainer.content[]` + **`resultContainer.totalElements`** (ör. 7736), `totalPages`, `number`, `size`. Belge id → `content[i].id` (int), tam metin `content[i].description` + başlık alanlarından kuruluyor (mevcut `get_document` doğru).
 

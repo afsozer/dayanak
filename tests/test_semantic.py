@@ -1,4 +1,4 @@
-"""Tests for emsal_mcp.semantic module – v0.11 Semantic/Hybrid Search.
+"""Tests for dayanak.semantic module – v0.11 Semantic/Hybrid Search.
 
 Covers:
   - build_semantic_index
@@ -16,11 +16,11 @@ from pathlib import Path
 
 import pytest
 
-from emsal_mcp.cache import Cache
+from dayanak.cache import Cache
 
 pytestmark = [pytest.mark.integration]
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.semantic import (
+from dayanak.models import ContentStatus, Document
+from dayanak.semantic import (
     SEMANTIC_VERSION,
     _compute_tfidf_vectors,
     _expand_query,
@@ -1971,7 +1971,7 @@ class TestHybridSearchRRF:
         cache = Cache(tmp_path / "rrf_dense.sqlite3")
         _populate_docs(cache)
         build_semantic_index(cache=cache, force_rebuild=True)
-        from emsal_mcp.semantic import build_embedding_index
+        from dayanak.semantic import build_embedding_index
 
         build_embedding_index(cache=cache)
         try:
@@ -2228,8 +2228,8 @@ class TestBatchedVectorScoring:
         import random
         import struct
 
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.models import ContentStatus, Document
+        from dayanak.semantic import _ensure_embedding_vectors
 
         _ensure_embedding_vectors(cache.db)
         vectors = {}
@@ -2268,8 +2268,8 @@ class TestBatchedVectorScoring:
         return out[:k]
 
     def test_ranking_matches_the_naive_loop(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _score_vectors_batched
+        from dayanak.cache import Cache
+        from dayanak.semantic import _score_vectors_batched
 
         cache = Cache(tmp_path / "vec.sqlite3")
         try:
@@ -2292,8 +2292,8 @@ class TestBatchedVectorScoring:
 
     def test_batching_does_not_change_results(self, tmp_path, monkeypatch):
         """A batch smaller than the corpus must give the same answer."""
-        from emsal_mcp import semantic
-        from emsal_mcp.cache import Cache
+        from dayanak import semantic
+        from dayanak.cache import Cache
 
         cache = Cache(tmp_path / "vec2.sqlite3")
         try:
@@ -2315,8 +2315,8 @@ class TestBatchedVectorScoring:
             cache.close()
 
     def test_metadata_is_not_queried_once_per_vector(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _score_vectors_batched
+        from dayanak.cache import Cache
+        from dayanak.semantic import _score_vectors_batched
 
         cache = Cache(tmp_path / "vec3.sqlite3")
         try:
@@ -2348,8 +2348,8 @@ class TestBatchedVectorScoring:
         """Vectors from another provider/dim must not corrupt the reshape."""
         import struct
 
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _score_vectors_batched
+        from dayanak.cache import Cache
+        from dayanak.semantic import _score_vectors_batched
 
         cache = Cache(tmp_path / "vec4.sqlite3")
         try:
@@ -2373,12 +2373,12 @@ class TestBatchedVectorScoring:
             cache.close()
 
     def test_no_vectors_returns_empty_not_error(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _score_vectors_batched
+        from dayanak.cache import Cache
+        from dayanak.semantic import _score_vectors_batched
 
         cache = Cache(tmp_path / "vec5.sqlite3")
         try:
-            from emsal_mcp.semantic import _ensure_embedding_vectors
+            from dayanak.semantic import _ensure_embedding_vectors
             _ensure_embedding_vectors(cache.db)
             assert _score_vectors_batched(
                 cache.db, "yok", [1.0] * 8, 1.0, limit=5) == []
@@ -2397,8 +2397,8 @@ class TestEmbeddingTableSupportsChunks:
     """
 
     def test_fresh_table_has_chunk_index_in_the_primary_key(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _ensure_embedding_vectors,
             embedding_table_supports_chunks,
         )
@@ -2413,8 +2413,8 @@ class TestEmbeddingTableSupportsChunks:
     def test_two_chunks_of_one_document_both_survive(self, tmp_path):
         import struct
 
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.cache import Cache
+        from dayanak.semantic import _ensure_embedding_vectors
 
         cache = Cache(tmp_path / "chunks.sqlite3")
         try:
@@ -2435,8 +2435,8 @@ class TestEmbeddingTableSupportsChunks:
             cache.close()
 
     def test_legacy_table_is_detected_and_gets_the_column(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _ensure_embedding_vectors,
             embedding_table_supports_chunks,
         )
@@ -2481,8 +2481,8 @@ class TestEmbeddingMatrixSidecar:
         import random
         import struct
 
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.models import ContentStatus, Document
+        from dayanak.semantic import _ensure_embedding_vectors
 
         _ensure_embedding_vectors(cache.db)
         for i in range(n):
@@ -2503,8 +2503,8 @@ class TestEmbeddingMatrixSidecar:
         cache.db.commit()
 
     def test_build_then_search_matches_the_scan(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _score_vectors_batched,
             _score_vectors_mmap,
             build_embedding_matrix,
@@ -2539,8 +2539,8 @@ class TestEmbeddingMatrixSidecar:
             cache.close()
 
     def test_stale_matrix_returns_none_not_empty(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _score_vectors_mmap, build_embedding_matrix
+        from dayanak.cache import Cache
+        from dayanak.semantic import _score_vectors_mmap, build_embedding_matrix
 
         db_path = tmp_path / "stale.sqlite3"
         cache = Cache(db_path)
@@ -2561,8 +2561,8 @@ class TestEmbeddingMatrixSidecar:
             cache.close()
 
     def test_missing_matrix_returns_none(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _score_vectors_mmap
+        from dayanak.cache import Cache
+        from dayanak.semantic import _score_vectors_mmap
 
         db_path = tmp_path / "none.sqlite3"
         cache = Cache(db_path)
@@ -2574,8 +2574,8 @@ class TestEmbeddingMatrixSidecar:
             cache.close()
 
     def test_status_reports_staleness(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import build_embedding_matrix, embedding_matrix_status
+        from dayanak.cache import Cache
+        from dayanak.semantic import build_embedding_matrix, embedding_matrix_status
 
         cache = Cache(tmp_path / "st.sqlite3")
         try:
@@ -2596,8 +2596,8 @@ class TestEmbeddingMatrixSidecar:
             cache.close()
 
     def test_rebuild_is_skipped_when_already_current(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import build_embedding_matrix
+        from dayanak.cache import Cache
+        from dayanak.semantic import build_embedding_matrix
 
         cache = Cache(tmp_path / "idem.sqlite3")
         try:
@@ -2612,8 +2612,8 @@ class TestEmbeddingMatrixSidecar:
             cache.close()
 
     def test_build_without_vectors_is_a_structured_error(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import build_embedding_matrix, _ensure_embedding_vectors
+        from dayanak.cache import Cache
+        from dayanak.semantic import build_embedding_matrix, _ensure_embedding_vectors
 
         cache = Cache(tmp_path / "empty.sqlite3")
         try:
@@ -2626,8 +2626,8 @@ class TestEmbeddingMatrixSidecar:
 
     def test_search_warns_when_no_matrix_exists(self, tmp_path, monkeypatch):
         """A missing index must be visible, not just slow."""
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import embedding_search
+        from dayanak.cache import Cache
+        from dayanak.semantic import embedding_search
 
         cache = Cache(tmp_path / "warn.sqlite3")
         try:
@@ -2640,7 +2640,7 @@ class TestEmbeddingMatrixSidecar:
                     return [0.5] * 8
 
             monkeypatch.setattr(
-                "emsal_mcp.embeddings.get_embedding_provider",
+                "dayanak.embeddings.get_embedding_provider",
                 lambda *a, **kw: _Prov(),
             )
             result = embedding_search(query="x", limit=5, cache=cache,
@@ -2664,8 +2664,8 @@ class TestMatrixFreshnessCheck:
         import random
         import struct
 
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.models import ContentStatus, Document
+        from dayanak.semantic import _ensure_embedding_vectors
 
         _ensure_embedding_vectors(cache.db)
         for i in range(start, start + n):
@@ -2686,8 +2686,8 @@ class TestMatrixFreshnessCheck:
         cache.db.commit()
 
     def test_appending_vectors_invalidates_the_memo(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _MATRIX_VERIFIED,
             _score_vectors_mmap,
             build_embedding_matrix,
@@ -2712,8 +2712,8 @@ class TestMatrixFreshnessCheck:
             cache.close()
 
     def test_rebuild_makes_the_matrix_usable_again(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _MATRIX_VERIFIED,
             _score_vectors_mmap,
             build_embedding_matrix,
@@ -2737,8 +2737,8 @@ class TestMatrixFreshnessCheck:
             cache.close()
 
     def test_count_is_queried_once_per_process_not_once_per_search(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _MATRIX_VERIFIED,
             _score_vectors_mmap,
             build_embedding_matrix,
@@ -2784,8 +2784,8 @@ class TestMatrixFormatCompatibility:
         import random
         import struct
 
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.models import ContentStatus, Document
+        from dayanak.semantic import _ensure_embedding_vectors
 
         _ensure_embedding_vectors(cache.db)
         for i in range(n):
@@ -2808,8 +2808,8 @@ class TestMatrixFormatCompatibility:
     def test_old_format_is_not_reported_fresh(self, tmp_path):
         import json
 
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _sidecar_paths,
             build_embedding_matrix,
             embedding_matrix_status,
@@ -2838,8 +2838,8 @@ class TestMatrixFormatCompatibility:
     def test_old_format_falls_back_instead_of_being_used(self, tmp_path):
         import json
 
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _MATRIX_VERIFIED,
             _score_vectors_mmap,
             _sidecar_paths,
@@ -2868,8 +2868,8 @@ class TestMatrixFormatCompatibility:
 
         import numpy as np
 
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _sidecar_paths,
             build_embedding_matrix,
         )
@@ -2901,8 +2901,8 @@ class TestMatrixRebuildIsAtomic:
         import random
         import struct
 
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.models import ContentStatus, Document
+        from dayanak.semantic import _ensure_embedding_vectors
 
         _ensure_embedding_vectors(cache.db)
         for i in range(n):
@@ -2925,8 +2925,8 @@ class TestMatrixRebuildIsAtomic:
     def test_force_rebuild_while_matrix_is_mapped(self, tmp_path):
         import numpy as np
 
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import _sidecar_paths, build_embedding_matrix
+        from dayanak.cache import Cache
+        from dayanak.semantic import _sidecar_paths, build_embedding_matrix
 
         db_path = tmp_path / "atomic.sqlite3"
         cache = Cache(db_path)
@@ -2955,8 +2955,8 @@ class TestMatrixRebuildIsAtomic:
             cache.close()
 
     def test_no_temp_files_are_left_behind(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import build_embedding_matrix
+        from dayanak.cache import Cache
+        from dayanak.semantic import build_embedding_matrix
 
         db_path = tmp_path / "clean.sqlite3"
         cache = Cache(db_path)
@@ -2970,8 +2970,8 @@ class TestMatrixRebuildIsAtomic:
             cache.close()
 
     def test_rebuild_clears_the_freshness_memo(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import (
+        from dayanak.cache import Cache
+        from dayanak.semantic import (
             _MATRIX_VERIFIED,
             build_embedding_matrix,
         )
@@ -3000,8 +3000,8 @@ class TestBestDenseProvider:
         import random
         import struct
 
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.models import ContentStatus, Document
+        from dayanak.semantic import _ensure_embedding_vectors
 
         _ensure_embedding_vectors(cache.db)
         for i in range(n):
@@ -3022,8 +3022,8 @@ class TestBestDenseProvider:
         cache.db.commit()
 
     def test_picks_the_provider_with_the_most_vectors(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import best_dense_provider
+        from dayanak.cache import Cache
+        from dayanak.semantic import best_dense_provider
 
         cache = Cache(tmp_path / "best.sqlite3")
         try:
@@ -3034,8 +3034,8 @@ class TestBestDenseProvider:
             cache.close()
 
     def test_returns_none_when_there_are_no_vectors(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import best_dense_provider
+        from dayanak.cache import Cache
+        from dayanak.semantic import best_dense_provider
 
         cache = Cache(tmp_path / "novec.sqlite3")
         try:
@@ -3044,8 +3044,8 @@ class TestBestDenseProvider:
             cache.close()
 
     def test_missing_table_is_not_an_error(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.semantic import best_dense_provider
+        from dayanak.cache import Cache
+        from dayanak.semantic import best_dense_provider
 
         cache = Cache(tmp_path / "notable.sqlite3")
         try:

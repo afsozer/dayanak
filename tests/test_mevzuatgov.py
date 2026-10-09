@@ -13,7 +13,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.sources.mevzuatgov import (
+from dayanak.sources.mevzuatgov import (
     TYPE_CODES,
     MevzuatGovClient,
     _clean_title,
@@ -55,7 +55,7 @@ _SOFT_404_BODY = (
 
 
 def _patched(post=None, get=None):
-    mc = patch("emsal_mcp.sources.mevzuatgov.client")
+    mc = patch("dayanak.sources.mevzuatgov.client")
     started = mc.start()
     cm = AsyncMock()
     cm.__aenter__ = AsyncMock(return_value=MagicMock(

@@ -1,6 +1,6 @@
 """Tests for source_url format (mevzuat.adalet.gov.tr/ictihat/{id}).
 
-emsal-mcp now returns the browsable mevzuat.adalet.gov.tr emsal-karar viewer
+dayanak now returns the browsable mevzuat.adalet.gov.tr emsal-karar viewer
 URL (same as hosted yargı-mcp), keeping the legacy emsal.uyap.gov.tr link as
 alternate_url in metadata.
 """
@@ -23,12 +23,12 @@ def _mock_resp(json_data):
 
 class TestSourceUrlFormat:
     def test_search_uses_mevzuat_adalet_url(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_resp({"data": {"emsalKararList": [
             {"id": "ABC123", "itemType": {"description": "Yargıtay"}}
         ]}})
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -39,12 +39,12 @@ class TestSourceUrlFormat:
 
     def test_get_document_uses_mevzuat_adalet_url(self):
         import base64
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         html = "<html><body><p>" + "x" * 100 + "</p></body></html>"
         encoded = base64.b64encode(html.encode()).decode()
         mock_resp = _mock_resp({"data": {"title": "T", "content": encoded, "mimeType": "text/html"}})
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)

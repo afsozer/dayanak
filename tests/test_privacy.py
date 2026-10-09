@@ -8,7 +8,7 @@ pytestmark = [pytest.mark.integration]
 import tempfile
 from pathlib import Path
 
-from emsal_mcp.privacy import PRIVACY_VERSION, audit_privacy, redact_pii, scan_pii
+from dayanak.privacy import PRIVACY_VERSION, audit_privacy, redact_pii, scan_pii
 
 
 # ---------------------------------------------------------------------------
@@ -216,17 +216,17 @@ class TestAuditPrivacy:
 
 class TestImports:
     def test_privacy_importable(self):
-        import emsal_mcp.privacy
-        assert hasattr(emsal_mcp.privacy, "scan_pii")
-        assert hasattr(emsal_mcp.privacy, "redact_pii")
-        assert hasattr(emsal_mcp.privacy, "audit_privacy")
-        assert hasattr(emsal_mcp.privacy, "PRIVACY_VERSION")
+        import dayanak.privacy
+        assert hasattr(dayanak.privacy, "scan_pii")
+        assert hasattr(dayanak.privacy, "redact_pii")
+        assert hasattr(dayanak.privacy, "audit_privacy")
+        assert hasattr(dayanak.privacy, "PRIVACY_VERSION")
 
     def test_cli_importable(self):
-        from emsal_mcp.cli import app, privacy_app
+        from dayanak.cli import app, privacy_app
         assert callable(app)
         assert callable(privacy_app)
 
     def test_server_importable(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)

@@ -12,9 +12,9 @@ from pathlib import Path
 
 import _yollar
 
-from emsal_mcp import legislation_semantic as ls
-from emsal_mcp.legislation import _norm_article_no
-from emsal_mcp.legislation_corpus import search_madde
+from dayanak import legislation_semantic as ls
+from dayanak.legislation import _norm_article_no
+from dayanak.legislation_corpus import search_madde
 
 SORGULAR = [
     ("tahliye taahhüdü", "6098", ["352"]),

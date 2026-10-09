@@ -1,8 +1,8 @@
-"""Emsal kütüphane paneli — yerel web arayüzü.
+"""Dayanak kütüphane paneli — yerel web arayüzü.
 
 Tarayıcıdan açılan tek sayfalık bir gösterge paneli: crawl çalışıyor mu, hangi
 yıl/sayfada, ne hızla ilerliyor, kütüphanede ne var. Ek bağımlılık yok
-(standart kütüphane); hedef ölçümü için emsal_mcp içe aktarılır ama zorunlu
+(standart kütüphane); hedef ölçümü için dayanak içe aktarılır ama zorunlu
 değildir.
 
     .venv\\Scripts\\python.exe scripts\\panel.py
@@ -11,7 +11,7 @@ değildir.
 NEDEN AYRI BİR SAYAÇ VERİTABANI: cache.sqlite3 21 GB. "2023 yılında kaç karar
 var" sorgusu tam tablo taraması gerektirdiği için tek başına ~60 saniye sürüyor
 (ölçüldü). Panel bunu her istekte yapamaz. Bu yüzden sayımlar
-~/.emsal-mcp/panel_stats.sqlite3 içinde tutulur ve arka planda yalnızca YENİ
+~/.dayanak/panel_stats.sqlite3 içinde tutulur ve arka planda yalnızca YENİ
 satırlar (rowid > son_görülen) taranarak güncellenir. documents_v2 upsert
 kullandığı için (ON CONFLICT DO UPDATE) rowid'ler kararlı; yine de güncellenen
 ya da silinen satırların yaratabileceği kaymayı temizlemek için günde bir kez
@@ -43,10 +43,10 @@ STATE_FILE = LOG_DIR / "crawl_state.json"
 TARGET_FILE = LOG_DIR / "hedefler.json"
 MASTER_PS1 = ROOT / "crawl_master.ps1"
 
-EMSAL_HOME = Path.home() / ".emsal-mcp"
-CACHE_DB = EMSAL_HOME / "cache.sqlite3"
-RATE_FILE = EMSAL_HOME / ".rate_limit.json"
-STATS_DB = EMSAL_HOME / "panel_stats.sqlite3"
+DAYANAK_HOME = Path.home() / ".dayanak"
+CACHE_DB = DAYANAK_HOME / "cache.sqlite3"
+RATE_FILE = DAYANAK_HOME / ".rate_limit.json"
+STATS_DB = DAYANAK_HOME / "panel_stats.sqlite3"
 
 RATE_HOST = "bedesten.adalet.gov.tr"
 REFRESH_SECONDS = 60
@@ -405,8 +405,8 @@ def hedef_olc(item_type: str, year: str) -> dict:
     src_dir = str(ROOT / "src")
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
-    os.environ.setdefault("EMSAL_RATE_LIMIT_MAX", "12")
-    from emsal_mcp.sources.registry import get_source  # noqa: E402
+    os.environ.setdefault("DAYANAK_RATE_LIMIT_MAX", "12")
+    from dayanak.sources.registry import get_source  # noqa: E402
 
     async def _run():
         client = get_source("bedesten")
@@ -559,7 +559,7 @@ def crawl_durdur() -> dict:
     if pid and process_alive(pid):
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
                        capture_output=True, text=True)
-    subprocess.run(["taskkill", "/F", "/IM", "emsal-mcp.exe"],
+    subprocess.run(["taskkill", "/F", "/IM", "dayanak.exe"],
                    capture_output=True, text=True)
     return {"ok": True, "pid": pid, "gorev_sonlandirildi": r.returncode == 0,
             "not": "Durduruldu. Kalıcı kapatmak için: "
@@ -633,7 +633,7 @@ SAYFA = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>Emsal Kütüphane Paneli</title>
+<title>Dayanak Kütüphane Paneli</title>
 <style>
   :root{
     --bg:#0f1115; --kart:#171a21; --cizgi:#262b36; --metin:#e6e9ef;
@@ -692,7 +692,7 @@ SAYFA = r"""<!doctype html>
 </head>
 <body>
 <header>
-  <h1>Emsal Kütüphane Paneli</h1>
+  <h1>Dayanak Kütüphane Paneli</h1>
   <span id="pill" class="pill durdu">yükleniyor</span>
   <span class="alt" id="ozet"></span>
   <div class="sag">
@@ -864,7 +864,7 @@ async function yenile(){
     el("yilYargitay").innerHTML = yilTablosu(d.kutuphane.yillar,"Yargıtay Kararı","Yargıtay Kararı");
     el("yilIstinaf").innerHTML = yilTablosu(d.kutuphane.yillar,"İstinaf Hukuk Mahkemesi Kararı","İstinaf Hukuk Mahkemesi Kararı");
     el("log").textContent = (c.log||[]).join("\n") || "(kayıt yok)";
-    document.title = `${{calisiyor:"●",bekliyor:"◐",durdu:"○",bitti:"✓"}[c.durum]} ${sayi(d.kutuphane.toplam)} — Emsal`;
+    document.title = `${{calisiyor:"●",bekliyor:"◐",durdu:"○",bitti:"✓"}[c.durum]} ${sayi(d.kutuphane.toplam)} — Dayanak`;
   }catch(e){
     el("pill").className = "pill durdu";
     el("pill").textContent = "PANEL ERİŞİLEMİYOR";
@@ -879,7 +879,7 @@ setInterval(yenile, 5000);
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Emsal kütüphane paneli")
+    ap = argparse.ArgumentParser(description="Dayanak kütüphane paneli")
     ap.add_argument("--port", type=int, default=8799)
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
@@ -891,7 +891,7 @@ def main() -> None:
     Handler.store = store
     Handler.refresher = refresher
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"Emsal paneli: http://{args.host}:{args.port}")
+    print(f"Dayanak paneli: http://{args.host}:{args.port}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -20,11 +20,11 @@ import json
 import tempfile
 from pathlib import Path
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.citation import extract_citation_candidates
-from emsal_mcp.legislation import _parse_articles
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.petition import (
+from dayanak.cache import Cache
+from dayanak.citation import extract_citation_candidates
+from dayanak.legislation import _parse_articles
+from dayanak.models import ContentStatus, Document
+from dayanak.petition import (
     inspect_petition_pack,
     prepare_drafting_input_pack,
 )

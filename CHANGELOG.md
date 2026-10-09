@@ -1,9 +1,32 @@
 # CHANGELOG.md
 
-All notable changes to emsal-mcp are documented here.
+All notable changes to Dayanak (formerly emsal-mcp) are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
+
+## [2.0.0] - 2026-10-09
+
+### Changed
+
+- **Proje adı emsal-mcp'den Dayanak'a değişti.** "Emsal" jenerik bir kelime,
+  UYAP'ın kendi karar arama hizmetinin adı ve aynı alanda başka ürünlerce de
+  kullanılıyor. Yeni adlar: PyPI paketi `dayanak`, Python modülü `dayanak`,
+  komutlar `dayanak` / `dayanak-server`, ortam değişkenleri `DAYANAK_*`, varsayılan
+  veri dizini `~/.dayanak`, MCP sunucu adı `dayanak`, Registry kaydı
+  `io.github.afsozer/dayanak`, depo `afsozer/dayanak`. Araç adları ve çıktı
+  sözleşmeleri değişmedi.
+
+### Geriye dönük uyumluluk
+
+- Eski `EMSAL_*` ortam değişkenleri okunmaya devam eder (aynı ayar iki adla
+  verilmişse `DAYANAK_*` kazanır); `scripts/yerel-ayar.cmd` içindeki eski adlar da
+  `dayanak-env.cmd`, `crawl_incremental.ps1` ve `_yollar.py` tarafından çevrilir.
+- `~/.dayanak` yoksa ve eski `~/.emsal_mcp` (ya da `~/.emsal-mcp`) varsa önbellek,
+  modeller ve durum dosyaları eski dizinden okunur; taşıma gerekmez.
+- PyPI'daki `emsal-mcp` 1.2.0 yalnızca `dayanak`'ı kurar; `emsal-mcp`,
+  `emsal-mcp-server` komutları ve `import emsal_mcp` yeni pakete yönlenir
+  (`compat/emsal-mcp`, etiket `emsal-mcp-v*`).
 
 ### Fixed
 

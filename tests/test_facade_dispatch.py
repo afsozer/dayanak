@@ -5,7 +5,7 @@ only true if the facade's ``mode`` / ``action`` / ``format`` / ``part`` / ``step
 / ``detail`` argument really dispatches to the same implementation.  These tests
 assert exactly that, against the tools ``server.main()`` actually registers.
 
-Replaces ``tests/test_facades.py``, which tested ``emsal_mcp.facades`` — a
+Replaces ``tests/test_facades.py``, which tested ``dayanak.facades`` — a
 parallel module the server never imported.
 
 Hermetic: every implementation is monkeypatched, so no network and no cache.
@@ -50,7 +50,7 @@ def _spy(monkeypatch, module_name: str, func_name: str, label: str):
 def test_search_local_corpus_dispatches_semantic_modes(
     monkeypatch, mode, func_name
 ) -> None:
-    _spy(monkeypatch, "emsal_mcp.semantic", func_name, func_name)
+    _spy(monkeypatch, "dayanak.semantic", func_name, func_name)
     result = tools()["search_local_corpus"](query="kıdem", mode=mode)
     assert result["called"] == func_name
 
@@ -61,18 +61,18 @@ def test_semantic_mode_prefers_dense_vectors_over_tfidf(monkeypatch) -> None:
     It used to fall through to TF-IDF whenever ``provider`` was omitted, which
     left the corpus's 1.3M dense vectors unreachable from the default call.
     """
-    _spy(monkeypatch, "emsal_mcp.semantic", "embedding_search", "dense")
+    _spy(monkeypatch, "dayanak.semantic", "embedding_search", "dense")
     monkeypatch.setattr(
-        "emsal_mcp.semantic.best_dense_provider", lambda *a, **kw: "somemodel",
+        "dayanak.semantic.best_dense_provider", lambda *a, **kw: "somemodel",
     )
     result = tools()["search_local_corpus"](query="kıdem", mode="semantic")
     assert result["called"] == "dense"
 
 
 def test_semantic_mode_falls_back_to_tfidf_without_vectors(monkeypatch) -> None:
-    _spy(monkeypatch, "emsal_mcp.semantic", "semantic_search", "tfidf")
+    _spy(monkeypatch, "dayanak.semantic", "semantic_search", "tfidf")
     monkeypatch.setattr(
-        "emsal_mcp.semantic.best_dense_provider", lambda *a, **kw: None,
+        "dayanak.semantic.best_dense_provider", lambda *a, **kw: None,
     )
     result = tools()["search_local_corpus"](query="kıdem", mode="semantic")
     assert result["called"] == "tfidf"
@@ -94,7 +94,7 @@ def test_search_local_corpus_flat_filters_reach_the_cache(monkeypatch) -> None:
         seen.update(kwargs)
         return []
 
-    monkeypatch.setattr("emsal_mcp.cache.Cache.search_local", fake_search_local)
+    monkeypatch.setattr("dayanak.cache.Cache.search_local", fake_search_local)
     tools()["search_local_corpus"](query="kıdem", court="Yargıtay", esas_no="2023/1")
     assert seen["court"] == "Yargıtay"
     assert seen["esas_no"] == "2023/1"
@@ -104,7 +104,7 @@ def test_search_local_corpus_flat_filters_reach_the_cache(monkeypatch) -> None:
 
 
 def test_search_legislation_article_scope(monkeypatch) -> None:
-    _spy(monkeypatch, "emsal_mcp.legislation", "search_legislation_articles", "articles")
+    _spy(monkeypatch, "dayanak.legislation", "search_legislation_articles", "articles")
     result = tools()["search_legislation"](query="madde", scope="article", document_id="1.5.6698")
     assert result["called"] == "articles"
 
@@ -124,7 +124,7 @@ def test_search_legislation_article_scope_requires_document_id() -> None:
     ],
 )
 def test_get_legislation_dispatches_parts(monkeypatch, part, func_name) -> None:
-    _spy(monkeypatch, "emsal_mcp.legislation", func_name, func_name)
+    _spy(monkeypatch, "dayanak.legislation", func_name, func_name)
     result = tools()["get_legislation"](document_id="1.5.6698", part=part)
     assert result["called"] == func_name
 
@@ -133,12 +133,12 @@ def test_get_legislation_dispatches_parts(monkeypatch, part, func_name) -> None:
 
 
 def test_citation_check_verify(monkeypatch) -> None:
-    _spy(monkeypatch, "emsal_mcp.citation", "verify_legal_citation", "verify")
+    _spy(monkeypatch, "dayanak.citation", "verify_legal_citation", "verify")
     assert tools()["citation_check"](action="verify", text="x")["called"] == "verify"
 
 
 def test_citation_check_format(monkeypatch) -> None:
-    _spy(monkeypatch, "emsal_mcp.citation", "format_legal_citation", "format")
+    _spy(monkeypatch, "dayanak.citation", "format_legal_citation", "format")
     result = tools()["citation_check"](action="format", source={"document_id": "d1"})
     assert result["called"] == "format"
 
@@ -193,7 +193,7 @@ def test_citation_check_safety_without_document() -> None:
     ],
 )
 def test_prepare_petition_dispatches_steps(monkeypatch, step, func_name) -> None:
-    _spy(monkeypatch, "emsal_mcp.petition", func_name, func_name)
+    _spy(monkeypatch, "dayanak.petition", func_name, func_name)
     result = tools()["prepare_petition"](
         matter="m", issue="i", step=step, pack_dir="p",
     )
@@ -206,15 +206,15 @@ def test_prepare_petition_dispatches_steps(monkeypatch, step, func_name) -> None
 @pytest.mark.parametrize(
     ("fmt", "module_name", "func_name", "kwargs"),
     [
-        ("capabilities", "emsal_mcp.exporter", "get_export_capabilities", {}),
-        ("docx", "emsal_mcp.exporter", "prepare_docx_export", {"draft_path": "d.md"}),
-        ("plain", "emsal_mcp.exporter", "export_plain_text", {"draft_path": "d.md"}),
-        ("pdf", "emsal_mcp.exporter", "export_to_format", {"draft_path": "d.md"}),
-        ("pdf", "emsal_mcp.udf", "convert_udf_to_pdf", {"udf_path": "a.udf"}),
-        ("docx", "emsal_mcp.udf", "convert_udf_to_docx", {"udf_path": "a.udf"}),
+        ("capabilities", "dayanak.exporter", "get_export_capabilities", {}),
+        ("docx", "dayanak.exporter", "prepare_docx_export", {"draft_path": "d.md"}),
+        ("plain", "dayanak.exporter", "export_plain_text", {"draft_path": "d.md"}),
+        ("pdf", "dayanak.exporter", "export_to_format", {"draft_path": "d.md"}),
+        ("pdf", "dayanak.udf", "convert_udf_to_pdf", {"udf_path": "a.udf"}),
+        ("docx", "dayanak.udf", "convert_udf_to_docx", {"udf_path": "a.udf"}),
         (
             "bundle",
-            "emsal_mcp.exporter",
+            "dayanak.exporter",
             "prepare_export_package_bundle",
             {"pack_dir": "p"},
         ),
@@ -231,7 +231,7 @@ def test_export_document_dispatches_formats(
 def test_export_document_udf_from_text(monkeypatch, tmp_path) -> None:
     """format="udf" + text replaces the retired write_udf tool."""
     out = tmp_path / "o.udf"
-    monkeypatch.setattr("emsal_mcp.udf.write_udf", lambda **kw: out)
+    monkeypatch.setattr("dayanak.udf.write_udf", lambda **kw: out)
     result = tools()["export_document"](format="udf", text="x", out_path=str(out))
     assert result["ok"] is True
     assert result["format"] == "udf"
@@ -242,7 +242,7 @@ def test_export_document_udf_from_docx(monkeypatch, tmp_path) -> None:
     """format="udf" + docx_path replaces the retired convert_docx_to_udf tool."""
     out = tmp_path / "o.udf"
     monkeypatch.setattr(
-        "emsal_mcp.udf.docx_to_udf_native",
+        "dayanak.udf.docx_to_udf_native",
         lambda *a, **kw: {"ok": True, "out_path": str(out)},
     )
     result = tools()["export_document"](format="udf", docx_path="a.docx")
@@ -262,8 +262,8 @@ def test_export_document_pdf_without_input_is_structured_error() -> None:
 
 
 def test_read_legal_file_udf(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr("emsal_mcp.udf.read_udf", lambda p: "UDF metni")
-    monkeypatch.setattr("emsal_mcp.udf.probe_udf", lambda p: {"ok": True})
+    monkeypatch.setattr("dayanak.udf.read_udf", lambda p: "UDF metni")
+    monkeypatch.setattr("dayanak.udf.probe_udf", lambda p: {"ok": True})
     result = tools()["read_legal_file"](file_path=str(tmp_path / "a.udf"))
     assert result["ok"] is True
     assert result["text"] == "UDF metni"
@@ -271,7 +271,7 @@ def test_read_legal_file_udf(monkeypatch, tmp_path) -> None:
 
 
 def test_read_legal_file_pdf(monkeypatch, tmp_path) -> None:
-    _spy(monkeypatch, "emsal_mcp.pdf_extractor", "extract_pdf_text_from_file", "pdf")
+    _spy(monkeypatch, "dayanak.pdf_extractor", "extract_pdf_text_from_file", "pdf")
     result = tools()["read_legal_file"](file_path=str(tmp_path / "a.pdf"))
     assert result["called"] == "pdf"
 

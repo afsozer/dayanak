@@ -13,7 +13,7 @@ pytestmark = [pytest.mark.integration]
 from typing import Any
 from unittest.mock import patch
 
-from emsal_mcp.models import ContentStatus, Document, SearchResult
+from dayanak.models import ContentStatus, Document, SearchResult
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def _make_fake_sources(client: FakeMevzuatClient | None = None) -> dict[str, Any
 class TestSearchLegislation:
     def test_search_basic(self):
         """Search with fake client returning 3 results."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         client = FakeMevzuatClient()
         client.search_results = [
@@ -174,7 +174,7 @@ class TestSearchLegislation:
 
     def test_search_with_type_filter(self):
         """Search with legislation_type='Kanun'."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         client = FakeMevzuatClient()
         client.search_results = [
@@ -189,7 +189,7 @@ class TestSearchLegislation:
 
     def test_search_no_results(self):
         """Empty search results, ok=False."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         client = FakeMevzuatClient()
         client.search_results = []
@@ -202,7 +202,7 @@ class TestSearchLegislation:
 
     def test_search_source_not_found(self):
         """Invalid source id produces warning."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         result = search_legislation(
             "test", sources=["nonexistent_source"], sources_override={},
@@ -212,7 +212,7 @@ class TestSearchLegislation:
 
     def test_search_error(self):
         """Source raises exception during search."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         client = FakeMevzuatClient()
         client.search_error = RuntimeError("Network failure")
@@ -224,7 +224,7 @@ class TestSearchLegislation:
 
     def test_search_sources_override(self):
         """Uses sources_override instead of registry."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         client = FakeMevzuatClient()
         client.search_results = [_make_search_result(document_id="override-doc")]
@@ -236,7 +236,7 @@ class TestSearchLegislation:
 
     def test_search_result_structure(self):
         """Validates all returned keys in result dict."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         client = FakeMevzuatClient()
         client.search_results = [_make_search_result()]
@@ -264,7 +264,7 @@ class TestSearchLegislation:
 class TestGetLegislationDocument:
     def test_get_document_basic(self):
         """Get full document with citation_check."""
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -279,7 +279,7 @@ class TestGetLegislationDocument:
 
     def test_get_document_with_articles(self):
         """Counts articles in text."""
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -290,7 +290,7 @@ class TestGetLegislationDocument:
 
     def test_get_document_source_not_found(self):
         """Invalid source returns ok=False."""
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         result = get_legislation_document(
             "test-12345", source="nonexistent", sources_override={},
@@ -301,7 +301,7 @@ class TestGetLegislationDocument:
 
     def test_get_document_error(self):
         """Source raises exception during get_document."""
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         client = FakeMevzuatClient()
         client.get_doc_error = RuntimeError("Fetch failed")
@@ -314,7 +314,7 @@ class TestGetLegislationDocument:
 
     def test_get_document_sources_override(self):
         """Uses sources_override for document fetch."""
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc(document_id="override-id")
@@ -326,7 +326,7 @@ class TestGetLegislationDocument:
 
     def test_get_document_metadata_only(self):
         """metadata_only content_status produces warning."""
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         client = FakeMevzuatClient()
         doc = _make_legislation_doc(
@@ -348,7 +348,7 @@ class TestGetLegislationDocument:
 class TestSearchLegislationArticles:
     def test_search_all_articles(self):
         """Get all articles from document (no filter)."""
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -361,7 +361,7 @@ class TestSearchLegislationArticles:
 
     def test_search_specific_article(self):
         """Filter by article_number='3'."""
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -375,7 +375,7 @@ class TestSearchLegislationArticles:
 
     def test_search_article_query(self):
         """Filter by article_query containing keyword."""
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -389,7 +389,7 @@ class TestSearchLegislationArticles:
 
     def test_search_article_number_not_found(self):
         """Invalid article number produces warning."""
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -402,7 +402,7 @@ class TestSearchLegislationArticles:
 
     def test_search_no_content(self):
         """Document with empty text returns ok=False."""
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         doc = _make_legislation_doc(full_text="", markdown="")
@@ -415,7 +415,7 @@ class TestSearchLegislationArticles:
 
     def test_search_metadata_only_warning(self):
         """metadata_only content_status warns about limited search."""
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         doc = _make_legislation_doc(
@@ -431,7 +431,7 @@ class TestSearchLegislationArticles:
 
     def test_search_article_structure(self):
         """Validate all returned keys."""
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -453,7 +453,7 @@ class TestGetLegislationDocumentText:
         It answered article_count/text_length/content_hash and no text at
         all, so "tam metni ver" could not be served from this path.
         """
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -471,7 +471,7 @@ class TestGetLegislationDocumentText:
 class TestGetLegislationArticleTree:
     def test_tree_basic(self):
         """Build tree from document with parts, sections, articles."""
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -485,7 +485,7 @@ class TestGetLegislationArticleTree:
 
     def test_tree_no_parts_no_sections(self):
         """Flat articles when no hierarchy."""
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc(full_text=FLAT_ARTICLES_TEXT, markdown=FLAT_ARTICLES_TEXT)
@@ -499,7 +499,7 @@ class TestGetLegislationArticleTree:
 
     def test_tree_flat_article_list(self):
         """Check flat_article_list structure."""
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -515,7 +515,7 @@ class TestGetLegislationArticleTree:
 
     def test_tree_no_content(self):
         """Empty text returns error."""
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc(full_text="", markdown="")
@@ -527,7 +527,7 @@ class TestGetLegislationArticleTree:
 
     def test_tree_structure_keys(self):
         """Validates all returned keys present."""
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -551,7 +551,7 @@ class TestGetLegislationArticleTree:
         ``MADDE 83-``. Here article 3 is written lower case and article 5
         carries a letter suffix — both invisible to the old scanner.
         """
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         text = (
             "BİRİNCİ KISIM\nGenel Hükümler\n\n"
@@ -587,7 +587,7 @@ class TestGetLegislationArticleTree:
         "BİRİNCİ KISIM" never matched: TBK's part list came back as
         ``["", "İKİNCİ KISIM"]`` and HMK reported 2 of its 12 KISIM lines.
         """
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         text = (
             "BİRİNCİ KISIM\nGenel Hükümler\n\n"
@@ -614,7 +614,7 @@ class TestGetLegislationArticleTree:
 
     def test_tree_source_not_found(self):
         """Invalid source returns ok=False."""
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         result = get_legislation_article_tree(
             "test-12345", source="nonexistent", sources_override={},
@@ -623,7 +623,7 @@ class TestGetLegislationArticleTree:
 
     def test_tree_error(self):
         """Source raises exception."""
-        from emsal_mcp.legislation import get_legislation_article_tree
+        from dayanak.legislation import get_legislation_article_tree
 
         client = FakeMevzuatClient()
         client.get_doc_error = RuntimeError("Fetch error")
@@ -640,7 +640,7 @@ class TestGetLegislationArticleTree:
 class TestGetLegislationGerekce:
     def test_gerekce_found(self):
         """Extract gerekce from text with GENEL GEREKCE and MADDE GEREKCELERI."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -654,7 +654,7 @@ class TestGetLegislationGerekce:
 
     def test_genel_gerekce_only(self):
         """Text with only GENEL GEREKCE."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         text_only_genel = """
 Madde 1 - Birinci madde.
@@ -674,7 +674,7 @@ Bu teklifin genel gerekçesidir. Detaylı açıklama burada yer almaktadır.
 
     def test_no_gerekce(self):
         """Text without any gerekce section."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         text_no_gerekce = """
 MADDE 1 - Birinci madde.
@@ -692,7 +692,7 @@ MADDE 2 - İkinci madde.
 
     def test_gerekce_no_content(self):
         """Empty text returns error."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc(full_text="", markdown="")
@@ -704,7 +704,7 @@ MADDE 2 - İkinci madde.
 
     def test_gerekce_madde_gerekceleri_parsed(self):
         """Individual article gerekceleri are extracted."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -721,7 +721,7 @@ MADDE 2 - İkinci madde.
 
     def test_gerekce_structure_keys(self):
         """Validates all returned keys."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc()
@@ -743,8 +743,8 @@ MADDE 2 - İkinci madde.
         ``raw_text`` field holding the law itself, so the answer that had
         found nothing was the largest thing the tool ever printed.
         """
-        from emsal_mcp.legislation import _GEREKCE_PREVIEW_CHARS, get_legislation_gerekce
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.legislation import _GEREKCE_PREVIEW_CHARS, get_legislation_gerekce
+        from dayanak.models import ContentStatus, Document
 
         long_text = "MADDE 1 - Bir hüküm cümlesi.\n" * 400
         client = FakeMevzuatClient()
@@ -763,7 +763,7 @@ MADDE 2 - İkinci madde.
 
     def test_gerekce_source_not_found(self):
         """Invalid source returns ok=False."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         result = get_legislation_gerekce(
             "test-12345", source="nonexistent", sources_override={},
@@ -772,7 +772,7 @@ MADDE 2 - İkinci madde.
 
     def test_gerekce_error(self):
         """Source raises exception."""
-        from emsal_mcp.legislation import get_legislation_gerekce
+        from dayanak.legislation import get_legislation_gerekce
 
         client = FakeMevzuatClient()
         client.get_doc_error = RuntimeError("Network error")
@@ -789,7 +789,7 @@ MADDE 2 - İkinci madde.
 class TestGetLegislationSourceStatus:
     def test_status_healthy(self):
         """Source returns offline_ok=True."""
-        from emsal_mcp.legislation import get_legislation_source_status
+        from dayanak.legislation import get_legislation_source_status
 
         fake_smoke = [
             {"source_id": "mevzuat", "offline_ok": True, "online_ok": True},
@@ -797,8 +797,8 @@ class TestGetLegislationSourceStatus:
         fake_caps = [
             {"source_id": "mevzuat", "display_name": "Mevzuat", "status": "stable"},
         ]
-        with patch("emsal_mcp.legislation.smoke_all_sync", return_value=fake_smoke), \
-             patch("emsal_mcp.legislation.get_capabilities", return_value=fake_caps):
+        with patch("dayanak.legislation.smoke_all_sync", return_value=fake_smoke), \
+             patch("dayanak.legislation.get_capabilities", return_value=fake_caps):
             result = get_legislation_source_status()
         assert result["ok"] is True
         assert result["overall_ok"] is True
@@ -806,7 +806,7 @@ class TestGetLegislationSourceStatus:
 
     def test_status_degraded(self):
         """Source returns offline_ok=False."""
-        from emsal_mcp.legislation import get_legislation_source_status
+        from dayanak.legislation import get_legislation_source_status
 
         fake_smoke = [
             {"source_id": "mevzuat", "offline_ok": False, "online_ok": False},
@@ -814,8 +814,8 @@ class TestGetLegislationSourceStatus:
         fake_caps = [
             {"source_id": "mevzuat", "display_name": "Mevzuat", "status": "unavailable"},
         ]
-        with patch("emsal_mcp.legislation.smoke_all_sync", return_value=fake_smoke), \
-             patch("emsal_mcp.legislation.get_capabilities", return_value=fake_caps):
+        with patch("dayanak.legislation.smoke_all_sync", return_value=fake_smoke), \
+             patch("dayanak.legislation.get_capabilities", return_value=fake_caps):
             result = get_legislation_source_status()
         assert result["ok"] is False
         assert result["overall_ok"] is False
@@ -823,7 +823,7 @@ class TestGetLegislationSourceStatus:
 
     def test_status_overall_ok(self):
         """All sources healthy."""
-        from emsal_mcp.legislation import get_legislation_source_status
+        from dayanak.legislation import get_legislation_source_status
 
         fake_smoke = [
             {"source_id": "mevzuat", "offline_ok": True, "online_ok": True},
@@ -831,15 +831,15 @@ class TestGetLegislationSourceStatus:
         fake_caps = [
             {"source_id": "mevzuat", "display_name": "Mevzuat", "status": "stable"},
         ]
-        with patch("emsal_mcp.legislation.smoke_all_sync", return_value=fake_smoke), \
-             patch("emsal_mcp.legislation.get_capabilities", return_value=fake_caps):
+        with patch("dayanak.legislation.smoke_all_sync", return_value=fake_smoke), \
+             patch("dayanak.legislation.get_capabilities", return_value=fake_caps):
             result = get_legislation_source_status()
         assert result["overall_ok"] is True
         assert result["source_count"] == 1
 
     def test_status_keys(self):
         """Validates all returned keys."""
-        from emsal_mcp.legislation import get_legislation_source_status
+        from dayanak.legislation import get_legislation_source_status
 
         fake_smoke = [
             {"source_id": "mevzuat", "offline_ok": True, "online_ok": True},
@@ -847,8 +847,8 @@ class TestGetLegislationSourceStatus:
         fake_caps = [
             {"source_id": "mevzuat", "display_name": "Mevzuat", "status": "stable"},
         ]
-        with patch("emsal_mcp.legislation.smoke_all_sync", return_value=fake_smoke), \
-             patch("emsal_mcp.legislation.get_capabilities", return_value=fake_caps):
+        with patch("dayanak.legislation.smoke_all_sync", return_value=fake_smoke), \
+             patch("dayanak.legislation.get_capabilities", return_value=fake_caps):
             result = get_legislation_source_status()
         required_keys = {
             "ok", "sources", "overall_ok", "source_count", "healthy_sources",
@@ -864,7 +864,7 @@ class TestGetLegislationSourceStatus:
 class TestFormatLegislationCitation:
     def test_format_full(self):
         """style='full' produces full citation."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         doc = _make_legislation_doc()
         result = format_legislation_citation(doc, style="full")
@@ -876,7 +876,7 @@ class TestFormatLegislationCitation:
 
     def test_format_short(self):
         """style='short' produces short citation."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         doc = _make_legislation_doc()
         result = format_legislation_citation(doc, style="short")
@@ -885,7 +885,7 @@ class TestFormatLegislationCitation:
 
     def test_format_article(self):
         """style='article' produces citation with MADDE placeholder."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         doc = _make_legislation_doc()
         result = format_legislation_citation(doc, style="article")
@@ -894,7 +894,7 @@ class TestFormatLegislationCitation:
 
     def test_format_missing_fields(self):
         """Missing title generates warnings."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         doc_dict = {"title": "", "legislation_no": "", "gazette_date": ""}
         result = format_legislation_citation(doc_dict, style="full")
@@ -902,14 +902,14 @@ class TestFormatLegislationCitation:
 
     def test_format_invalid_input(self):
         """Non-dict/non-Document raises error."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         result = format_legislation_citation(None, style="full")  # type: ignore[arg-type]
         assert "error" in result
 
     def test_format_from_dict(self):
         """Formatting from dict input."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         doc_dict = {
             "title": "Test Yönetmeliği",
@@ -923,7 +923,7 @@ class TestFormatLegislationCitation:
 
     def test_format_unknown_style(self):
         """Unknown style generates warning."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         doc = _make_legislation_doc()
         result = format_legislation_citation(doc, style="unknown_style")  # type: ignore[arg-type]
@@ -932,7 +932,7 @@ class TestFormatLegislationCitation:
 
     def test_format_output_keys(self):
         """Validates output structure."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         doc = _make_legislation_doc()
         result = format_legislation_citation(doc, style="full")
@@ -950,7 +950,7 @@ class TestFormatLegislationCitation:
 class TestGetLegislationTypes:
     def test_types_list(self):
         """Returns list of type dicts with type_id and display_name."""
-        from emsal_mcp.legislation import get_legislation_types
+        from dayanak.legislation import get_legislation_types
 
         types = get_legislation_types()
         assert isinstance(types, list)
@@ -961,7 +961,7 @@ class TestGetLegislationTypes:
 
     def test_types_contains_kanun(self):
         """'kanun' type is in the list."""
-        from emsal_mcp.legislation import get_legislation_types
+        from dayanak.legislation import get_legislation_types
 
         types = get_legislation_types()
         kanun = [t for t in types if t["type_id"] == "kanun"]
@@ -976,17 +976,17 @@ class TestGetLegislationTypes:
 class TestModuleConstants:
     def test_legislation_version(self):
         """LEGISLATION_VERSION equals '0.10.0'."""
-        from emsal_mcp.legislation import LEGISLATION_VERSION
+        from dayanak.legislation import LEGISLATION_VERSION
 
         assert LEGISLATION_VERSION == "0.10.0"
 
     def test_no_fabrication_rule(self):
         """_NO_INVENTION_BLOCK rule is present in responses."""
-        from emsal_mcp.legislation import _NO_INVENTION_BLOCK
+        from dayanak.legislation import _NO_INVENTION_BLOCK
 
         assert "uydurma" in _NO_INVENTION_BLOCK.lower() or "uydurmaz" in _NO_INVENTION_BLOCK.lower()
         # Check it appears in search response
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         client = FakeMevzuatClient()
         client.search_results = [_make_search_result()]
@@ -1004,12 +1004,12 @@ class TestModuleConstants:
 class TestCLIImports:
     def test_cli_import(self):
         """Can import from CLI."""
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_mcp_import(self):
         """Can import from server (just test import succeeds)."""
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
 
@@ -1040,7 +1040,7 @@ Madde 1 – Bu kanunun yürürlüğe girdiği tarihte derdest takipler hakkında
 class TestArticleHeadings:
     def test_lowercase_madde_is_parsed(self):
         """Pre-2000 laws head articles "Madde 265 –", not "MADDE 265 -"."""
-        from emsal_mcp.legislation import _parse_articles
+        from dayanak.legislation import _parse_articles
 
         numbers = [a["number"] for a in _parse_articles(OLD_STYLE_TEXT)]
         assert "265" in numbers
@@ -1048,7 +1048,7 @@ class TestArticleHeadings:
 
     def test_qualified_articles_keep_their_prefix(self):
         """"Ek madde 1" must not collide with article 1 of the law."""
-        from emsal_mcp.legislation import _parse_articles
+        from dayanak.legislation import _parse_articles
 
         numbers = [a["number"] for a in _parse_articles(OLD_STYLE_TEXT)]
         assert "Ek 1" in numbers
@@ -1057,7 +1057,7 @@ class TestArticleHeadings:
 
     def test_gerekce_articles_are_not_counted(self):
         """Rationale sections repeat every article as "Madde N -"."""
-        from emsal_mcp.legislation import _parse_articles
+        from dayanak.legislation import _parse_articles
 
         text = OLD_STYLE_TEXT + (
             "\nMADDE GEREKÇELERİ\n"
@@ -1069,7 +1069,7 @@ class TestArticleHeadings:
         assert len(numbers) == 5
 
     def test_article_number_lookup_is_case_and_space_tolerant(self):
-        from emsal_mcp.legislation import search_legislation_articles
+        from dayanak.legislation import search_legislation_articles
 
         client = FakeMevzuatClient()
         client.doc_to_return = _make_legislation_doc(

@@ -1,20 +1,20 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.afsozer/emsal-mcp",
-  "title": "Emsal",
+  "name": "io.github.afsozer/dayanak",
+  "title": "Dayanak",
   "description": "Citation-safe Turkish legal research: court decisions and legislation from official sources.",
   "repository": {
-    "url": "https://github.com/afsozer/emsal-mcp",
+    "url": "https://github.com/afsozer/dayanak",
     "source": "github"
   },
-  "websiteUrl": "https://avfatihsozer.com/projeler/emsal-mcp",
-  "version": "1.1.1",
+  "websiteUrl": "https://avfatihsozer.com/projeler/dayanak",
+  "version": "2.0.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
-      "identifier": "emsal-mcp",
-      "version": "1.1.1",
+      "identifier": "dayanak",
+      "version": "2.0.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from emsal_mcp.sources.bedesten import BedestenClient, normalize_bedesten_date
+from dayanak.sources.bedesten import BedestenClient, normalize_bedesten_date
 
 pytestmark = [pytest.mark.unit]
 
@@ -50,7 +50,7 @@ def test_other_values_pass_through(value):
 
 
 def _sent_payload(**filters):
-    from emsal_mcp.sources import bedesten
+    from dayanak.sources import bedesten
 
     sent: list[dict] = []
     resp = MagicMock()

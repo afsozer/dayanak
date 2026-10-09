@@ -9,8 +9,8 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.sources.base import RateLimiter, RateLimitError, SourceClient
-from emsal_mcp.config import EmsalConfig
+from dayanak.sources.base import RateLimiter, RateLimitError, SourceClient
+from dayanak.config import DayanakConfig
 
 
 # ── Helper: concrete SourceClient subclass for testing ──────────────────────
@@ -26,7 +26,7 @@ class DummySource(SourceClient):
         return []
 
     async def get_document(self, document_id: str, **kwargs):
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.models import Document, ContentStatus
 
         return Document(
             source="dummy",
@@ -128,7 +128,7 @@ class TestWithRetry:
         async def operation():
             raise RuntimeError("Always fail")
 
-        with patch("emsal_mcp.sources.base.asyncio.sleep", side_effect=mock_sleep):
+        with patch("dayanak.sources.base.asyncio.sleep", side_effect=mock_sleep):
             with pytest.raises(RuntimeError):
                 asyncio.run(source._with_retry(operation))
 
@@ -154,7 +154,7 @@ class TestWithRetry:
         async def operation():
             raise RuntimeError("Always fail")
 
-        with patch("emsal_mcp.sources.base.asyncio.sleep", side_effect=mock_sleep):
+        with patch("dayanak.sources.base.asyncio.sleep", side_effect=mock_sleep):
             with pytest.raises(RuntimeError):
                 asyncio.run(source._with_retry(operation))
 
@@ -218,7 +218,7 @@ class TestWithRetry:
         async def operation():
             return "ok"
 
-        with patch("emsal_mcp.sources.base.asyncio.sleep", side_effect=mock_sleep):
+        with patch("dayanak.sources.base.asyncio.sleep", side_effect=mock_sleep):
             result = asyncio.run(
                 source._with_retry(operation, max_attempts=3, base_delay=0.1)
             )
@@ -383,7 +383,7 @@ class TestSourceClientRetryDefaults:
                 return []
 
             async def get_document(self, document_id, **kwargs):
-                from emsal_mcp.models import Document, ContentStatus
+                from dayanak.models import Document, ContentStatus
 
                 return Document(
                     source="custom",
@@ -404,43 +404,43 @@ class TestSourceClientRetryDefaults:
 class TestConfigOverrides:
     def test_retry_max_default(self):
         """Default retry_max_attempts should be 3."""
-        cfg = EmsalConfig()
+        cfg = DayanakConfig()
         assert cfg.retry_max_attempts == 3
 
     def test_retry_max_env(self):
-        """EMSAL_RETRY_MAX env var should override default."""
-        with patch.dict("os.environ", {"EMSAL_RETRY_MAX": "7"}):
-            cfg = EmsalConfig()
+        """DAYANAK_RETRY_MAX env var should override default."""
+        with patch.dict("os.environ", {"DAYANAK_RETRY_MAX": "7"}):
+            cfg = DayanakConfig()
             assert cfg.retry_max_attempts == 7
 
     def test_retry_delay_default(self):
         """Default retry_base_delay should be 1.0."""
-        cfg = EmsalConfig()
+        cfg = DayanakConfig()
         assert cfg.retry_base_delay == 1.0
 
     def test_retry_delay_env(self):
-        """EMSAL_RETRY_DELAY env var should override default."""
-        with patch.dict("os.environ", {"EMSAL_RETRY_DELAY": "0.5"}):
-            cfg = EmsalConfig()
+        """DAYANAK_RETRY_DELAY env var should override default."""
+        with patch.dict("os.environ", {"DAYANAK_RETRY_DELAY": "0.5"}):
+            cfg = DayanakConfig()
             assert cfg.retry_base_delay == 0.5
 
     def test_rate_limit_enabled_default(self):
         """Default rate_limit_enabled should be False."""
-        cfg = EmsalConfig()
+        cfg = DayanakConfig()
         assert cfg.rate_limit_enabled is False
 
     def test_rate_limit_enabled_true_variants(self):
         """Various truthy strings should enable rate limiting."""
         for val in ("1", "true", "True", "TRUE", "yes", "Yes", "YES"):
-            with patch.dict("os.environ", {"EMSAL_RATE_LIMIT_ENABLED": val}):
-                cfg = EmsalConfig()
+            with patch.dict("os.environ", {"DAYANAK_RATE_LIMIT_ENABLED": val}):
+                cfg = DayanakConfig()
                 assert cfg.rate_limit_enabled is True, f"Failed for value: {val}"
 
     def test_rate_limit_enabled_false_variants(self):
         """Falsy strings should disable rate limiting."""
         for val in ("0", "false", "no", "", "anything"):
-            with patch.dict("os.environ", {"EMSAL_RATE_LIMIT_ENABLED": val}):
-                cfg = EmsalConfig()
+            with patch.dict("os.environ", {"DAYANAK_RATE_LIMIT_ENABLED": val}):
+                cfg = DayanakConfig()
                 assert cfg.rate_limit_enabled is False, f"Failed for value: {val}"
 
 
@@ -472,13 +472,13 @@ class TestRateLimitError:
 class TestImports:
     def test_rate_limiter_importable(self):
         """RateLimiter should be importable from sources."""
-        from emsal_mcp.sources import RateLimiter
+        from dayanak.sources import RateLimiter
 
         assert callable(RateLimiter)
 
     def test_rate_limit_error_importable(self):
         """RateLimitError should be importable from sources."""
-        from emsal_mcp.sources import RateLimitError
+        from dayanak.sources import RateLimitError
 
         assert issubclass(RateLimitError, Exception)
 
@@ -493,8 +493,8 @@ class TestImports:
         assert callable(getattr(SourceClient, "_with_rate_limit"))
 
     def test_config_has_retry_props(self):
-        """EmsalConfig should have retry config properties."""
-        cfg = EmsalConfig()
+        """DayanakConfig should have retry config properties."""
+        cfg = DayanakConfig()
         assert hasattr(cfg, "retry_max_attempts")
         assert hasattr(cfg, "retry_base_delay")
         assert hasattr(cfg, "rate_limit_enabled")

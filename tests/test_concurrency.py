@@ -1,4 +1,4 @@
-"""Tests for emsal_mcp.concurrency module — M-29 Async Concurrency."""
+"""Tests for dayanak.concurrency module — M-29 Async Concurrency."""
 from __future__ import annotations
 
 import pytest
@@ -7,7 +7,7 @@ pytestmark = [pytest.mark.integration]
 
 import asyncio
 
-from emsal_mcp.concurrency import (
+from dayanak.concurrency import (
     get_concurrency_status,
     run_concurrently,
 )
@@ -73,7 +73,7 @@ class TestConcurrencyImports:
     """Module importability."""
 
     def test_import_clean(self) -> None:
-        from emsal_mcp.concurrency import (
+        from dayanak.concurrency import (
             get_concurrency_status,
             run_concurrently,
             run_document_fetches,

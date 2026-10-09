@@ -8,15 +8,15 @@ pytestmark = [pytest.mark.integration]
 import tempfile
 from pathlib import Path
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.citation import (
+from dayanak.cache import Cache
+from dayanak.citation import (
     CitationCandidate,
     VerificationFinding,
     extract_citation_candidates,
     format_legal_citation,
     verify_legal_citation,
 )
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.models import ContentStatus, Document
 
 
 # ---------------------------------------------------------------------------

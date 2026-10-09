@@ -128,7 +128,7 @@ def _ikili(text: str) -> bool:
 
 async def _fetch_text(mg_client, bd_client, doc_id: str, mevzuat_no: str, tur_name: str):
     """(metin, kaynak, kaynak_url, hata) — önce mevzuatgov, sonra Bedesten."""
-    from emsal_mcp.models import ContentStatus
+    from dayanak.models import ContentStatus
 
     try:
         doc = await _with_backoff(lambda: mg_client.get_document(doc_id), f"belge {doc_id}")
@@ -163,11 +163,11 @@ async def _fetch_text(mg_client, bd_client, doc_id: str, mevzuat_no: str, tur_na
 async def run(turler: list[str], limit: int | None, sleep: float, page_size: int,
               force: bool, only_changed: bool = False,
               gun_sayisi: int = 10) -> int:
-    from emsal_mcp.cache import Cache
-    from emsal_mcp import legislation_corpus as lc
-    from emsal_mcp import legislation_update as lu
-    from emsal_mcp.sources.mevzuat import MevzuatClient
-    from emsal_mcp.sources.mevzuatgov import TYPE_CODES, MevzuatGovClient
+    from dayanak.cache import Cache
+    from dayanak import legislation_corpus as lc
+    from dayanak import legislation_update as lu
+    from dayanak.sources.mevzuat import MevzuatClient
+    from dayanak.sources.mevzuatgov import TYPE_CODES, MevzuatGovClient
 
     unknown = [t for t in turler if t not in TYPE_CODES]
     if unknown:
@@ -305,8 +305,8 @@ def resplit() -> int:
     Madde ayrıştırıcısı (başlık çıkarımı, değişiklik notu) geliştiğinde
     korpusu yeniden çekmeye gerek yok: metin zaten kayıtlı.
     """
-    from emsal_mcp.cache import Cache
-    from emsal_mcp import legislation_corpus as lc
+    from dayanak.cache import Cache
+    from dayanak import legislation_corpus as lc
 
     cache = Cache()
     db = cache.db

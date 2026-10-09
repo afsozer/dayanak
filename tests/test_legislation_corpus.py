@@ -8,7 +8,7 @@ import sqlite3
 
 import pytest
 
-from emsal_mcp import legislation_corpus as lc
+from dayanak import legislation_corpus as lc
 
 pytestmark = [pytest.mark.unit]
 

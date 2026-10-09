@@ -1,4 +1,4 @@
-"""HF `hamzabagirsakci/turkish-court-decisions` parquet setini emsal-mcp cache'ine al.
+"""HF `hamzabagirsakci/turkish-court-decisions` parquet setini dayanak cache'ine al.
 
 Kaynak eşlemesi (2 Eyl 2026 ölçümü: desktop bedesten korpusundan 2.000 örnek
 document_id'nin %97,7'si HF yargitay/emsal/danistay içinde AYNI kimlikle bulundu):
@@ -18,9 +18,9 @@ decision_date mevcut korpusla uyumlu olsun diye dd.mm.yyyy yazılır; ISO tarih,
 mevzuat_atif, masked_count, raw_sha256 metadata_json'da saklanır.
 
 Kullanım:
-    python scripts/import_hf_parquet.py --src ~/Developer/emsal-mcp-data/hf \
+    python scripts/import_hf_parquet.py --src ~/Developer/dayanak-data/hf \
         --only aym_norm --dry-run
-    python scripts/import_hf_parquet.py --src ~/Developer/emsal-mcp-data/hf            # hepsi
+    python scripts/import_hf_parquet.py --src ~/Developer/dayanak-data/hf            # hepsi
     python scripts/import_hf_parquet.py --src ... --only yargitay --min-year 2015     # alt küme
 """
 from __future__ import annotations
@@ -39,8 +39,8 @@ from pathlib import Path
 import pyarrow.parquet as pq
 
 ORIGIN = "hf_turkish_court_decisions"
-DEFAULT_CACHE = os.environ.get("EMSAL_CACHE_PATH") or str(
-    Path.home() / ".emsal-mcp" / "cache.sqlite3"
+DEFAULT_CACHE = os.environ.get("DAYANAK_CACHE_PATH") or str(
+    Path.home() / ".dayanak" / "cache.sqlite3"
 )
 
 COLS = ("document_id, source, title, court, chamber, decision_date, esas_no, karar_no, "
@@ -145,7 +145,7 @@ def main() -> None:
         dst.execute("PRAGMA temp_store=MEMORY")
         have = {r[0] for r in dst.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if "documents_v2" not in have:
-            sys.exit("documents_v2 yok: önce emsal-mcp şemasını oluştur (örn. `emsal-mcp doctor`).")
+            sys.exit("documents_v2 yok: önce dayanak şemasını oluştur (örn. `dayanak doctor`).")
         fts = "var" if "documents_v2_fts" in have else "YOK (import sonrası FTS kurulur)"
         print("FTS tetikleyicileri:", fts)
 

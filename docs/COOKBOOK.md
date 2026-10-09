@@ -1,4 +1,4 @@
-# docs/COOKBOOK.md — Emsal-mcp Kullanım Rehberi
+# docs/COOKBOOK.md — Dayanak Kullanım Rehberi
 
 > Her reçete kendi başına çalıştırılabilir; harici dosya gerektirmez.
 > Tüm örnekler sentetik (sahte) veri kullanır.
@@ -9,18 +9,18 @@
 
 **Amaç:** Bir konuyu kaynaklar arasında arayın, belgeleri getirin ve önbellek istatistiklerini görüntüleyin.
 
-**Önkoşul:** `emsal-mcp` kurulu ve çalışır durumda.
+**Önkoşul:** `dayanak` kurulu ve çalışır durumda.
 
 **Adımlar:**
 
 1. Kaynakların durumunu kontrol edin:
    ```bash
-   emsal-mcp sources --json
+   dayanak sources --json
    ```
 
 2. Konut kirası tavan fiyat konusunda araştırma yapın:
    ```bash
-   emsal-mcp research topic "konut kirası tavan fiyat" \
+   dayanak research topic "konut kirası tavan fiyat" \
      --sources bedesten,yargitay \
      --fetch-count 5 \
      --json
@@ -28,17 +28,17 @@
 
 3. Araştırma kalite panosuna bakın:
    ```bash
-   emsal-mcp research dashboard .emsal_research/bundle.json --json
+   dayanak research dashboard .dayanak_research/bundle.json --json
    ```
 
 4. Önbellek istatistiklerini görüntüleyin:
    ```bash
-   emsal-mcp cache stats
+   dayanak cache stats
    ```
 
 5. Kaynak health durumunu kontrol edin:
    ```bash
-   emsal-mcp circuit health --json
+   dayanak circuit health --json
    ```
 
 **Beklenen Çıktı:**
@@ -59,33 +59,33 @@
 
 1. Araştırma paketinden dilekçe paketi oluşturun:
    ```bash
-   emsal-mcp petition pack \
+   dayanak petition pack \
      "Konut tahliye davası" \
      "Kira sözleşmesi feshi ve tahliye talebi" \
-     --research-bundle .emsal_research/bundle.json \
+     --research-bundle .dayanak_research/bundle.json \
      --out-dir petition_pack \
      --json
    ```
 
 2. Paketi denetleyin (8 Kontrol):
    ```bash
-   emsal-mcp petition inspect petition_pack/ --json
+   dayanak petition inspect petition_pack/ --json
    ```
 
 3. Dilekçe ana hatlarını üretin:
    ```bash
-   emsal-mcp petition outline petition_pack/ --json
+   dayanak petition outline petition_pack/ --json
    ```
 
 4. Kontrollü dilekçe taslağını üretin:
    ```bash
-   emsal-mcp petition draft petition_pack/ --out-dir draft_output --json
+   dayanak petition draft petition_pack/ --out-dir draft_output --json
    ```
 
 5. Dilekçe davası zincirini oluşturun ve puanlayın:
    ```bash
-   emsal-mcp argument build petition_pack/ --json
-   emsal-mcp argument score petition_pack/ --json
+   dayanak argument build petition_pack/ --json
+   dayanak argument score petition_pack/ --json
    ```
 
 **Beklenen Çıktı:**
@@ -100,49 +100,49 @@
 
 **Amaç:** Mevzuat metinlerinde arama yapın, maddeleri çıkarın ve yapı ağacını görüntüleyin.
 
-**Önkoşul:** `emsal-mcp` kurulu.
+**Önkoşul:** `dayanak` kurulu.
 
 **Adımlar:**
 
 1. Mevzuat araması yapın:
    ```bash
-   emsal-mcp legislation search "konut kirası" \
+   dayanak legislation search "konut kirası" \
      --limit 5 \
      --json
    ```
 
 2. Belirli bir belgeyi getirin:
    ```bash
-   emsal-mcp legislation get mevzuat-001 --json
+   dayanak legislation get mevzuat-001 --json
    ```
 
 3. Belge içinde madde arayın:
    ```bash
-   emsal-mcp legislation articles mevzuat-001 \
+   dayanak legislation articles mevzuat-001 \
      --article-number 6 \
      --json
    ```
 
 4. Anahtar kelime ile madde arayın:
    ```bash
-   emsal-mcp legislation articles mevzuat-001 \
+   dayanak legislation articles mevzuat-001 \
      --article-query "kira bedeli" \
      --json
    ```
 
 5. Kısım/bölüm/madde ağacını görüntüleyin:
    ```bash
-   emsal-mcp legislation tree mevzuat-001 --json
+   dayanak legislation tree mevzuat-001 --json
    ```
 
 6. Gerekçe metinlerini çıkarın:
    ```bash
-   emsal-mcp legislation gerekce mevzuat-001 --json
+   dayanak legislation gerekce mevzuat-001 --json
    ```
 
 7. Kaynak sağlık durumunu kontrol edin:
    ```bash
-   emsal-mcp legislation status --json
+   dayanak legislation status --json
    ```
 
 **Beklenen Çıktı:**
@@ -164,17 +164,17 @@
 
 1. Atıf grafiğini oluşturun:
    ```bash
-   emsal-mcp graph build --limit-docs 100 --json
+   dayanak graph build --limit-docs 100 --json
    ```
 
 2. Graf istatistiklerini görüntüleyin:
    ```bash
-   emsal-mcp graph stats --json
+   dayanak graph stats --json
    ```
 
 3. Belirli bir belgenin atıf ilişkilerini gösterin:
    ```bash
-   emsal-mcp graph show doc-001 \
+   dayanak graph show doc-001 \
      --source bedesten \
      --direction both \
      --json
@@ -182,7 +182,7 @@
 
 4. Bu belgeyi referans alan belgeleri bulun:
    ```bash
-   emsal-mcp graph citing doc-001 \
+   dayanak graph citing doc-001 \
      --source bedesten \
      --limit 20 \
      --json
@@ -190,7 +190,7 @@
 
 5. Bu belgenin referans verdiği belgeleri bulun:
    ```bash
-   emsal-mcp graph cited doc-001 \
+   dayanak graph cited doc-001 \
      --source bedesten \
      --limit 20 \
      --json
@@ -198,7 +198,7 @@
 
 6. Grafı dışa aktarın (mermaid formatı):
    ```bash
-   emsal-mcp graph export --format mermaid --json
+   dayanak graph export --format mermaid --json
    ```
 
 **Beklenen Çıktı:**
@@ -218,17 +218,17 @@
 
 1. FTS5 + TF-IDF indeksini oluşturun:
    ```bash
-   emsal-mcp semantic index --json
+   dayanak semantic index --json
    ```
 
 2. İndeks durumunu kontrol edin:
    ```bash
-   emsal-mcp semantic status --json
+   dayanak semantic status --json
    ```
 
 3. TF-IDF cosine benzerliği ile arama yapın:
    ```bash
-   emsal-mcp semantic search "kira tahliye" \
+   dayanak semantic search "kira tahliye" \
      --limit 10 \
      --source yargitay \
      --chamber "3. Hukuk Dairesi" \
@@ -237,7 +237,7 @@
 
 4. Hibrit arama yapın (BM25 + TF-IDF):
    ```bash
-   emsal-mcp semantic hybrid "kira tahliye" \
+   dayanak semantic hybrid "kira tahliye" \
      --limit 10 \
      --weight 0.6 \
      --source bedesten \
@@ -246,19 +246,19 @@
 
 5. Yoğun embedding indeksi oluşturun:
    ```bash
-   emsal-mcp semantic embed-index --json
+   dayanak semantic embed-index --json
    ```
 
 6. Yoğun embedding araması yapın:
    ```bash
-   emsal-mcp semantic embed-search "kira tahliye" \
+   dayanak semantic embed-search "kira tahliye" \
      --limit 10 \
      --json
    ```
 
 7. Kademeli güncelleme yapın:
    ```bash
-   emsal-mcp semantic update-indexes --json
+   dayanak semantic update-indexes --json
    ```
 
 **Beklenen Çıktı:**
@@ -281,24 +281,24 @@
 
 1. v1.0.0 hazırlık kapısını kontrol edin:
    ```bash
-   emsal-mcp release v1-readiness --json
+   dayanak release v1-readiness --json
    ```
 
 2. Duman testlerini çalıştırın:
    ```bash
-   emsal-mcp smoke --json
+   dayanak smoke --json
    ```
 
 3. Draft'ı düz metin olarak dışa aktarın:
    ```bash
-   emsal-mcp export txt draft_output/draft.md \
+   dayanak export txt draft_output/draft.md \
      --out-path exports/draft.txt \
      --json
    ```
 
 4. Export format yeteneklerini görüntüleyin:
    ```bash
-   emsal-mcp export capabilities --json
+   dayanak export capabilities --json
    ```
 
 **Beklenen Çıktı:**
@@ -316,14 +316,14 @@ ile full-text korpus oluşturun, M-95 gerçek embedding ile indeksleyin ve
 semantik arama performansını ölçün. M-95 öncesi (hash) ve sonrası (multilingual
 E5) recall@k farkını sayısal olarak gösterir.
 
-**Önkoşul:** `pip install emsal-mcp[embeddings]` ile fastembed kurulu.
+**Önkoşul:** `pip install dayanak[embeddings]` ile fastembed kurulu.
 ``"fastembed-multilingual-e5"`` aktif provider olarak seçili.
 
 **Adımlar:**
 
 1. **Mevcut sağlayıcıları listeleyin:**
    ```bash
-   python -c "from emsal_mcp.embeddings import list_embedding_providers; \
+   python -c "from dayanak.embeddings import list_embedding_providers; \
      import json; print(json.dumps(list_embedding_providers(), indent=2))"
    ```
    Çıktıda ``"fastembed-multilingual-e5"`` için ``"status": "available"``
@@ -333,7 +333,7 @@ E5) recall@k farkını sayısal olarak gösterir.
    ```bash
    # İş hukuku korpusu — broad anchor ile crawl
    python -c "
-   from emsal_mcp.corpus_builder import crawl_full_text
+   from dayanak.corpus_builder import crawl_full_text
    result = crawl_full_text('bedesten', phrase='tazminat',
        item_type='YARGITAYKARARI', max_docs=200, max_pages=20)
    print('Indexed:', result['documents_stored'])
@@ -346,7 +346,7 @@ E5) recall@k farkını sayısal olarak gösterir.
    ```bash
    # İlk seferde model yaklaşık 120MB indirir, sonra local cache'den çalışır
    python -c "
-   from emsal_mcp.semantic import build_embedding_index
+   from dayanak.semantic import build_embedding_index
    result = build_embedding_index(provider='fastembed-multilingual-e5')
    print('Indexed:', result.get('documents_indexed'))
    print('Seconds:', result.get('elapsed_seconds'))
@@ -359,7 +359,7 @@ E5) recall@k farkını sayısal olarak gösterir.
    # Bu sorgu hash ile "isci tazminat" kelimelerini arar;
    # gerçek embedding ile "calisan alacagi" gibi anlamsal eşleri de bulur
    python -c "
-   from emsal_mcp.semantic import embedding_search
+   from dayanak.semantic import embedding_search
    import json
    result = embedding_search('is kazasi sonucu maddi tazminat',
        limit=5, provider='fastembed-multilingual-e5')
@@ -372,7 +372,7 @@ E5) recall@k farkını sayısal olarak gösterir.
    ```bash
    # Aynı sorguyu iki provider ile çalıştırıp farkı görün
    python -c "
-   from emsal_mcp.semantic import embedding_search
+   from dayanak.semantic import embedding_search
 
    query = 'isverenin is sagligi ve guvenligi yukumlulugu'
    for prov in ['local-hash-v1', 'fastembed-multilingual-e5']:
@@ -387,8 +387,8 @@ E5) recall@k farkını sayısal olarak gösterir.
 6. **Eval ile recall ölçümü (M-71):**
    ```bash
    # Eval koşumunu her iki provider ile yapın
-   python -m emsal_mcp.cli eval run --provider local-hash-v1 --json
-   python -m emsal_mcp.cli eval run --provider fastembed-multilingual-e5 --json
+   python -m dayanak.cli eval run --provider local-hash-v1 --json
+   python -m dayanak.cli eval run --provider fastembed-multilingual-e5 --json
    ```
    NDCG ve recall@5/recall@10 metriklerini karşılaştırın. Gerçek embedding ile
    özellikle eşanlamlı terim içeren sorgularda (ör. "iş kazası" → "is kazasi",
@@ -419,13 +419,13 @@ E5) recall@k farkını sayısal olarak gösterir.
 genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
 `load_extended_tools` ile seçili kategorileri dinamik olarak sunucuya ekleyin.
 
-**Önkoşul:** `emsal-mcp` kurulu ve çalışır durumda. Varsayılan profil `core`'dur.
+**Önkoşul:** `dayanak` kurulu ve çalışır durumda. Varsayılan profil `core`'dur.
 
 **Adımlar:**
 
 1. **Core profilde sunucuyu başlatın ve mevcut araçları listeleyin:**
    ```bash
-   emsal-mcp health_check --json
+   dayanak health_check --json
    ```
    Çıktıda `"tool_count": 11` ve core araç listesi görünmeli. Core profil
    şu 11 aracı sunar:
@@ -436,7 +436,7 @@ genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
 
 2. **Genişletilmiş kategorileri keşfedin:**
    ```bash
-   emsal-mcp legal_research_guide --json
+   dayanak legal_research_guide --json
    ```
    Tam rehberde `extended_tools` başlığı altında 11 kategori listelenir:
    `drafting`, `files`, `meta`, `legislation`, `drafting_advanced`,
@@ -445,7 +445,7 @@ genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
 
 3. **Belirli bir kategori hakkında bilgi alın:**
    ```bash
-   emsal-mcp legal_research_guide topic=extended_tools --json
+   dayanak legal_research_guide topic=extended_tools --json
    ```
    Her kategorinin tool_count ve örnek araç isimleri görüntülenir.
    Örneğin `drafting` kategorisi 2 araç içerir:
@@ -453,7 +453,7 @@ genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
 
 4. **Seçili kategorileri yükleyin:**
    ```bash
-   emsal-mcp load_extended_tools categories="citation_graph,health_admin" --json
+   dayanak load_extended_tools categories="citation_graph,health_admin" --json
    ```
    Beklenen çıktı:
    ```json
@@ -469,21 +469,21 @@ genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
 
 5. **Yüklenen araçların doğrulanması:**
    ```bash
-   emsal-mcp health_check --json
+   dayanak health_check --json
    ```
    `"extended_loaded"` alanında yüklenen kategorilerin araç sayısı görünür.
    Örneğin: `"citation_graph": 6, "health_admin": 6`.
 
 6. **Ek kategoriler ekleyin (kademeli genişletme):**
    ```bash
-   emsal-mcp load_extended_tools categories="cache_admin,indexing" --json
+   dayanak load_extended_tools categories="cache_admin,indexing" --json
    ```
    Daha önce yüklenen kategoriler `already_loaded` listesine düşer,
    yalnızca yeni kategoriler aktif edilir. Toplam araç sayısı artar.
 
 7. **Geçersiz kategori hatalarını kontrol edin:**
    ```bash
-   emsal-mcp load_extended_tools categories="yanlis_kategori,dedup" --json
+   dayanak load_extended_tools categories="yanlis_kategori,dedup" --json
    ```
    `"invalid_categories": ["yanlis_kategori"]` döner, `dedup` başarıyla yüklenir.
 
@@ -496,7 +496,7 @@ genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
   `already_loaded` listesine düşer
 
 **Notlar:**
-- Core profil varsayılandır; `EMSAL_TOOL_PROFILE=full` ile 119 araca geçiş
+- Core profil varsayılandır; `DAYANAK_TOOL_PROFILE=full` ile 119 araca geçiş
   yapılabilir ama bu durumda `load_extended_tools` anlamsızdır.
 - Her yükleme turunda yalnızca belirtilen kategoriler eklenir; önceki
   yüklemeler korunur (stateful).
@@ -510,5 +510,5 @@ genişletilmiş kategorileri yüklemeniz gerektiğini öğrenin, ardından
 - Tüm `--json` çıktıları `JSON_CONTRACTS.md` ile uyumludur.
 - Sentetik veriler gerçek vakaları temsil etmez; yalnızca akışı gösterir.
 - Kaynak durumları (`stable`, `partial`, `experimental`, `unavailable`) `
-  emsal-mcp sources --json` ile doğrulanabilir.
+  dayanak sources --json` ile doğrulanabilir.
 - Atıf güvenliği kuralları için `docs/MCP_CONTRACTS.md`败 bakın.

@@ -7,7 +7,7 @@ from datetime import date
 import httpx
 import pytest
 
-from emsal_mcp import rg_index as R
+from dayanak import rg_index as R
 
 pytestmark = [pytest.mark.unit]
 
@@ -207,13 +207,13 @@ class TestBackfill:
 
 class TestParsing:
     def test_header_and_mukerrer(self):
-        from emsal_mcp.sources.resmigazete import parse_issue_header
+        from dayanak.sources.resmigazete import parse_issue_header
         html = "<b>9 Mart 2023 Tarihli ve 32127 Sayılı Resmî\n Gazete - Mükerrer</b>"
         assert parse_issue_header(html) == ("32127", True)
         assert parse_issue_header("<b>1 Aralık 2025 Tarihli ve 33094 Sayılı Resmî Gazete</b>") == ("33094", False)
 
     def test_split_span_heading_is_joined(self):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         html = ('<p><u><span>MİLL</span><span>ETLERARASI ANDLAŞMALAR</span></u></p>'
                 '<p><a href="20230309M1-1.pdf">&#8212; Bir Karar</a></p>')
         it = ResmiGazeteClient()._parse_index(html, "20230309")[0]
@@ -239,7 +239,7 @@ class TestSearchPageIntegration:
     @pytest.fixture()
     def indexed(self, tmp_path, monkeypatch):
         path = tmp_path / "rg.sqlite3"
-        monkeypatch.setenv("EMSAL_RG_DB_PATH", str(path))
+        monkeypatch.setenv("DAYANAK_RG_DB_PATH", str(path))
         conn = R.connect(path)
         fetcher, _ = _site(PAGES)
         for d in ("20251201", "20251202"):
@@ -248,7 +248,7 @@ class TestSearchPageIntegration:
         return path
 
     def _search(self, **kw):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         return _run(ResmiGazeteClient().search_page(**kw))
 
     def test_range_query_uses_index(self, indexed):
@@ -268,12 +268,12 @@ class TestSearchPageIntegration:
         assert sp.total == 2 and any("bugün arası" in w for w in sp.warnings)
 
     def test_missing_index_falls_back_with_warning(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("EMSAL_RG_DB_PATH", str(tmp_path / "yok.sqlite3"))
+        monkeypatch.setenv("DAYANAK_RG_DB_PATH", str(tmp_path / "yok.sqlite3"))
         from unittest.mock import AsyncMock, MagicMock, patch
         resp = MagicMock(status_code=404)
         cm = AsyncMock()
         cm.__aenter__.return_value.get = AsyncMock(return_value=resp)
-        with patch("emsal_mcp.sources.resmigazete.client", return_value=cm):
+        with patch("dayanak.sources.resmigazete.client", return_value=cm):
             sp = self._search(query="asgari", karar_tarihi_start="2025-12-01",
                               karar_tarihi_end="2025-12-31")
         assert sp.total == 0
@@ -285,7 +285,7 @@ class TestSearchPageIntegration:
         resp = MagicMock(status_code=404)
         cm = AsyncMock()
         cm.__aenter__.return_value.get = AsyncMock(return_value=resp)
-        with patch("emsal_mcp.sources.resmigazete.client", return_value=cm) as c:
+        with patch("dayanak.sources.resmigazete.client", return_value=cm) as c:
             sp = self._search(query="asgari", date="2025-12-01")
         assert c.called and sp.total == 0
 
@@ -325,7 +325,7 @@ class TestLegacyRealPages:
         assert "Cumhurbaşkanlığına Vekâlet Etme İşlemi" in cats
 
     def test_modern_header_requires_date_prefix(self):
-        from emsal_mcp.sources.resmigazete import parse_issue_header
+        from dayanak.sources.resmigazete import parse_issue_header
         html = ("<p>Yönetmelik</p><a href=\"20251201-1.htm\">x</a>"
                 "<p>21/1/1988 tarihli ve 19701 sayılı Resmi Gazete'de</p>")
         assert parse_issue_header(html) == (None, False)

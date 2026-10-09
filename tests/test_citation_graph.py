@@ -9,8 +9,8 @@ import json
 import tempfile
 from pathlib import Path
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.citation_graph import (
+from dayanak.cache import Cache
+from dayanak.citation_graph import (
     build_citation_graph,
     export_graph,
     find_cited_documents,
@@ -19,7 +19,7 @@ from emsal_mcp.citation_graph import (
     get_citation_graph_build_progress,
     get_citation_graph_stats,
 )
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.models import ContentStatus, Document
 
 
 # ---------------------------------------------------------------------------
@@ -537,20 +537,20 @@ class TestGraphStats:
 
 class TestImports:
     def test_citation_graph_importable(self):
-        import emsal_mcp.citation_graph
-        assert hasattr(emsal_mcp.citation_graph, "build_citation_graph")
-        assert hasattr(emsal_mcp.citation_graph, "export_graph")
-        assert hasattr(emsal_mcp.citation_graph, "get_citation_graph")
-        assert hasattr(emsal_mcp.citation_graph, "find_citing_documents")
-        assert hasattr(emsal_mcp.citation_graph, "find_cited_documents")
-        assert hasattr(emsal_mcp.citation_graph, "get_citation_graph_stats")
+        import dayanak.citation_graph
+        assert hasattr(dayanak.citation_graph, "build_citation_graph")
+        assert hasattr(dayanak.citation_graph, "export_graph")
+        assert hasattr(dayanak.citation_graph, "get_citation_graph")
+        assert hasattr(dayanak.citation_graph, "find_citing_documents")
+        assert hasattr(dayanak.citation_graph, "find_cited_documents")
+        assert hasattr(dayanak.citation_graph, "get_citation_graph_stats")
 
     def test_server_importable(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
     def test_cli_importable(self):
-        from emsal_mcp.cli import app, graph_app
+        from dayanak.cli import app, graph_app
         assert callable(app)
         assert callable(graph_app)
 
@@ -936,14 +936,14 @@ class TestEmptyGraphWordingMatchesHistory:
     of test fixtures — so "hiç oluşturulmamış" would be plainly wrong there."""
 
     def _cache(self, tmp_path):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.citation_graph import _ensure_edge_table
+        from dayanak.cache import Cache
+        from dayanak.citation_graph import _ensure_edge_table
         c = Cache(tmp_path / "t.sqlite3")
         _ensure_edge_table(c)
         return c
 
     def test_no_build_history_says_never_built(self, tmp_path):
-        from emsal_mcp.citation_graph import _graph_build_state
+        from dayanak.citation_graph import _graph_build_state
         c = self._cache(tmp_path)
         total, warnings, recs = _graph_build_state(c)
         assert total == 0
@@ -952,7 +952,7 @@ class TestEmptyGraphWordingMatchesHistory:
         c.close()
 
     def test_prior_build_with_zero_edges_says_so(self, tmp_path):
-        from emsal_mcp.citation_graph import _graph_build_state
+        from dayanak.citation_graph import _graph_build_state
         c = self._cache(tmp_path)
         c.log("build_citation_graph", {"edges": 0})
         total, warnings, recs = _graph_build_state(c)
@@ -965,7 +965,7 @@ class TestEmptyGraphWordingMatchesHistory:
         c.close()
 
     def test_populated_graph_has_no_warning_either_way(self, tmp_path):
-        from emsal_mcp.citation_graph import _graph_build_state
+        from dayanak.citation_graph import _graph_build_state
         c = self._cache(tmp_path)
         c.log("build_citation_graph", {"edges": 1})
         c.db.execute(
@@ -1003,8 +1003,8 @@ def _old_algorithm_edges(cache: Cache, limit_docs: int = 1000) -> set[tuple]:
     candidate extraction, same classifiers, only the lookup mechanism
     differs.
     """
-    from emsal_mcp.citation import extract_citation_candidates
-    from emsal_mcp.citation_graph import _classify_match, _search_cache_for_match
+    from dayanak.citation import extract_citation_candidates
+    from dayanak.citation_graph import _classify_match, _search_cache_for_match
 
     rows = cache.db.execute(
         """SELECT document_id, source, full_text, markdown FROM documents_v2
@@ -1358,7 +1358,7 @@ class TestResumableBuild:
         full_text at once. Inspects the source rather than measuring RSS,
         which would be flaky."""
         import inspect
-        from emsal_mcp import citation_graph
+        from dayanak import citation_graph
         src = inspect.getsource(citation_graph._build_citation_graph_resumable)
         assert "fetchall()" not in src
 
@@ -1372,7 +1372,7 @@ class TestStalledBuildDetection:
     """
 
     def test_fresh_checkpoint_still_reads_as_running(self):
-        from emsal_mcp.citation_graph import (
+        from dayanak.citation_graph import (
             _ensure_build_state_table,
             _save_build_state,
         )
@@ -1391,7 +1391,7 @@ class TestStalledBuildDetection:
     def test_old_checkpoint_reads_as_stalled(self, monkeypatch):
         import time as _time
 
-        from emsal_mcp.citation_graph import (
+        from dayanak.citation_graph import (
             _ensure_build_state_table,
             _save_build_state,
         )
@@ -1424,7 +1424,7 @@ class TestStalledBuildDetection:
     def test_completed_build_is_never_relabelled_stalled(self, monkeypatch):
         import time as _time
 
-        from emsal_mcp.citation_graph import (
+        from dayanak.citation_graph import (
             _ensure_build_state_table,
             _save_build_state,
         )
@@ -1454,7 +1454,7 @@ class TestCheckpointAge:
     def test_local_naive_timestamp_gives_positive_age(self):
         import time as _time
 
-        from emsal_mcp.citation_graph import _checkpoint_age_seconds
+        from dayanak.citation_graph import _checkpoint_age_seconds
 
         stamp = _time.strftime(
             "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() - 120)
@@ -1466,7 +1466,7 @@ class TestCheckpointAge:
     def test_future_timestamp_returns_none_not_a_fresh_looking_number(self):
         import time as _time
 
-        from emsal_mcp.citation_graph import _checkpoint_age_seconds
+        from dayanak.citation_graph import _checkpoint_age_seconds
 
         stamp = _time.strftime(
             "%Y-%m-%d %H:%M:%S", _time.localtime(_time.time() + 3600)
@@ -1474,7 +1474,7 @@ class TestCheckpointAge:
         assert _checkpoint_age_seconds(stamp) is None
 
     def test_unparseable_timestamp_returns_none(self):
-        from emsal_mcp.citation_graph import _checkpoint_age_seconds
+        from dayanak.citation_graph import _checkpoint_age_seconds
 
         assert _checkpoint_age_seconds("bir zaman") is None
         assert _checkpoint_age_seconds(None) is None
@@ -1508,8 +1508,8 @@ class TestNoCourtNameOnlyMatching:
     """
 
     def test_matching_court_alone_is_not_an_edge(self):
-        from emsal_mcp.citation import CitationCandidate
-        from emsal_mcp.citation_graph import _classify_match
+        from dayanak.citation import CitationCandidate
+        from dayanak.citation_graph import _classify_match
 
         cand = CitationCandidate(
             raw_text="Yargıtay 9. Hukuk Dairesi kararı",
@@ -1527,15 +1527,15 @@ class TestNoCourtNameOnlyMatching:
     def test_title_fuzzy_match_type_can_no_longer_be_produced(self):
         import inspect
 
-        from emsal_mcp import citation_graph
+        from dayanak import citation_graph
 
         src = inspect.getsource(citation_graph._classify_match)
         assert "title_fuzzy" not in src
         assert not hasattr(citation_graph, "_match_title_keyword")
 
     def test_number_match_still_produces_an_edge(self):
-        from emsal_mcp.citation import CitationCandidate
-        from emsal_mcp.citation_graph import _classify_match
+        from dayanak.citation import CitationCandidate
+        from dayanak.citation_graph import _classify_match
 
         cand = CitationCandidate(
             raw_text="Yargıtay 9. HD 2023/123 E. 2023/456 K.",
@@ -1553,8 +1553,8 @@ class TestNoCourtNameOnlyMatching:
 
     def test_no_rule_fires_on_identifier_free_boilerplate(self):
         """Generic procedural wording must not link to anything."""
-        from emsal_mcp.citation import CitationCandidate
-        from emsal_mcp.citation_graph import _classify_match
+        from dayanak.citation import CitationCandidate
+        from dayanak.citation_graph import _classify_match
 
         cand = CitationCandidate(
             raw_text="Bölge Adliye Mahkemesi kararı, Yargıtayca duruşma "
@@ -1579,7 +1579,7 @@ class TestKararNoRequiresChamber:
     """
 
     def _cand(self, **kw):
-        from emsal_mcp.citation import CitationCandidate
+        from dayanak.citation import CitationCandidate
 
         base = dict(
             raw_text="K. 2026/505", court="Yargıtay", chamber=None,
@@ -1599,7 +1599,7 @@ class TestKararNoRequiresChamber:
         return base
 
     def test_same_karar_no_different_chamber_is_not_an_edge(self):
-        from emsal_mcp.citation_graph import _classify_match
+        from dayanak.citation_graph import _classify_match
 
         result = _classify_match(
             self._cand(chamber="12. Hukuk Dairesi"),
@@ -1608,7 +1608,7 @@ class TestKararNoRequiresChamber:
         assert result is None
 
     def test_same_karar_no_same_chamber_is_a_medium_edge(self):
-        from emsal_mcp.citation_graph import _classify_match
+        from dayanak.citation_graph import _classify_match
 
         result = _classify_match(
             self._cand(chamber="12. Hukuk Dairesi"),
@@ -1617,7 +1617,7 @@ class TestKararNoRequiresChamber:
         assert result == ("medium", "karar_no_match")
 
     def test_missing_chamber_on_either_side_is_not_an_edge(self):
-        from emsal_mcp.citation_graph import _classify_match
+        from dayanak.citation_graph import _classify_match
 
         assert _classify_match(
             self._cand(chamber=None), self._doc(chamber="12. Hukuk Dairesi")
@@ -1627,7 +1627,7 @@ class TestKararNoRequiresChamber:
         ) is None
 
     def test_chamber_comparison_ignores_case_and_spacing(self):
-        from emsal_mcp.citation_graph import _classify_match
+        from dayanak.citation_graph import _classify_match
 
         result = _classify_match(
             self._cand(chamber="12.  HUKUK   Dairesi"),
@@ -1640,7 +1640,7 @@ class TestSparseGraphWarning:
     """A graph covering a sliver of the corpus cannot support 'never cited'."""
 
     def _seed(self, cache, n_docs: int):
-        from emsal_mcp.citation_graph import _ensure_edge_table
+        from dayanak.citation_graph import _ensure_edge_table
 
         _ensure_edge_table(cache)
         for i in range(n_docs):
@@ -1651,7 +1651,7 @@ class TestSparseGraphWarning:
             ))
 
     def test_sparse_graph_warns(self):
-        from emsal_mcp.citation_graph import _graph_build_state
+        from dayanak.citation_graph import _graph_build_state
 
         cache, path = _temp_cache()
         try:
@@ -1673,7 +1673,7 @@ class TestSparseGraphWarning:
             path.unlink(missing_ok=True)
 
     def test_well_covered_graph_is_warning_free(self):
-        from emsal_mcp.citation_graph import _graph_build_state
+        from dayanak.citation_graph import _graph_build_state
 
         cache, path = _temp_cache()
         try:

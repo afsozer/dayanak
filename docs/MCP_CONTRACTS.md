@@ -1,8 +1,8 @@
 # docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
-> **emsal-mcp v1.0.0** — 11 core MCP tools (default) · 47 tools in full profile.
+> **dayanak v1.0.0** — 11 core MCP tools (default) · 47 tools in full profile.
 > Input parameters use Python type hints; output shapes are documented per tool.
-> Source of truth for profiles/categories: `src/emsal_mcp/tool_profile.py`.
+> Source of truth for profiles/categories: `src/dayanak/tool_profile.py`.
 
 ## Tool Profiles (FAZ M / FAZ O)
 
@@ -17,11 +17,11 @@ The server exposes two tool profiles to control which MCP tools are registered:
 > 2026-09-06: `citation_check` ve `prepare_petition` (`drafting`), `read_legal_file` (`files`), `list_sources` ve `legal_research_guide` (`meta`) core profilden çıkarıldı — core docstring bütçesi (20 000 karakter) dolmuştu. `load_extended_tools` ile geri gelirler.
 | `full` | 47 | Core + all extended categories. |
 
-Select via the `EMSAL_TOOL_PROFILE` environment variable:
+Select via the `DAYANAK_TOOL_PROFILE` environment variable:
 
 ```
-EMSAL_TOOL_PROFILE=core   # default — 11 tools
-EMSAL_TOOL_PROFILE=full   # all 47 tools
+DAYANAK_TOOL_PROFILE=core   # default — 11 tools
+DAYANAK_TOOL_PROFILE=full   # all 47 tools
 ```
 
 ### `load_extended_tools`
@@ -54,11 +54,11 @@ Dynamically loads extended tool categories into the running server (core profile
 
 > **M-105 (v5.0.0):** cache yönetimi, routing, dedup, index kurma ve taslak
 > sürümleme araçları MCP yüzeyinden kaldırıldı; CLI'da yaşamaya devam ederler
-> (`emsal-mcp cache/router/dedup/semantic ...`).
+> (`dayanak cache/router/dedup/semantic ...`).
 
 > **M-110:** Bir core facade'ın zaten kapsadığı 33 araç tamamen silindi
 > (83 → 50). Bunlar `full` profilde bile artık kayıtlı değil. Eski ad →
-> yeni çağrı eşlemesi `emsal_mcp.tool_profile.RETIRED_TOOLS` içindedir;
+> yeni çağrı eşlemesi `dayanak.tool_profile.RETIRED_TOOLS` içindedir;
 > aşağıdaki tablo da aynı bilgiyi verir.
 
 > **M-111:** Atıf grafının 6 aracı MCP yüzeyinden tamamen kaldırıldı
@@ -66,8 +66,8 @@ Dynamically loads extended tool categories into the running server (core profile
 > 287.391 belgede yalnızca 4 doğrulanabilir atıf bağlantısı kurulabildi,
 > çünkü kararların atıf yaptığı kararlar korpusta yok. Araçlar "atıf yok"
 > döndürüyordu ve bu "atıf almamış" diye okunuyordu. Modül ve CLI duruyor
-> (`emsal-mcp graph ...`); korpus büyürse yeniden değerlendirilir.
-> Eşleme: `emsal_mcp.tool_profile.REMOVED_TOOLS`.
+> (`dayanak graph ...`); korpus büyürse yeniden değerlendirilir.
+> Eşleme: `dayanak.tool_profile.REMOVED_TOOLS`.
 
 ### Emekliye ayrılan araçlar (M-110)
 
@@ -231,12 +231,12 @@ UDF file operations (read/write round-trip).
 
 > **M-103 (v5.0.0):** `release_smoke`, `release_dashboard`, `release_notes_tool`,
 > `release_archive` MCP araçları kaldırıldı. Hazırlık kontrolü:
-> CLI `emsal-mcp release v1-readiness --json`.
+> CLI `dayanak release v1-readiness --json`.
 
 ## Cache v2 Tools (v0.3)
 
 > **M-105 (v5.0.0):** `get_cache_stats` ve `list_cached_documents` MCP'den
-> kaldırıldı (CLI: `emsal-mcp cache ...`). `search_local_cache` yalnızca
+> kaldırıldı (CLI: `dayanak cache ...`). `search_local_cache` yalnızca
 > `full` profilde kayıtlıdır; core profilde karşılığı `search_local_corpus`
 > facade'ıdır.
 
@@ -726,4 +726,4 @@ Fatal/domain errors should use this JSON-compatible shape where possible:
 ## Release Tools
 
 > **M-103 (v5.0.0):** Release yönetimi araçları MCP yüzeyinden kaldırıldı.
-> Hazırlık kontrolü CLI'dadır: `emsal-mcp release v1-readiness --json`.
+> Hazırlık kontrolü CLI'dadır: `dayanak release v1-readiness --json`.

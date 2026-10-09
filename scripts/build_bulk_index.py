@@ -1,7 +1,7 @@
 """embed_parquet_worker.py çıktısından FAISS IVF-PQ toplu indeks kur.
 
-    python scripts/build_bulk_index.py --vec ~/Developer/emsal-mcp-data/vec \
-        --cache ~/Developer/emsal-mcp-data/cache.sqlite3 [--max-files 3] [--nlist 16384] [--pq-m 64]
+    python scripts/build_bulk_index.py --vec ~/Developer/dayanak-data/vec \
+        --cache ~/Developer/dayanak-data/cache.sqlite3 [--max-files 3] [--nlist 16384] [--pq-m 64]
 
 Çıktı cache.sqlite3'ün yanına: bulk-fastembed-multilingual-e5.{faiss,keys.npz,meta.json}
 """
@@ -14,14 +14,14 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from emsal_mcp.bulk_index import build_bulk_index  # noqa: E402
+from dayanak.bulk_index import build_bulk_index  # noqa: E402
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--vec", required=True)
-    default_cache = os.environ.get("EMSAL_CACHE_PATH") or str(
-        Path.home() / ".emsal-mcp" / "cache.sqlite3"
+    default_cache = os.environ.get("DAYANAK_CACHE_PATH") or str(
+        Path.home() / ".dayanak" / "cache.sqlite3"
     )
     ap.add_argument("--cache", default=default_cache)
     ap.add_argument("--provider", default="fastembed-multilingual-e5")

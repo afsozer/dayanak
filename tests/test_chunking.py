@@ -1,4 +1,4 @@
-"""Tests for emsal_mcp.chunking — paragraph-aware chunking for dense embeddings.
+"""Tests for dayanak.chunking — paragraph-aware chunking for dense embeddings.
 
 Covers the boundary cases called out in the M-95 embeddings work: empty
 input, text shorter than one chunk, text exactly one chunk, very long text
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from emsal_mcp.chunking import (
+from dayanak.chunking import (
     DEFAULT_CHUNK_SIZE,
     DEFAULT_OVERLAP,
     chunk_text,
@@ -234,7 +234,7 @@ class TestOverlapAppliedOnce:
 
 class TestVersionSelection:
     def test_default_is_current_version(self) -> None:
-        from emsal_mcp.chunking import CHUNKING_VERSION
+        from dayanak.chunking import CHUNKING_VERSION
 
         assert CHUNKING_VERSION == 2
         text = _unique_text(60)[:3959]

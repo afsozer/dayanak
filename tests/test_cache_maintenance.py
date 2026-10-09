@@ -8,8 +8,8 @@ pytestmark = [pytest.mark.integration]
 
 import json
 
-from emsal_mcp.cache import Cache, CACHE_SCHEMA_VERSION
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.cache import Cache, CACHE_SCHEMA_VERSION
+from dayanak.models import ContentStatus, Document
 
 
 class TestCacheVacuum:
@@ -389,23 +389,23 @@ class TestCLIImports:
     """Test that CLI commands are importable and the server module loads."""
 
     def test_cli_cache_compact_importable(self):
-        from emsal_mcp.cli import cache_app
+        from dayanak.cli import cache_app
         # Verify the command exists on cache_app
         commands = {cmd.name for cmd in cache_app.registered_commands}
         assert "compact" in commands
 
     def test_cli_cleanup_orphans_importable(self):
-        from emsal_mcp.cli import cache_app
+        from dayanak.cli import cache_app
         commands = {cmd.name for cmd in cache_app.registered_commands}
         assert "cleanup-orphans" in commands
 
     def test_cli_integrity_check_importable(self):
-        from emsal_mcp.cli import cache_app
+        from dayanak.cli import cache_app
         commands = {cmd.name for cmd in cache_app.registered_commands}
         assert "integrity-check" in commands
 
     def test_server_main_importable(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
 
@@ -416,8 +416,8 @@ class TestMCPSchemaVersionInStats:
     def test_server_imports_clean(self):
         """Verify the server module can be imported without error."""
         import importlib
-        import emsal_mcp.server
-        importlib.reload(emsal_mcp.server)
+        import dayanak.server
+        importlib.reload(dayanak.server)
 
     def test_cache_vacuum_method_exists(self):
         assert hasattr(Cache, "vacuum_cache")
@@ -440,7 +440,7 @@ class TestCLIExecution:
 
     def test_cache_compact_command(self, tmp_path):
         from typer.testing import CliRunner
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
 
         runner = CliRunner()
         cache_path = tmp_path / "test.sqlite3"
@@ -463,7 +463,7 @@ class TestCLIExecution:
 
     def test_cache_cleanup_orphans_command(self, tmp_path):
         from typer.testing import CliRunner
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
 
         runner = CliRunner()
         cache_path = tmp_path / "test.sqlite3"
@@ -480,7 +480,7 @@ class TestCLIExecution:
 
     def test_cache_integrity_check_command(self, tmp_path):
         from typer.testing import CliRunner
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
 
         runner = CliRunner()
         cache_path = tmp_path / "test.sqlite3"
@@ -759,6 +759,6 @@ class TestCLISyncImport:
     """Test that the CLI sync command is importable."""
 
     def test_cli_sync_importable(self):
-        from emsal_mcp.cli import cache_app
+        from dayanak.cli import cache_app
         commands = {cmd.name for cmd in cache_app.registered_commands}
         assert "sync" in commands

@@ -7,8 +7,8 @@ pytestmark = [pytest.mark.unit]
 
 import json
 
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.document import controlled_draft, export_bundle, markdown_to_docx
+from dayanak.models import ContentStatus, Document
+from dayanak.document import controlled_draft, export_bundle, markdown_to_docx
 
 
 def _make_safe_doc(source="test", doc_id="001", full_text="Tam metin içerik"):

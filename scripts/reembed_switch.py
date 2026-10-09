@@ -8,7 +8,7 @@ Sıra:
      hazırlık dizinindeki yeni üçlü canlı dizine taşınır.  Taşıma yarıda
      kalırsa yedek geri alınır (rollback) ve sunucu eski indeksle açılır.
   4. Vektör dizinleri takas edilir: ``vec`` → ``vec_v1``, ``vec2`` → ``vec``.
-     Böylece ``EMSAL_BULK_VEC_DIR`` (emsal-env.cmd, mcp_http_sunucu.cmd)
+     Böylece ``DAYANAK_BULK_VEC_DIR`` (dayanak-env.cmd, mcp_http_sunucu.cmd)
      DEĞİŞMEZ; geri dönüş de aynı takasın tersidir.
   5. Yeniden gömülen kararların delta satırları silinir (``drop_delta_rows.py``),
      delta matrisi yenilenir.  Gömme sırasında crawl'ın eklediği YENİ kararlar
@@ -140,13 +140,13 @@ def main() -> int:
         cands = sorted(glob.glob(str(vec / "delta-reembed-*.manifest.json")))
         name = Path(cands[-1]).name[: -len(".manifest.json")] if cands else ""
     if name:
-        env = dict(os.environ, EMSAL_BULK_VEC_DIR=str(vec))
+        env = dict(os.environ, DAYANAK_BULK_VEC_DIR=str(vec))
         rc = run([py, "-X", "utf8", str(REPO / "scripts" / "drop_delta_rows.py"), name], env=env)
         if rc != 0:
             log("UYARI: delta satırları silinemedi (kopya sonuç riski, arama çalışır)")
     else:
         log("UYARI: delta-reembed manifest'i bulunamadı, delta satırları dokunulmadı")
-    run([str(REPO / ".venv" / "Scripts" / "emsal-mcp.exe"), "semantic", "build-matrix", "--json"])
+    run([str(REPO / ".venv" / "Scripts" / "dayanak.exe"), "semantic", "build-matrix", "--json"])
 
     log("=== sunucu başlatılıyor ===")
     run(["schtasks", "/run", "/tn", args.task])

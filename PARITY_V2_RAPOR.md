@@ -10,8 +10,8 @@
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/models.py` | `Document` modeline `to_tool_payload(include_raw=False)` metodu eklendi. Varsayılan çıktıda: tek `markdown` alanı, `raw` çıkarıldı, `full_text` çıkarıldı, `metadata.content` (base64 HTML) çıkarıldı. |
-| `src/emsal_mcp/server.py` | `get_document` aracına `include_raw: bool = False` parametresi eklendi. Dönüş `doc.model_dump(mode="json")` yerine `doc.to_tool_payload(include_raw=include_raw)` kullanıyor. Cache işlemleri (`cache.set`, `cache.store_document`) tam `Document`/`model_dump()` ile çalışmaya devam ediyor. |
+| `src/dayanak/models.py` | `Document` modeline `to_tool_payload(include_raw=False)` metodu eklendi. Varsayılan çıktıda: tek `markdown` alanı, `raw` çıkarıldı, `full_text` çıkarıldı, `metadata.content` (base64 HTML) çıkarıldı. |
+| `src/dayanak/server.py` | `get_document` aracına `include_raw: bool = False` parametresi eklendi. Dönüş `doc.model_dump(mode="json")` yerine `doc.to_tool_payload(include_raw=include_raw)` kullanıyor. Cache işlemleri (`cache.set`, `cache.store_document`) tam `Document`/`model_dump()` ile çalışmaya devam ediyor. |
 | `docs/MCP_CONTRACTS.md` | `get_document` kontratı güncellendi: `include_raw` parametresi ve deduplicated çıktı şekli belgelendi. |
 | `docs/JSON_CONTRACTS.md` | `Document` kontratı güncellendi: `raw`, `full_text` (ayrı alan), `metadata.content` varsayılan çıktıdan kaldırıldı. |
 | `tests/test_invariants.py` | `TestToToolPayload` test sınıfı eklendi (9 test): tek metin alanı, full_text→markdown promosyonu, raw çıkarma (varsayılan/include_raw), metadata.content çıkarma, boş metadata, boyut kıyaslaması. |
@@ -65,10 +65,10 @@ payload = doc.to_tool_payload()
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/models.py` | `SearchPage` modeli eklendi: `results`, `total`, `page`, `page_size`, `total_pages` alanları. |
-| `src/emsal_mcp/sources/base.py` | `SourceClient`'a opsiyonel `search_page(query, limit, page, **filters) -> SearchPage` metodu eklendi. Varsayılan: `search()`'ü çağırıp `total=None` döndürür. |
-| `src/emsal_mcp/sources/bedesten.py` | `search_page()` override edildi: upstream yanıtındaki `data.total` alanını okur (`total=973` vb.), `total_pages` hesaplar. `search()`, `search_page()`'e yönlendirildi (backward compat korundu). |
-| `src/emsal_mcp/server.py` | `search_decisions` aracı `search_page()` kullanır oldu. Yanıt dict'inde üst düzey `results`, `total_results`, `page`, `total_pages` alanları. Toplam alınamazsa `null` + warning. |
+| `src/dayanak/models.py` | `SearchPage` modeli eklendi: `results`, `total`, `page`, `page_size`, `total_pages` alanları. |
+| `src/dayanak/sources/base.py` | `SourceClient`'a opsiyonel `search_page(query, limit, page, **filters) -> SearchPage` metodu eklendi. Varsayılan: `search()`'ü çağırıp `total=None` döndürür. |
+| `src/dayanak/sources/bedesten.py` | `search_page()` override edildi: upstream yanıtındaki `data.total` alanını okur (`total=973` vb.), `total_pages` hesaplar. `search()`, `search_page()`'e yönlendirildi (backward compat korundu). |
+| `src/dayanak/server.py` | `search_decisions` aracı `search_page()` kullanır oldu. Yanıt dict'inde üst düzey `results`, `total_results`, `page`, `total_pages` alanları. Toplam alınamazsa `null` + warning. |
 | `docs/MCP_CONTRACTS.md` | `search_decisions` çıktı kontratı güncellendi: pagination alanları belgelendi. |
 
 ### Upstream doğrulama
@@ -118,7 +118,7 @@ sp = await ci.search_page("+tahliye +taahhüt +kira", limit=5, page=1)
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/models.py` | `build_content_status_fields` fonksiyonunda `METADATA_ONLY` branch'i: Bedesten kaynaklı sonuçlar için yeni yönlendirme mesajı, diğer kaynaklar için eski uyarı korundu. |
+| `src/dayanak/models.py` | `build_content_status_fields` fonksiyonunda `METADATA_ONLY` branch'i: Bedesten kaynaklı sonuçlar için yeni yönlendirme mesajı, diğer kaynaklar için eski uyarı korundu. |
 
 ### Değişiklik detayı
 
@@ -167,8 +167,8 @@ Regresyon yok.
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/server_utils.py` | `split_markdown_for_pagination(text, page_number, max_chars=40000)` saf fonksiyonu + `_split_paragraphs`, `_split_sentences`, `_split_forced` yardımcıları eklendi. |
-| `src/emsal_mcp/server.py` | `get_document` aracına `page_number: int = 1` parametresi eklendi. Metin 40k karakteri aşarsa paragraf sınırından böler; yanıta `current_page`, `total_pages`, `total_chars` alanları eklendi. |
+| `src/dayanak/server_utils.py` | `split_markdown_for_pagination(text, page_number, max_chars=40000)` saf fonksiyonu + `_split_paragraphs`, `_split_sentences`, `_split_forced` yardımcıları eklendi. |
+| `src/dayanak/server.py` | `get_document` aracına `page_number: int = 1` parametresi eklendi. Metin 40k karakteri aşarsa paragraf sınırından böler; yanıta `current_page`, `total_pages`, `total_chars` alanları eklendi. |
 | `docs/MCP_CONTRACTS.md` | `get_document` kontratı `page_number` ve sayfa alanları ile güncellendi. |
 | `tests/test_invariants.py` | `TestSplitMarkdownForPagination` sınıfı (6 test): kısa metin tek sayfa, 100k+ yapay metin çoklu sayfa, paragraf bütünlüğü, dev paragraf fallback, sayfa sınırı clamp. |
 
@@ -226,9 +226,9 @@ Content-Type: text/html (styled document)
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/sources/aihm.py` | **YENİ:** `AihmClient(SourceClient)` — `get_document()` HUDOC HTML API ile çalışıyor; `search()` boş liste döndürüyor (API mevcut değil). |
-| `src/emsal_mcp/sources/registry.py` | `_AihmClient` sınıfı + `registry()`'ye `"aihm"` kaydı eklendi. `EXPERIMENTAL` statü. |
-| `src/emsal_mcp/server.py` | `search_decisions` docstring: `source="aihm"` belgisi eklendi. |
+| `src/dayanak/sources/aihm.py` | **YENİ:** `AihmClient(SourceClient)` — `get_document()` HUDOC HTML API ile çalışıyor; `search()` boş liste döndürüyor (API mevcut değil). |
+| `src/dayanak/sources/registry.py` | `_AihmClient` sınıfı + `registry()`'ye `"aihm"` kaydı eklendi. `EXPERIMENTAL` statü. |
+| `src/dayanak/server.py` | `search_decisions` docstring: `source="aihm"` belgisi eklendi. |
 | `tests/test_adapters.py` | `EXPECTED` listesine `"aihm"` eklendi. |
 | `tests/test_capability_contract.py` | `EXPECTED_SOURCES` listesine `"aihm"` eklendi. |
 
@@ -267,7 +267,7 @@ Regresyon yok.
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/legislation.py` | `_BooleanEvaluator` sınıfı (recursive-descent parser): `AND/OR/NOT/"phrase"/()` + örtük AND + Türkçe casefold (İ→i, I→ı, ASCII I belirsizliği için çift fold) + kök eşleşme (prefix). `evaluate_boolean_query()` ve `_build_snippet()` fonksiyonları. `search_legislation_articles` güncellendi: boolean evaluator kullanıyor, `match_count` sıralı, `snippet` bold highlight. Whitespace normalizasyonu (`\r\n` → space). |
+| `src/dayanak/legislation.py` | `_BooleanEvaluator` sınıfı (recursive-descent parser): `AND/OR/NOT/"phrase"/()` + örtük AND + Türkçe casefold (İ→i, I→ı, ASCII I belirsizliği için çift fold) + kök eşleşme (prefix). `evaluate_boolean_query()` ve `_build_snippet()` fonksiyonları. `search_legislation_articles` güncellendi: boolean evaluator kullanıyor, `match_count` sıralı, `snippet` bold highlight. Whitespace normalizasyonu (`\r\n` → space). |
 
 ### Değişiklik detayı
 
@@ -324,8 +324,8 @@ AYM 2025'te KBB (Karar Bilgi Bankası) React SPA'ya geçti:
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/sources/simple_public.py` | `AymClient` yeniden yazıldı: iki banka desteği (BB/ND), `decision_type` filtresi (`norm_denetimi`/`bireysel_basvuru`), `_resolve_base()` yardımcısı, SPA shell tespiti, eski HTML scraping fallback, UUID ID desteği, graceful degradation. |
-| `src/emsal_mcp/sources/registry.py` | `_AymClient` kısıtlamaları güncellendi. |
+| `src/dayanak/sources/simple_public.py` | `AymClient` yeniden yazıldı: iki banka desteği (BB/ND), `decision_type` filtresi (`norm_denetimi`/`bireysel_basvuru`), `_resolve_base()` yardımcısı, SPA shell tespiti, eski HTML scraping fallback, UUID ID desteği, graceful degradation. |
+| `src/dayanak/sources/registry.py` | `_AymClient` kısıtlamaları güncellendi. |
 
 ### Test çıktısı özeti
 
@@ -428,9 +428,9 @@ Regresyon yok. 12 yeni test (btk source kaydı + capability kontratı).
 
 | Dosya | Değişiklik |
 |---|---|
-| `src/emsal_mcp/sources/aihm.py` | `search()`/`search_page()` gerçek HUDOC API ile implement edildi: ulke (vars. TUR/HEPSI), madde, ihlal, ihlal_yok, basvuru_no, dava_adi, dil, tarih aralığı, sort_by filtreleri; `resultcount` → SearchPage.total. |
-| `src/emsal_mcp/sources/simple_public.py` | `AymClient` KBB JSON API ile yeniden yazıldı: arama (total dahil), `decision_type` filtresi, `get_document` UDF→markdown tam metin (emsal_mcp.udf ile), legacy `BB/YYYY/N`-`ND/YYYY/N` ID çözümleme, WAF başlıkları + cookie warm-up, geniş except'ler hata sınıfını metadata'ya yazacak şekilde düzeltildi. |
-| `src/emsal_mcp/sources/registry.py` | aym/aihm known_limitations güncel duruma çekildi. |
+| `src/dayanak/sources/aihm.py` | `search()`/`search_page()` gerçek HUDOC API ile implement edildi: ulke (vars. TUR/HEPSI), madde, ihlal, ihlal_yok, basvuru_no, dava_adi, dil, tarih aralığı, sort_by filtreleri; `resultcount` → SearchPage.total. |
+| `src/dayanak/sources/simple_public.py` | `AymClient` KBB JSON API ile yeniden yazıldı: arama (total dahil), `decision_type` filtresi, `get_document` UDF→markdown tam metin (dayanak.udf ile), legacy `BB/YYYY/N`-`ND/YYYY/N` ID çözümleme, WAF başlıkları + cookie warm-up, geniş except'ler hata sınıfını metadata'ya yazacak şekilde düzeltildi. |
+| `src/dayanak/sources/registry.py` | aym/aihm known_limitations güncel duruma çekildi. |
 | `tests/test_parity_v2b.py` | YENİ: 12 offline test (KBB body/parse/WAF başlıkları, HUDOC query builder/fixture parse). |
 | `tests/test_adapters.py` | Eski AYM fallback testi yeni API akışına göre yeniden yazıldı (2 test). |
 | `README.md` | Test dosyası sayacı 62→63 (drift testi). |
@@ -458,8 +458,8 @@ pytest -q (tam suite)
 
 **Denetim sonucu:** 8a ✅ / 8c ✅ doğrulandı; 8b'de raporlanan "get_document ✅" **canlıda çalışmıyordu** — iki hata düzeltildi:
 
-1. **Yanlış import yolu:** `from .pdf_extractor import ...` (sources altında modül yok) → `from emsal_mcp.pdf_extractor import ...`. Hata BtkClient.get_document ve RekabetClient.get_document (PDF dalı) içindeydi; geniş `except` yuttuğu için `unavailable`/sessiz HTML-fallback olarak görünüyordu. Regresyon testi eklendi (`test_btk_pdf_extractor_import_path`).
-2. **Ortam eksiği:** `pypdf` kurulu değildi (`emsal-mcp[ocr]` extra'sının parçası — pyproject'te tanımlı, yeni bağımlılık değil). Kuruldu; PDF çıkarımı için çalışma ortamında `pip install pypdf` gerekli.
+1. **Yanlış import yolu:** `from .pdf_extractor import ...` (sources altında modül yok) → `from dayanak.pdf_extractor import ...`. Hata BtkClient.get_document ve RekabetClient.get_document (PDF dalı) içindeydi; geniş `except` yuttuğu için `unavailable`/sessiz HTML-fallback olarak görünüyordu. Regresyon testi eklendi (`test_btk_pdf_extractor_import_path`).
+2. **Ortam eksiği:** `pypdf` kurulu değildi (`dayanak[ocr]` extra'sının parçası — pyproject'te tanımlı, yeni bağımlılık değil). Kuruldu; PDF çıkarımı için çalışma ortamında `pip install pypdf` gerekli.
 
 Ayrıca DeepSeek raporundaki **"12 yeni test" iddiası doğru değildi** (yalnız beklenti listelerine `btk` eklenmişti, suite 1714'te sabitti). Talimattaki "her alt görev için offline fixture testi" gereksinimi bu denetimde tamamlandı: `tests/test_parity_v2b.py`'ye GİB (total + 1-tabanlı→0-tabanlı sayfa eşlemesi), BTK (kart parse, yerel query filtresi, total=None), Rekabet (Toplam parse, total_pages) ve import-yolu regresyon testleri eklendi.
 

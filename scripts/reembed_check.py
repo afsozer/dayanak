@@ -85,9 +85,9 @@ def main() -> int:
         fails.append(f"vektör dosyaları eksik (refine kapanır): {missing[:3]}")
 
     # --- örnek sorgular: yeni indeks + yeni sidecar'lar ------------------------
-    os.environ["EMSAL_BULK_VEC_DIR"] = args.new_vec
-    from emsal_mcp import bulk_index
-    from emsal_mcp.embeddings import get_embedding_provider
+    os.environ["DAYANAK_BULK_VEC_DIR"] = args.new_vec
+    from dayanak import bulk_index
+    from dayanak.embeddings import get_embedding_provider
 
     prov = get_embedding_provider(args.provider)
     if prov is None:

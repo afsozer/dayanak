@@ -13,7 +13,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.models import Document, ContentStatus
+from dayanak.models import Document, ContentStatus
 
 
 def _make_test_document() -> dict[str, Any]:
@@ -39,7 +39,7 @@ class TestMCPE2EHappyPath:
         """Import server, access the MCP instance, and call a tool."""
         import importlib
         # Reload to get a fresh server instance
-        spec = importlib.util.find_spec("emsal_mcp.server")
+        spec = importlib.util.find_spec("dayanak.server")
         assert spec is not None
         # Import server module — this also creates the FastMCP instance
         # We don't call main() (it blocks with mcp.run()).
@@ -47,7 +47,7 @@ class TestMCPE2EHappyPath:
 
     def test_search_decisions_source_resolvable(self) -> None:
         """The source backing search_decisions resolves and exposes async search/get."""
-        from emsal_mcp.sources.registry import get_source
+        from dayanak.sources.registry import get_source
 
         src = get_source("bedesten")
         assert src is not None
@@ -58,7 +58,7 @@ class TestMCPE2EHappyPath:
         """Server module imports without errors (catches async decorator bugs)."""
         # This is the key test: if any @mcp.tool() decorator has a bug,
         # importing server.py will raise an exception.
-        import emsal_mcp.server as server_mod
+        import dayanak.server as server_mod
         assert server_mod is not None
         # Verify main() is callable (won't actually run — blocked by mcp.run())
         assert callable(server_mod.main)
@@ -73,7 +73,7 @@ class TestMCPToolInvocation:
     def test_search_decisions_impl(self) -> None:
         """search_decisions via fake source doesn't crash."""
         import asyncio
-        from emsal_mcp.models import SearchResult, ContentStatus as CS
+        from dayanak.models import SearchResult, ContentStatus as CS
 
         class FakeSource:
             source_id = "test"
@@ -97,7 +97,7 @@ class TestMCPToolInvocation:
     def test_get_document_impl(self) -> None:
         """get_document via fake source returns Document."""
         import asyncio
-        from emsal_mcp.models import Document, ContentStatus as CS
+        from dayanak.models import Document, ContentStatus as CS
 
         class FakeSource:
             source_id = "test"
@@ -117,8 +117,8 @@ class TestMCPToolInvocation:
 
     def test_citation_safety_impl(self) -> None:
         """citation_check on a valid document returns ok=True."""
-        from emsal_mcp.safety import citation_check
-        from emsal_mcp.models import Document, ContentStatus as CS
+        from dayanak.safety import citation_check
+        from dayanak.models import Document, ContentStatus as CS
 
         doc = Document(
             source="test", document_id="t1", title="Test",
@@ -130,15 +130,15 @@ class TestMCPToolInvocation:
 
     def test_hybrid_search_impl(self) -> None:
         """hybrid_search returns valid dict structure."""
-        from emsal_mcp.semantic import hybrid_search
+        from dayanak.semantic import hybrid_search
         result = hybrid_search("test", limit=3)
         assert isinstance(result, dict)
         assert "results" in result or "ok" in result
 
     def test_citation_check_impl(self) -> None:
         """citation_check returns result with expected keys."""
-        from emsal_mcp.safety import citation_check
-        from emsal_mcp.models import Document, ContentStatus as CS
+        from dayanak.safety import citation_check
+        from dayanak.models import Document, ContentStatus as CS
 
         doc = Document(
             source="test", document_id="t2", title="Doc",
@@ -156,14 +156,14 @@ class TestMCPErrorHandling:
         """An unknown source id raises KeyError (caught/handled by callers)."""
         import pytest
 
-        from emsal_mcp.sources.registry import get_source
+        from dayanak.sources.registry import get_source
 
         with pytest.raises(KeyError):
             get_source("nonexistent_source_xyz")
 
     def test_get_document_empty_id_rejected_by_validator(self) -> None:
         """The validator guarding get_document rejects an empty document_id."""
-        from emsal_mcp.server_utils import validate_non_empty
+        from dayanak.server_utils import validate_non_empty
 
         ok, msg = validate_non_empty("")
         assert ok is False
@@ -171,14 +171,14 @@ class TestMCPErrorHandling:
 
     def test_hybrid_search_empty_query(self) -> None:
         """hybrid_search with empty query returns structured result."""
-        from emsal_mcp.semantic import hybrid_search
+        from dayanak.semantic import hybrid_search
         result = hybrid_search("")
         assert isinstance(result, dict)
 
     def test_citation_check_empty_doc(self) -> None:
         """citation_check on minimal doc doesn't crash."""
-        from emsal_mcp.safety import citation_check
-        from emsal_mcp.models import Document
+        from dayanak.safety import citation_check
+        from dayanak.models import Document
 
         doc = Document(source="test", document_id="minimal", title="Minimal")
         result = citation_check(doc)
@@ -194,11 +194,11 @@ class TestMCPAsyncDecorator:
 
     def test_async_tools_are_callable(self) -> None:
         """All async tools should be importable without errors."""
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
     def test_server_import_does_not_crash(self) -> None:
         """Importing server module must not raise any exception."""
-        import emsal_mcp.server
+        import dayanak.server
         # Verify module-level @mcp.tool() decorators don't fail
-        assert hasattr(emsal_mcp.server, "main")
+        assert hasattr(dayanak.server, "main")

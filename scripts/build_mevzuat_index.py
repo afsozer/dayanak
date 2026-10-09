@@ -14,7 +14,7 @@ from pathlib import Path
 
 import _yollar
 
-from emsal_mcp.legislation_semantic import DEFAULT_PROVIDER, build_index
+from dayanak.legislation_semantic import DEFAULT_PROVIDER, build_index
 
 _VARSAYILAN_DB = str(_yollar.CACHE_PATH)
 _VARSAYILAN_VEC = str(_yollar.MEVZUAT_VEC_DIR)
@@ -23,9 +23,9 @@ _VARSAYILAN_VEC = str(_yollar.MEVZUAT_VEC_DIR)
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db",
-                    default=os.environ.get("EMSAL_CACHE_PATH", _VARSAYILAN_DB))
+                    default=os.environ.get("DAYANAK_CACHE_PATH", _VARSAYILAN_DB))
     ap.add_argument("--vec-dir",
-                    default=os.environ.get("EMSAL_MEVZUAT_VEC_DIR", _VARSAYILAN_VEC))
+                    default=os.environ.get("DAYANAK_MEVZUAT_VEC_DIR", _VARSAYILAN_VEC))
     ap.add_argument("--provider", default=DEFAULT_PROVIDER)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()

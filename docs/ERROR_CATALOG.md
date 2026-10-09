@@ -1,8 +1,8 @@
-# Error Catalog — emsal-mcp
+# Error Catalog — dayanak
 
-> Auto-generated from `build_error()` calls across `src/emsal_mcp/`.
+> Auto-generated from `build_error()` calls across `src/dayanak/`.
 > Source of truth: `server_utils.py::KNOWN_ERROR_CODES` and `server_utils.py::get_error_codes()`.
-> Regenerate with: `emsal-mcp error-catalog --json`
+> Regenerate with: `dayanak error-catalog --json`
 
 ## Quick Reference
 

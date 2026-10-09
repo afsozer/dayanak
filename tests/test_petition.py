@@ -14,8 +14,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.petition import (
+from dayanak.models import ContentStatus, Document
+from dayanak.petition import (
     _classify_authority,
     _generate_petition_instructions,
     build_multi_issue_pack,
@@ -513,11 +513,11 @@ class TestPetitionInstructions:
 
 class TestCLIIntegration:
     def test_cli_import(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_petition_functions_importable(self):
-        from emsal_mcp.petition import (
+        from dayanak.petition import (
             inspect_petition_pack,
             prepare_drafting_input_pack,
         )
@@ -527,7 +527,7 @@ class TestCLIIntegration:
 
 class TestMCPServerIntegration:
     def test_server_import(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
 
@@ -957,7 +957,7 @@ class TestInspectMultiIssuePack:
 
 class TestMultiIssueCLIIntegration:
     def test_multi_issue_functions_importable(self):
-        from emsal_mcp.petition import (
+        from dayanak.petition import (
             build_multi_issue_pack,
             inspect_multi_issue_pack,
         )
@@ -965,5 +965,5 @@ class TestMultiIssueCLIIntegration:
         assert callable(inspect_multi_issue_pack)
 
     def test_cli_app_importable(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None

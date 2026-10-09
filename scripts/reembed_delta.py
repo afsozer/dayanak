@@ -37,7 +37,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(_yollar.SRC))
-from emsal_mcp.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402
+from dayanak.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402
 
 MODEL = "intfloat/multilingual-e5-small"
 MAX_TEXT = 2_000_000  # tek belge bunu aşarsa atlanır (bozuk metin; MemoryError)

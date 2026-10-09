@@ -20,14 +20,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.petition import (
+from dayanak.models import ContentStatus, Document
+from dayanak.petition import (
     prepare_controlled_petition_draft,
     prepare_drafting_input_pack,
     prepare_petition_outline,
     PLACEHOLDER_PATTERN,
 )
-from emsal_mcp.exporter import prepare_docx_export, prepare_export_package_bundle
+from dayanak.exporter import prepare_docx_export, prepare_export_package_bundle
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ class TestPrepareControlledPetitionDraft:
         pack_dir = _build_pack(tmp_path, [_make_doc()])
         result = prepare_controlled_petition_draft(pack_dir, out_dir=tmp_path / "draft_out")
         draft_text = Path(result["draft_md_path"]).read_text(encoding="utf-8")
-        assert "emsal-mcp tarafından otomatik" in draft_text.lower()
+        assert "dayanak tarafından otomatik" in draft_text.lower()
 
     def test_draft_json_has_required_fields(self, tmp_path: Path):
         pack_dir = _build_pack(tmp_path, [_make_doc()])
@@ -603,15 +603,15 @@ class TestPlaceholderPreservation:
 
 class TestCLIIntegration:
     def test_cli_import(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_new_functions_importable(self):
-        from emsal_mcp.petition import (
+        from dayanak.petition import (
             prepare_controlled_petition_draft,
             prepare_petition_outline,
         )
-        from emsal_mcp.exporter import (
+        from dayanak.exporter import (
             prepare_docx_export,
             prepare_export_package_bundle,
         )
@@ -623,10 +623,10 @@ class TestCLIIntegration:
 
 class TestMCPServerIntegration:
     def test_server_import(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
     def test_version_bumped(self):
-        from emsal_mcp import __version__
+        from dayanak import __version__
         from packaging.version import Version
         assert Version(__version__) >= Version("0.10.0")

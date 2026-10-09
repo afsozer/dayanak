@@ -14,8 +14,8 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 import json
-from emsal_mcp.models import SourceCapability, SourceStatus
-from emsal_mcp.sources.registry import capabilities, registry
+from dayanak.models import SourceCapability, SourceStatus
+from dayanak.sources.registry import capabilities, registry
 
 
 # ── SourceCapability model ──────────────────────────────────────────────
@@ -173,15 +173,15 @@ class TestCliSourcesJson:
 
 class TestMcpServerImport:
     def test_server_main_callable(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
     def test_cli_app_importable(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_capabilities_callable_from_registry(self):
-        from emsal_mcp.sources.registry import capabilities as cap_fn
+        from dayanak.sources.registry import capabilities as cap_fn
         assert callable(cap_fn)
         result = cap_fn()
         assert isinstance(result, list)
@@ -193,7 +193,7 @@ class TestDocumentSearchContract:
     """Verify SearchResult and Document models satisfy the documented contract."""
 
     def test_search_result_fields(self):
-        from emsal_mcp.models import SearchResult, ContentStatus
+        from dayanak.models import SearchResult, ContentStatus
         sr = SearchResult(
             source="test", document_id="1", title="T",
             court="C", chamber="CH", decision_date="2024-01-01",
@@ -205,7 +205,7 @@ class TestDocumentSearchContract:
         assert "content_status" in d
 
     def test_document_usability(self):
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.models import Document, ContentStatus
         doc = Document(
             source="test", document_id="1", title="T",
             full_text="Full text here",
@@ -216,7 +216,7 @@ class TestDocumentSearchContract:
         assert doc.text == "Full text here"
 
     def test_document_unusable_when_metadata_only(self):
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.models import Document, ContentStatus
         doc = Document(
             source="test", document_id="1", title="T",
             content_status=ContentStatus.METADATA_ONLY,
@@ -225,7 +225,7 @@ class TestDocumentSearchContract:
         assert doc.draft_usable is False
 
     def test_document_provenance(self):
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.models import Document, ContentStatus
         doc = Document(
             source="test", document_id="1", title="T",
             full_text="text", content_status=ContentStatus.FULL_TEXT,
@@ -237,7 +237,7 @@ class TestDocumentSearchContract:
         assert prov.source_url == "https://example.test/1"
 
     def test_citation_label(self):
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.models import Document, ContentStatus
         doc = Document(
             source="test", document_id="1", title="T",
             full_text="t", content_status=ContentStatus.FULL_TEXT,

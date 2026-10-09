@@ -1,13 +1,13 @@
 # Adapter SDK — How to Create a Source Adapter
 
-Emsal-mcp supports custom source adapters via a lightweight plugin interface.
+Dayanak supports custom source adapters via a lightweight plugin interface.
 This document describes how to create, register, and test a new source adapter.
 
 ## Minimum Requirements
 
 Every adapter **must**:
 
-1. Extend `SourceClient` (from `emsal_mcp.sources.base`)
+1. Extend `SourceClient` (from `dayanak.sources.base`)
 2. Set class attributes: `source_id` and `name`
 3. Implement two abstract methods:
    - `async search(query, limit=10, **filters) -> list[SearchResult]`
@@ -63,7 +63,7 @@ async def smoke(self, online: bool = False) -> SourceSmokeResult:
 Use `register_adapter()` to add your adapter at runtime:
 
 ```python
-from emsal_mcp.sources.registry import register_adapter
+from dayanak.sources.registry import register_adapter
 
 # Register an instance
 adapter = MyAdapter()
@@ -81,7 +81,7 @@ persist across restarts — call it each time your application starts.
 Use the `build_error()` pattern for structured error dicts:
 
 ```python
-from emsal_mcp.models import build_error
+from dayanak.models import build_error
 
 # In your adapter methods, on failure:
 return build_error(
@@ -94,7 +94,7 @@ return build_error(
 
 ## Example: Simple REST Adapter
 
-See `src/emsal_mcp/sources/example_adapter.py` for a fully commented
+See `src/dayanak/sources/example_adapter.py` for a fully commented
 example that demonstrates the complete pattern.
 
 ## Testing Your Adapter
@@ -115,7 +115,7 @@ Once registered, your adapter participates in `research_topic()` searches
 when included in the sources list:
 
 ```python
-from emsal_mcp.research import research_topic
+from dayanak.research import research_topic
 
 result = research_topic(
     "my query",
@@ -126,5 +126,5 @@ result = research_topic(
 
 ## Integration with CLI
 
-Registered adapters appear in `emsal-mcp sources` and support
-`emsal-mcp search my_source "query"`.
+Registered adapters appear in `dayanak sources` and support
+`dayanak search my_source "query"`.

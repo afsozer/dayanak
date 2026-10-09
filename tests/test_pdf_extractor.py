@@ -1,4 +1,4 @@
-"""Tests for emsal_mcp.pdf_extractor module — M-27 PDF/Scanned Content Extraction.
+"""Tests for dayanak.pdf_extractor module — M-27 PDF/Scanned Content Extraction.
 
 Covers:
   - Toolkit availability checks
@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.integration]
 
 from pathlib import Path
 
-from emsal_mcp.pdf_extractor import (
+from dayanak.pdf_extractor import (
     PDF_EXTRACTOR_VERSION,
     extract_pdf_text,
     extract_pdf_text_from_bytes,
@@ -32,8 +32,8 @@ from emsal_mcp.pdf_extractor import (
     try_upgrade_pdf_document,
     upgrade_all_pdf_documents,
 )
-from emsal_mcp.cache import Cache
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.cache import Cache
+from dayanak.models import ContentStatus, Document
 
 
 # ---------------------------------------------------------------------------

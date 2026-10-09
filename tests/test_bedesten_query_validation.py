@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from emsal_mcp.sources.base import BedestenUpstreamError
-from emsal_mcp.sources.bedesten import (
+from dayanak.sources.base import BedestenUpstreamError
+from dayanak.sources.bedesten import (
     BedestenClient,
     rewrite_solr_query,
     sanitize_bedesten_query,
@@ -71,7 +71,7 @@ def _patched_client(captured: list[dict], responses: list[dict]):
         captured.append(k.get("json", {}))
         return _mock_resp(queue.pop(0) if len(queue) > 1 else queue[0])
 
-    mc = patch("emsal_mcp.sources.bedesten.client")
+    mc = patch("dayanak.sources.bedesten.client")
     started = mc.start()
     cm = AsyncMock()
     cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_post)))

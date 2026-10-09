@@ -16,8 +16,8 @@ def _unwrap_threaded(fn):
     implementasyonu dogrudan cagirdigi icin o tek katman soyulur
     (``inspect.unwrap`` diger dekoratorleri de atlardi).
     """
-    if getattr(fn, "__emsal_threaded__", False) or getattr(
-        fn, "__emsal_timeout__", False
+    if getattr(fn, "__dayanak_threaded__", False) or getattr(
+        fn, "__dayanak_timeout__", False
     ):
         return fn.__wrapped__
     return fn
@@ -42,13 +42,13 @@ def _setup_server_mock():
 
 def test_cli_imports():
     """Test that CLI module can be imported."""
-    from emsal_mcp.cli import app
+    from dayanak.cli import app
     assert app is not None
 
 
 def test_server_imports():
     """Test that server module can be imported."""
-    from emsal_mcp import server
+    from dayanak import server
     assert hasattr(server, "main")
 
 
@@ -61,7 +61,7 @@ def test_server_main_registers_tools():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     # Verify tools are registered.  M-110 deleted every name a core facade
@@ -81,7 +81,7 @@ def test_server_main_registers_tools():
         assert tool_name in registered_tools, f"Tool '{tool_name}' not registered"
 
     # And the retired duplicates really are gone.
-    from emsal_mcp.tool_profile import RETIRED_TOOLS
+    from dayanak.tool_profile import RETIRED_TOOLS
 
     leftovers = sorted(set(RETIRED_TOOLS) & set(registered_tools))
     assert not leftovers, f"Retired tools still registered: {leftovers}"
@@ -95,7 +95,7 @@ def test_server_list_sources_tool():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     result = registered_tools["list_sources"]()
@@ -110,7 +110,7 @@ def test_server_source_smoke_tool():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     result = registered_tools["source_smoke"](online=False)
@@ -124,7 +124,7 @@ def test_server_final_v1_readiness_tool():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     assert "final_v1_readiness" not in registered_tools
@@ -135,7 +135,7 @@ def test_server_udf_toolkit_status_tool():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     result = registered_tools["udf_toolkit_status"]()
@@ -147,7 +147,7 @@ def test_server_legislation_types_via_list_sources():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     result = registered_tools["list_sources"](detail="legislation_types")
@@ -160,7 +160,7 @@ def test_server_health_check_tool():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     result = registered_tools["health_check"]()
@@ -172,7 +172,7 @@ def test_server_format_legislation_citation_via_citation_check():
     registered_tools, mock_mcp = _setup_server_mock()
 
     with patch("mcp.server.fastmcp.FastMCP", return_value=mock_mcp):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         main()
 
     result = registered_tools["citation_check"](
@@ -185,7 +185,7 @@ def test_server_format_legislation_citation_via_citation_check():
 
 def test_verification_imports():
     """Test that verification module can be imported."""
-    from emsal_mcp.verification import (
+    from dayanak.verification import (
         check_cache_integrity,
         smoke_test_offline,
         verify_bundle_archive_integrity,
@@ -199,14 +199,14 @@ def test_verification_imports():
 
 def test_drafter_imports():
     """Test that drafter module can be imported."""
-    from emsal_mcp.drafter import assemble_draft, validate_draft_body
+    from dayanak.drafter import assemble_draft, validate_draft_body
     assert callable(assemble_draft)
     assert callable(validate_draft_body)
 
 
 def test_smoke_test_offline():
     """Run offline smoke test."""
-    from emsal_mcp.verification import smoke_test_offline
+    from dayanak.verification import smoke_test_offline
     result = smoke_test_offline()
     assert result["ok"] is True
     assert len(result["tests"]) > 0

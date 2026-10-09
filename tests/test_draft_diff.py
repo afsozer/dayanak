@@ -12,7 +12,7 @@ pytestmark = [pytest.mark.integration]
 import json
 from pathlib import Path
 
-from emsal_mcp.draft_diff import (
+from dayanak.draft_diff import (
     diff_drafts,
     get_fill_report,
     save_draft_version,
@@ -54,7 +54,7 @@ DRAFT_V1 = """\
 {{EKLER}}
 
 ---
-> Taslak emsal-mcp v0.8.0 tarafından oluşturulmuştur.
+> Taslak dayanak v0.8.0 tarafından oluşturulmuştur.
 > Bu taslak avukat denetimi gerektirir.
 > {{}} içindeki alanlar doğrulanmış bilgilerle doldurulmalıdır.
 """
@@ -89,7 +89,7 @@ Tazminat Davası Dilekçesi
 {{EKLER}}
 
 ---
-> Taslak emsal-mcp v0.8.0 tarafından oluşturulmuştur.
+> Taslak dayanak v0.8.0 tarafından oluşturulmuştur.
 > Bu taslak avukat denetimi gerektirir.
 > {{}} içindeki alanlar doğrulanmış bilgilerle doldurulmalıdır.
 """
@@ -396,13 +396,13 @@ def test_save_draft_version_label_sanitized(tmp_path: Path):
 
 def test_imports_from_cli():
     """Verify that cli.py can import draft_diff functions."""
-    from emsal_mcp.cli import draft_app  # noqa: F401
+    from dayanak.cli import draft_app  # noqa: F401
 
     assert draft_app is not None
 
 
 def test_imports_from_server():
     """Verify that server.py can import draft_diff functions."""
-    from emsal_mcp.server import main  # noqa: F401
+    from dayanak.server import main  # noqa: F401
 
     assert main is not None

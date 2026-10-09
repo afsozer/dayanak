@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import pytest
 
-from emsal_mcp.embeddings import FastEmbedMultilingualProvider
+from dayanak.embeddings import FastEmbedMultilingualProvider
 
 
 # ===================================================================

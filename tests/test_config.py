@@ -9,27 +9,29 @@ from pathlib import Path
 
 import pytest
 
-from emsal_mcp.config import EmsalConfig, config, setup_logging
+from dayanak.config import DayanakConfig, config, setup_logging
 
 
 @pytest.fixture
 def fresh_config():
     """Return a fresh config instance (not the global singleton)."""
-    return EmsalConfig()
+    return DayanakConfig()
 
 
 class TestConfigDefaults:
     """Default values without env overrides."""
 
-    def test_cache_path_default(self, fresh_config, monkeypatch):
-        # The session-wide isolation fixture sets EMSAL_CACHE_PATH; clear it to
-        # assert the true built-in default.
-        monkeypatch.delenv("EMSAL_CACHE_PATH", raising=False)
-        assert fresh_config.cache_path == Path.home() / ".emsal_mcp" / "cache.sqlite3"
+    def test_cache_path_default(self, fresh_config, monkeypatch, tmp_path):
+        # The session-wide isolation fixture sets DAYANAK_CACHE_PATH; clear it to
+        # assert the true built-in default.  Home is faked so a real legacy
+        # ~/.emsal_mcp on the test machine does not trigger the fallback.
+        monkeypatch.delenv("DAYANAK_CACHE_PATH", raising=False)
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        assert fresh_config.cache_path == tmp_path / ".dayanak" / "cache.sqlite3"
 
     def test_user_agent_default(self, fresh_config):
         ua = fresh_config.user_agent
-        assert "EmsalMcp/" in ua
+        assert "Dayanak/" in ua
         assert "github.com" in ua
 
     def test_http_timeout_default(self, fresh_config):
@@ -46,52 +48,52 @@ class TestConfigEnvOverrides:
     """Environment variable overrides."""
 
     def test_cache_path_env(self, fresh_config, monkeypatch, tmp_path):
-        monkeypatch.setenv("EMSAL_CACHE_PATH", str(tmp_path / "custom.sqlite3"))
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_CACHE_PATH", str(tmp_path / "custom.sqlite3"))
+        c = DayanakConfig()
         assert c.cache_path == tmp_path / "custom.sqlite3"
 
     def test_user_agent_env(self, fresh_config, monkeypatch):
-        monkeypatch.setenv("EMSAL_USER_AGENT", "TestAgent/1.0")
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_USER_AGENT", "TestAgent/1.0")
+        c = DayanakConfig()
         assert c.user_agent == "TestAgent/1.0"
 
     def test_http_timeout_env(self, fresh_config, monkeypatch):
-        monkeypatch.setenv("EMSAL_HTTP_TIMEOUT", "60.5")
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_HTTP_TIMEOUT", "60.5")
+        c = DayanakConfig()
         assert c.http_timeout == 60.5
 
     def test_log_level_env_valid(self, fresh_config, monkeypatch):
-        monkeypatch.setenv("EMSAL_LOG_LEVEL", "DEBUG")
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_LOG_LEVEL", "DEBUG")
+        c = DayanakConfig()
         assert c.log_level == "DEBUG"
 
     def test_log_level_env_invalid_falls_back(self, fresh_config, monkeypatch):
-        monkeypatch.setenv("EMSAL_LOG_LEVEL", "VERBOSE")
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_LOG_LEVEL", "VERBOSE")
+        c = DayanakConfig()
         assert c.log_level == "WARNING"
 
     def test_udf_toolkit_dir_env(self, fresh_config, monkeypatch, tmp_path):
         tk = tmp_path / "udf-tk"
         tk.mkdir()
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(tk))
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(tk))
+        c = DayanakConfig()
         assert c.udf_toolkit_dir == tk
 
     def test_udf_toolkit_dir_fallback_env(self, fresh_config, monkeypatch, tmp_path):
         tk = tmp_path / "udf-tk-fb"
         tk.mkdir()
         monkeypatch.setenv("UDF_TOOLKIT_DIR", str(tk))
-        c = EmsalConfig()
+        c = DayanakConfig()
         assert c.udf_toolkit_dir == tk
 
-    def test_udf_toolkit_dir_emsal_priority(self, fresh_config, monkeypatch, tmp_path):
+    def test_udf_toolkit_dir_dayanak_priority(self, fresh_config, monkeypatch, tmp_path):
         primary = tmp_path / "primary"
         fallback = tmp_path / "fallback"
         primary.mkdir()
         fallback.mkdir()
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(primary))
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(primary))
         monkeypatch.setenv("UDF_TOOLKIT_DIR", str(fallback))
-        c = EmsalConfig()
+        c = DayanakConfig()
         assert c.udf_toolkit_dir == primary
 
 
@@ -128,8 +130,8 @@ class TestConfigDoctor:
         assert "log_level" in result["config"]
 
     def test_doctor_with_custom_cache_path(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("EMSAL_CACHE_PATH", str(tmp_path / "test.sqlite3"))
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_CACHE_PATH", str(tmp_path / "test.sqlite3"))
+        c = DayanakConfig()
         result = c.doctor()
         assert tmp_path.name in result["config"]["cache_path"]
 
@@ -139,25 +141,25 @@ class TestLogging:
 
     def test_setup_logging_returns_logger(self):
         logger = setup_logging()
-        assert logger.name == "emsal_mcp"
+        assert logger.name == "dayanak"
         assert logger.level > 0
 
     def test_setup_logging_respects_env(self, monkeypatch):
-        monkeypatch.setenv("EMSAL_LOG_LEVEL", "ERROR")
-        from emsal_mcp.config import EmsalConfig
-        c = EmsalConfig()
+        monkeypatch.setenv("DAYANAK_LOG_LEVEL", "ERROR")
+        from dayanak.config import DayanakConfig
+        c = DayanakConfig()
         assert c.log_level == "ERROR"
 
 
 class TestGlobalSingleton:
     """Global config singleton."""
 
-    def test_global_config_is_emsal_config(self):
-        from emsal_mcp.config import config
-        assert isinstance(config, EmsalConfig)
+    def test_global_config_is_dayanak_config(self):
+        from dayanak.config import config
+        assert isinstance(config, DayanakConfig)
 
     def test_global_config_caches_on_access(self):
-        from emsal_mcp.config import config
+        from dayanak.config import config
         path1 = config.cache_path
         path2 = config.cache_path
         assert path1 == path2

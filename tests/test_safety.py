@@ -7,8 +7,8 @@ pytestmark = [pytest.mark.unit]
 
 import pytest
 
-from emsal_mcp.models import ContentStatus, Document, SafetyState, SearchResult, merge_search_metadata
-from emsal_mcp.safety import build_input_pack, citation_check, exact_quote, verify_document_hash
+from dayanak.models import ContentStatus, Document, SafetyState, SearchResult, merge_search_metadata
+from dayanak.safety import build_input_pack, citation_check, exact_quote, verify_document_hash
 
 
 def make_doc(**kwargs) -> Document:

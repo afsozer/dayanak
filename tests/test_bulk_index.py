@@ -13,7 +13,7 @@ pa = pytest.importorskip("pyarrow")
 pq = pytest.importorskip("pyarrow.parquet")
 faiss = pytest.importorskip("faiss")
 
-from emsal_mcp import bulk_index  # noqa: E402
+from dayanak import bulk_index  # noqa: E402
 
 DIM = 384
 
@@ -111,7 +111,7 @@ class TestSearch:
 
     def test_dedupes_chunks_per_document(self, corpus, monkeypatch):
         _build(corpus)
-        monkeypatch.setenv("EMSAL_BULK_VEC_DIR", str(corpus["vec_dir"]))
+        monkeypatch.setenv("DAYANAK_BULK_VEC_DIR", str(corpus["vec_dir"]))
         bulk_index._CACHE.clear()
         # 7. belgenin 1. parçasını sorgu olarak kullan → aynı belgenin 3 parçası tek satır olmalı
         q = corpus["vecs"][7 * 3 + 1].tolist()
@@ -130,7 +130,7 @@ class TestSearch:
 
     def test_uuid_ids_and_source_mapping(self, corpus, monkeypatch):
         _build(corpus)
-        monkeypatch.setenv("EMSAL_BULK_VEC_DIR", str(corpus["vec_dir"]))
+        monkeypatch.setenv("DAYANAK_BULK_VEC_DIR", str(corpus["vec_dir"]))
         bulk_index._CACHE.clear()
         q = corpus["a_vecs"][3].tolist()
         out = bulk_index.bulk_search(corpus["db"], corpus["db_path"], "testprov", q, limit=3)
@@ -140,7 +140,7 @@ class TestSearch:
 
     def test_without_vector_files_falls_back_to_pq_scores(self, corpus, monkeypatch):
         _build(corpus)
-        monkeypatch.setenv("EMSAL_BULK_VEC_DIR", str(corpus["db_path"].parent / "yok"))
+        monkeypatch.setenv("DAYANAK_BULK_VEC_DIR", str(corpus["db_path"].parent / "yok"))
         bulk_index._CACHE.clear()
         L = bulk_index._load(corpus["db_path"], "testprov")
         assert L is not None and not L.mats and "refine kapalı" in L.refine_warning
@@ -150,7 +150,7 @@ class TestSearch:
 
     def test_filters_applied(self, corpus, monkeypatch):
         _build(corpus)
-        monkeypatch.setenv("EMSAL_BULK_VEC_DIR", str(corpus["vec_dir"]))
+        monkeypatch.setenv("DAYANAK_BULK_VEC_DIR", str(corpus["vec_dir"]))
         bulk_index._CACHE.clear()
         q = corpus["vecs"][0].tolist()
         out = bulk_index.bulk_search(
@@ -163,7 +163,7 @@ class TestSearch:
 class TestAppend:
     def test_append_sidecar_extends_index_and_keys(self, corpus, monkeypatch):
         _build(corpus)
-        monkeypatch.setenv("EMSAL_BULK_VEC_DIR", str(corpus["vec_dir"]))
+        monkeypatch.setenv("DAYANAK_BULK_VEC_DIR", str(corpus["vec_dir"]))
         rng = np.random.default_rng(7)
         # karışık kaynaklı delta: 3 yeni bedesten belgesi (2 parça) + 1 aym (uuid)
         vecs, ids, srcs, cix = [], [], [], []

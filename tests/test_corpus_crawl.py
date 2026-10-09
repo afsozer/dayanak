@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.models import ContentStatus, Document, SearchResult
-import emsal_mcp.corpus_builder as cb
-import emsal_mcp.sources.registry  # noqa: F401 — ensure submodule is in sys.modules
+from dayanak.cache import Cache
+from dayanak.models import ContentStatus, Document, SearchResult
+import dayanak.corpus_builder as cb
+import dayanak.sources.registry  # noqa: F401 — ensure submodule is in sys.modules
 
 
 def _sr(did: str) -> SearchResult:
@@ -43,7 +43,7 @@ class _Fake:
 
 @pytest.fixture()
 def patched_source(monkeypatch):
-    regmod = sys.modules["emsal_mcp.sources.registry"]
+    regmod = sys.modules["dayanak.sources.registry"]
 
     def _install(client):
         monkeypatch.setattr(regmod, "get_source", lambda s: client)

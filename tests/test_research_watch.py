@@ -15,9 +15,9 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.models import ContentStatus, Document, SearchResult
-from emsal_mcp.research_watch import (
+from dayanak.cache import Cache
+from dayanak.models import ContentStatus, Document, SearchResult
+from dayanak.research_watch import (
     add_watch,
     list_watches,
     remove_watch,
@@ -68,7 +68,7 @@ class _FakeSource:
         )
 
     async def smoke(self, online: bool = False) -> Any:
-        from emsal_mcp.models import SourceSmokeResult
+        from dayanak.models import SourceSmokeResult
         return SourceSmokeResult(source_id=self.source_id)
 
 
@@ -244,7 +244,7 @@ class TestInvalidInput:
 class TestImports:
     def test_cli_imports(self):
         """CLI module should import without error."""
-        from emsal_mcp.cli import (
+        from dayanak.cli import (
             watch_add,
             watch_list,
             watch_remove,
@@ -257,7 +257,7 @@ class TestImports:
 
     def test_research_watch_imports(self):
         """research_watch module should export all public functions."""
-        from emsal_mcp.research_watch import add_watch, list_watches, remove_watch, run_watch
+        from dayanak.research_watch import add_watch, list_watches, remove_watch, run_watch
         assert callable(add_watch)
         assert callable(list_watches)
         assert callable(remove_watch)
@@ -266,4 +266,4 @@ class TestImports:
     def test_server_imports(self):
         """server module should be importable (MCP tools registered)."""
         # Just verify the module-level imports don't fail
-        import emsal_mcp.server  # noqa: F401
+        import dayanak.server  # noqa: F401

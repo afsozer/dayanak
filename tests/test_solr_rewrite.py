@@ -1,6 +1,6 @@
 """Tests for the Bedesten Solr query-rewrite safety net (Yargı-MCP parity Görev 1).
 
-Bedesten's default Solr operator is OR.  emsal-mcp transparently rewrites
+Bedesten's default Solr operator is OR.  dayanak transparently rewrites
 plain multi-word queries (no operators) so every term is required (`+term`),
 preventing the OR-default from returning irrelevant noise.  Operator-bearing
 queries pass through untouched.
@@ -11,7 +11,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.sources.bedesten import rewrite_solr_query
+from dayanak.sources.bedesten import rewrite_solr_query
 
 
 class TestRewriteSolrQuery:

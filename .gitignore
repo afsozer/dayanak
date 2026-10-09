@@ -13,6 +13,8 @@ exports/
 vendor/UDF-Toolkit/
 *.sqlite3
 *.sqlite
+.dayanak_research/
+.dayanak_petition/
 .emsal_research/
 .emsal_petition/
 sample_docs.json

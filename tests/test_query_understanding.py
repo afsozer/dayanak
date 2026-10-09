@@ -12,7 +12,7 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from emsal_mcp.query_understanding import (
+from dayanak.query_understanding import (
     QUERY_UNDERSTANDING_VERSION,
     expand_query_terms,
     extract_query_filters,

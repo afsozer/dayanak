@@ -7,7 +7,7 @@ Her girdi parquet dosyası için çıktı dizinine:
     <ad>.done.json     sayılar + süre
 Tamamlanmış dosyalar (done.json varsa) atlanır → kaldığı yerden devam eder.
 
-Parçalama emsal_mcp.chunking.chunk_text ile (1600/200, CHUNKING_VERSION) — Mac ve laptop
+Parçalama dayanak.chunking.chunk_text ile (1600/200, CHUNKING_VERSION) — Mac ve laptop
 aynı kodu koşar. done.json'a yazılan ``chunking_version`` sidecar'ın hangi parçalayıcıyla
 üretildiğini söyler; bulk_index bunu meta'ya taşır ve karışık sürümlü dizini reddeder.
 Metin filtresi import_hf_parquet.py ile aynı: len(text) >= 50.
@@ -18,8 +18,8 @@ Kullanım (laptop, CUDA):
         --out <bench-dizini>/vec --device cuda
 Kullanım (Mac, MPS):
     python scripts/embed_parquet_worker.py \
-        --files "~/Developer/emsal-mcp-data/hf/emsal/*.parquet" \
-        --out ~/Developer/emsal-mcp-data/vec --device mps
+        --files "~/Developer/dayanak-data/hf/emsal/*.parquet" \
+        --out ~/Developer/dayanak-data/vec --device mps
 """
 from __future__ import annotations
 
@@ -37,10 +37,10 @@ import pyarrow.parquet as pq
 
 HERE = Path(__file__).resolve().parent
 for cand in (HERE.parent / "src", HERE):
-    if (cand / "emsal_mcp" / "chunking.py").exists() or (cand / "chunking.py").exists():
+    if (cand / "dayanak" / "chunking.py").exists() or (cand / "chunking.py").exists():
         sys.path.insert(0, str(cand))
 try:
-    from emsal_mcp.chunking import CHUNKING_VERSION, chunk_text
+    from dayanak.chunking import CHUNKING_VERSION, chunk_text
 except ImportError:
     from chunking import CHUNKING_VERSION, chunk_text  # laptop kopyası: chunking.py betiğin yanında
 

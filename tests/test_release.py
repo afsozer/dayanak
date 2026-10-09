@@ -5,8 +5,8 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp import __version__
-from emsal_mcp.release import final_v1_readiness
+from dayanak import __version__
+from dayanak.release import final_v1_readiness
 
 
 class TestFinalV1Readiness:

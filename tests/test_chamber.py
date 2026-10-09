@@ -7,15 +7,15 @@ pytestmark = [pytest.mark.integration]
 
 from pathlib import Path
 
-from emsal_mcp.chamber import (
+from dayanak.chamber import (
     get_chamber_overview,
     profile_chamber,
     chamber_timeline,
     find_similar_chambers,
     CHAMBER_MODULE_VERSION,
 )
-from emsal_mcp.cache import Cache
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.cache import Cache
+from dayanak.models import ContentStatus, Document
 
 
 def _seed_test_data(cache):

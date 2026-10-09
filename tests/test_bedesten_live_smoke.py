@@ -1,13 +1,13 @@
 """Live smoke tests against the real Bedesten endpoint.
 
-Opt-in: set ``EMSAL_LIVE_TESTS=1``.  Everything else in the suite mocks the
+Opt-in: set ``DAYANAK_LIVE_TESTS=1``.  Everything else in the suite mocks the
 HTTP client, which is exactly how the ``DANISTAYKARARI`` typo survived — the
 mock happily echoed a bogus itemType while production silently returned
 ``total=0`` for it, quietly dropping every Danıştay decision from every
 default search.  These tests are the only ones that can catch that class of
 bug, so they talk to the source for real.
 
-    EMSAL_LIVE_TESTS=1 pytest tests/test_bedesten_live_smoke.py -q
+    DAYANAK_LIVE_TESTS=1 pytest tests/test_bedesten_live_smoke.py -q
 """
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ pytestmark = [
     pytest.mark.live,
     pytest.mark.integration,
     pytest.mark.skipif(
-        os.environ.get("EMSAL_LIVE_TESTS") != "1",
-        reason="live source test; set EMSAL_LIVE_TESTS=1 to run",
+        os.environ.get("DAYANAK_LIVE_TESTS") != "1",
+        reason="live source test; set DAYANAK_LIVE_TESTS=1 to run",
     ),
 ]
 
@@ -30,7 +30,7 @@ PROBE_QUERY = "tazminat"
 
 
 def _live_total(item_type: str) -> int:
-    from emsal_mcp.sources.bedesten import BedestenClient
+    from dayanak.sources.bedesten import BedestenClient
 
     ci = BedestenClient()
     sp = asyncio.run(ci.search_page(PROBE_QUERY, limit=1, court_types=[item_type]))
@@ -61,7 +61,7 @@ class TestItemTypesAreRealUpstream:
 
     def test_whitelist_matches_the_tested_set(self):
         """Guard against adding a constant without a live probe for it."""
-        from emsal_mcp.sources.bedesten import VALID_ITEM_TYPES
+        from dayanak.sources.bedesten import VALID_ITEM_TYPES
 
         tested = {
             "YARGITAYKARARI", "DANISTAYKARAR", "YERELHUKUK", "ISTINAFHUKUK", "KYB",
@@ -73,7 +73,7 @@ class TestItemTypesAreRealUpstream:
 
     def test_default_sweep_covers_both_courts(self):
         """The default search must actually reach Danıştay, not just Yargıtay."""
-        from emsal_mcp.sources.bedesten import DEFAULT_COURT_TYPES, BedestenClient
+        from dayanak.sources.bedesten import DEFAULT_COURT_TYPES, BedestenClient
 
         yargitay = _live_total("YARGITAYKARARI")
         sp = asyncio.run(BedestenClient().search_page(
@@ -96,7 +96,7 @@ class TestKnownBadSpellingsAreStillDead:
     def test_bad_spelling_would_have_returned_zero(self, bad_type):
         import httpx
 
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
 
         ci = BedestenClient()
         payload = {
@@ -133,7 +133,7 @@ class TestUnstemmedIndexAssumption:
 
     def test_bare_multiword_falls_back_and_finds_precedent(self):
         """The exact query that used to return 2 irrelevant hits."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
 
         ci = BedestenClient()
         sp = asyncio.run(ci.search_page("tahliye taahhüdü adli tatil", limit=5))
@@ -143,7 +143,7 @@ class TestUnstemmedIndexAssumption:
 
 
 def _live_total_phrase(phrase: str) -> int:
-    from emsal_mcp.sources.bedesten import BedestenClient
+    from dayanak.sources.bedesten import BedestenClient
 
     ci = BedestenClient()
     sp = asyncio.run(ci.search_page(phrase, limit=1, court_types=["YARGITAYKARARI"]))
@@ -157,7 +157,7 @@ class TestResmiGazeteLive:
     KNOWN_DAY = "2026-07-31"  # issue 33326: 13 items, 2 of them Kanun
 
     def _search(self, query: str = "", limit: int = 30):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         return asyncio.run(
             ResmiGazeteClient().search_page(query, limit=limit, date=self.KNOWN_DAY)
         )
@@ -183,7 +183,7 @@ class TestResmiGazeteLive:
         assert hit.metadata["kategori"] == "KANUNLAR"
 
     def test_full_text_fetch(self):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         doc = asyncio.run(ResmiGazeteClient().get_document("20260731-1"))
         assert doc.content_status.value == "html_markdown"
         assert len(doc.full_text or "") > 5000
@@ -191,7 +191,7 @@ class TestResmiGazeteLive:
         assert "mso-style" not in (doc.full_text or ""), "Word boilerplate leaked in"
 
     def test_pdf_only_item_is_not_claimed_as_text(self):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         doc = asyncio.run(ResmiGazeteClient().get_document("20260731-3"))
         assert doc.content_status.value == "pdf_link_only"
         assert not doc.full_text

@@ -1,12 +1,12 @@
 ﻿# docs/JSON_CONTRACTS.md — Canonical JSON Contracts
 
-> **emsal-mcp v1.0.0** — 11 core MCP tools (47 in full profile), 11 sources.
+> **dayanak v1.0.0** — 11 core MCP tools (47 in full profile), 11 sources.
 > All JSON contracts below are the canonical shapes returned by CLI `--json`
 > output and MCP tool responses.
 
 ## Source Capability
 
-Returned by `capabilities()`, CLI `emsal-mcp sources --json`, and MCP
+Returned by `capabilities()`, CLI `dayanak sources --json`, and MCP
 `source_capabilities`. Every entry has this shape:
 
 ```json
@@ -255,9 +255,9 @@ Returned by `source_smoke` MCP tool, CLI `sources-smoke`, and
 ### CLI usage
 
 ```
-emsal-mcp sources-smoke                # offline only (default)
-emsal-mcp sources-smoke --online       # include online checks
-emsal-mcp sources-smoke --json         # JSON output
+dayanak sources-smoke                # offline only (default)
+dayanak sources-smoke --online       # include online checks
+dayanak sources-smoke --json         # JSON output
 ```
 
 ### MCP usage
@@ -342,7 +342,7 @@ source_smoke(online=true)              # include online checks
 
 ### `verify_legal_citation`
 
-Returned by `verify_legal_citation()` and CLI `emsal-mcp cite verify --json`.
+Returned by `verify_legal_citation()` and CLI `dayanak cite verify --json`.
 Full pipeline: text/file → extract candidates → local cache search → live search → rank → fetch → format.
 
 ```json
@@ -415,7 +415,7 @@ Full pipeline: text/file → extract candidates → local cache search → live 
 
 ### `format_legal_citation`
 
-Returned by `format_legal_citation()` and CLI `emsal-mcp cite format --json`.
+Returned by `format_legal_citation()` and CLI `dayanak cite format --json`.
 Formats a citation from a Document model or dict using one of three styles:
 `petition`, `parenthetical`, or `short`.
 
@@ -443,7 +443,7 @@ Missing fields produce warnings, never fabricated values.
 
 ### `prepare_drafting_input_pack`
 
-Returned by `prepare_drafting_input_pack()` and CLI `emsal-mcp petition pack --json`.
+Returned by `prepare_drafting_input_pack()` and CLI `dayanak petition pack --json`.
 Classifies authorities and generates structured pack directory.
 
 ```json
@@ -473,8 +473,8 @@ Classifies authorities and generates structured pack directory.
   "source_documents": 2,
   "warnings": [],
   "recommended_next_steps": [
-    "Pack ready for inspection: emsal-mcp petition inspect petition_pack/",
-    "Pack ready for draft: emsal-mcp petition draft petition_pack/"
+    "Pack ready for inspection: dayanak petition inspect petition_pack/",
+    "Pack ready for draft: dayanak petition draft petition_pack/"
   ]
 }
 ```
@@ -506,7 +506,7 @@ petition_pack/
 
 ### `inspect_petition_pack`
 
-Returned by `inspect_petition_pack()` and CLI `emsal-mcp petition inspect --json`.
+Returned by `inspect_petition_pack()` and CLI `dayanak petition inspect --json`.
 Validates pack directory with 8 checks.
 
 ```json
@@ -552,7 +552,7 @@ Validates pack directory with 8 checks.
 
 ## Petition Outline (v0.8)
 
-Returned by `prepare_petition_outline` and CLI `emsal-mcp petition outline --json`.
+Returned by `prepare_petition_outline` and CLI `dayanak petition outline --json`.
 
 ```json
 {
@@ -746,7 +746,7 @@ Returned by `prepare_export_package_bundle`.
 
 ## UDF Toolkit Status (v0.9)
 
-Returned by `get_udf_toolkit_status()`, CLI `emsal-mcp udf status`, and MCP
+Returned by `get_udf_toolkit_status()`, CLI `dayanak udf status`, and MCP
 `udf_toolkit_status`.
 
 ```json
@@ -758,7 +758,7 @@ Returned by `get_udf_toolkit_status()`, CLI `emsal-mcp udf status`, and MCP
   "unoconv_path": null,
   "version": "0.9.0",
   "warnings": [
-    "UDF toolkit dizini ayarlanmamis. EMSAL_UDF_TOOLKIT_DIR veya UDF_TOOLKIT_DIR ortam degiskeni ile ayarlayin.",
+    "UDF toolkit dizini ayarlanmamis. DAYANAK_UDF_TOOLKIT_DIR veya UDF_TOOLKIT_DIR ortam degiskeni ile ayarlayin.",
     "LibreOffice (soffice) PATH'te bulunamadi.",
     "unoconv PATH'te bulunamadi."
   ]
@@ -781,12 +781,12 @@ Returned by `get_udf_toolkit_status()`, CLI `emsal-mcp udf status`, and MCP
 
 | Variable | Description |
 |---|---|
-| `EMSAL_UDF_TOOLKIT_DIR` | Primary toolkit directory (takes priority) |
+| `DAYANAK_UDF_TOOLKIT_DIR` | Primary toolkit directory (takes priority) |
 | `UDF_TOOLKIT_DIR` | Fallback toolkit directory |
 
 ## UDF Authoring Instructions (v0.9)
 
-Returned by `get_udf_authoring_instructions()`, CLI `emsal-mcp udf authoring-instructions`, and MCP
+Returned by `get_udf_authoring_instructions()`, CLI `dayanak udf authoring-instructions`, and MCP
 `udf_authoring_instructions`.
 
 ### JSON format
@@ -1259,7 +1259,7 @@ Same output as `build_semantic_index` with `force_rebuild=True`. All existing FT
 > **M-103 (v5.0.0):** Release yönetimi MCP araçları kaldırıldı; yalnızca
 > CLI `release v1-readiness` kaldı.
 
-### `final_v1_readiness` (CLI: `emsal-mcp release v1-readiness --json`)
+### `final_v1_readiness` (CLI: `dayanak release v1-readiness --json`)
 
 ```json
 {

@@ -9,7 +9,7 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from emsal_mcp.eval_metrics import (
+from dayanak.eval_metrics import (
     evaluate_search,
     ndcg_at_k,
     recall_at_k,
@@ -149,11 +149,11 @@ class TestEvaluateSearch:
 
 class TestEvalImports:
     def test_cli_import(self) -> None:
-        from emsal_mcp.cli import app  # noqa: F401
+        from dayanak.cli import app  # noqa: F401
 
     def test_server_import(self) -> None:
-        from emsal_mcp.server import main  # noqa: F401
+        from dayanak.server import main  # noqa: F401
 
     def test_eval_module_import(self) -> None:
-        from emsal_mcp.eval_metrics import EVAL_VERSION
+        from dayanak.eval_metrics import EVAL_VERSION
         assert EVAL_VERSION == "1.0.0"

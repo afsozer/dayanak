@@ -1,8 +1,8 @@
 """Betiklerin ortak yol varsayılanları — makineye özel değer repoya girmez.
 
 Öncelik: ortam değişkeni > scripts/yerel-ayar.cmd içindeki ``set AD=deger``
-satırları > ``~/.emsal_mcp`` altından türetilen varsayılan. Böylece betik
-``emsal-env.cmd`` çağrılmadan elle çalıştırıldığında da aynı yolları bulur.
+satırları > ``~/.dayanak`` altından türetilen varsayılan. Böylece betik
+``dayanak-env.cmd`` çağrılmadan elle çalıştırıldığında da aynı yolları bulur.
 Şablon: scripts/yerel-ayar.ornek.cmd.
 """
 from __future__ import annotations
@@ -23,9 +23,21 @@ def _yerel_ayar_yukle() -> None:
         return
     for satir in dosya.read_text(encoding="utf-8", errors="replace").splitlines():
         m = _SET.match(satir)
-        if m and m.group(2) and not os.environ.get(m.group(1)):
-            os.environ[m.group(1)] = m.group(2)
+        if not m or not m.group(2):
+            continue
+        ad = _yeni_ad(m.group(1))
+        if not os.environ.get(ad):
+            os.environ[ad] = m.group(2)
 
+
+def _yeni_ad(ad: str) -> str:
+    """2.0.0 oncesi ``EMSAL_*`` adini ``DAYANAK_*`` karsiligina cevirir."""
+    return "DAYANAK_" + ad[len("EMSAL_"):] if ad.startswith("EMSAL_") else ad
+
+
+for _ad, _deger in list(os.environ.items()):
+    if _ad.startswith("EMSAL_"):
+        os.environ.setdefault(_yeni_ad(_ad), _deger)
 
 _yerel_ayar_yukle()
 
@@ -35,12 +47,12 @@ def _env_yol(ad: str, varsayilan: Path) -> Path:
     return Path(deger) if deger else varsayilan
 
 
-DATA_DIR = _env_yol("EMSAL_DATA_DIR", Path.home() / ".emsal_mcp")
-BENCH_DIR = _env_yol("EMSAL_BENCH_DIR", DATA_DIR / "bench")
-HF_DIR = _env_yol("EMSAL_HF_DIR", DATA_DIR / "hf-datasets" / "turkish-court-decisions")
-LOG_DIR = _env_yol("EMSAL_LOG_DIR", DATA_DIR / "crawl_logs")
-CACHE_PATH = _env_yol("EMSAL_CACHE_PATH", DATA_DIR / "cache.sqlite3")
-VEC_DIR = _env_yol("EMSAL_BULK_VEC_DIR", BENCH_DIR / "vec")
+DATA_DIR = _env_yol("DAYANAK_DATA_DIR", Path.home() / ".dayanak")
+BENCH_DIR = _env_yol("DAYANAK_BENCH_DIR", DATA_DIR / "bench")
+HF_DIR = _env_yol("DAYANAK_HF_DIR", DATA_DIR / "hf-datasets" / "turkish-court-decisions")
+LOG_DIR = _env_yol("DAYANAK_LOG_DIR", DATA_DIR / "crawl_logs")
+CACHE_PATH = _env_yol("DAYANAK_CACHE_PATH", DATA_DIR / "cache.sqlite3")
+VEC_DIR = _env_yol("DAYANAK_BULK_VEC_DIR", BENCH_DIR / "vec")
 VEC2_DIR = BENCH_DIR / "vec2"
 VEC_OLD_DIR = BENCH_DIR / "vec_v1"
 STAGE_DIR = DATA_DIR / "staging"

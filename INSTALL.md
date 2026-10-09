@@ -1,4 +1,4 @@
-# Emsal-mcp Kurulum
+# Dayanak Kurulum
 
 ## Geliştirme Ortamı
 
@@ -48,5 +48,5 @@ pipx install .
 ## On-the-fly (uvx)
 
 ```bash
-uvx --from . emsal-mcp version
+uvx --from . dayanak version
 ```

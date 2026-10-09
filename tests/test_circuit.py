@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.circuit import (
+from dayanak.cache import Cache
+from dayanak.circuit import (
     _ensure_table,
     get_all_sources_health,
     get_source_health,
@@ -192,9 +192,9 @@ class TestIsCircuitOpen:
         assert is_circuit_open("src", cache=cache) is False
 
     def test_custom_threshold(self, cache):
-        """Custom threshold should override default via EMSAL_CB_THRESHOLD env."""
+        """Custom threshold should override default via DAYANAK_CB_THRESHOLD env."""
         # With env-based threshold=3, 3 failures should trigger open
-        with patch.dict("os.environ", {"EMSAL_CB_THRESHOLD": "3"}):
+        with patch.dict("os.environ", {"DAYANAK_CB_THRESHOLD": "3"}):
             for _ in range(3):
                 record_failure("src", cache=cache)
             # record_failure reads config at call time, but is_circuit_open uses
@@ -420,18 +420,18 @@ class TestEmptyDB:
 
 class TestConfigOverride:
     def test_custom_threshold_env(self, cache):
-        """EMSAL_CB_THRESHOLD env var should be respected."""
-        with patch.dict("os.environ", {"EMSAL_CB_THRESHOLD": "3"}):
+        """DAYANAK_CB_THRESHOLD env var should be respected."""
+        with patch.dict("os.environ", {"DAYANAK_CB_THRESHOLD": "3"}):
             # Need to reimport to pick up env change
-            from emsal_mcp.config import EmsalConfig
-            cfg = EmsalConfig()
+            from dayanak.config import DayanakConfig
+            cfg = DayanakConfig()
             assert cfg.circuit_breaker_threshold == 3
 
     def test_custom_timeout_env(self, cache):
-        """EMSAL_CB_TIMEOUT env var should be respected."""
-        with patch.dict("os.environ", {"EMSAL_CB_TIMEOUT": "60"}):
-            from emsal_mcp.config import EmsalConfig
-            cfg = EmsalConfig()
+        """DAYANAK_CB_TIMEOUT env var should be respected."""
+        with patch.dict("os.environ", {"DAYANAK_CB_TIMEOUT": "60"}):
+            from dayanak.config import DayanakConfig
+            cfg = DayanakConfig()
             assert cfg.circuit_recovery_timeout == 60
 
 
@@ -441,7 +441,7 @@ class TestConfigOverride:
 class TestImports:
     def test_circuit_module_imports(self):
         """All public circuit functions should be importable."""
-        from emsal_mcp.circuit import (
+        from dayanak.circuit import (
             get_all_sources_health,
             get_source_health,
             is_circuit_open,
@@ -458,12 +458,12 @@ class TestImports:
 
     def test_cli_imports(self):
         """CLI circuit commands should be importable."""
-        from emsal_mcp.cli import circuit_app
+        from dayanak.cli import circuit_app
         assert circuit_app is not None
 
     def test_server_circuit_tools_importable(self):
         """Server circuit breaker tools should be importable."""
-        from emsal_mcp.circuit import get_source_health, get_all_sources_health, reset_circuit
+        from dayanak.circuit import get_source_health, get_all_sources_health, reset_circuit
         assert callable(get_source_health)
         assert callable(get_all_sources_health)
         assert callable(reset_circuit)

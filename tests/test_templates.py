@@ -18,8 +18,8 @@ pytestmark = [pytest.mark.integration]
 
 import re
 
-from emsal_mcp.petition import DISCLAIMER_HEADER, PLACEHOLDER_PATTERN
-from emsal_mcp.templates import (
+from dayanak.petition import DISCLAIMER_HEADER, PLACEHOLDER_PATTERN
+from dayanak.templates import (
     DAVA_DILEKCESI,
     CEVAP_DILEKCESI,
     TEMYIZ_DILEKCESI,
@@ -333,11 +333,11 @@ class TestInspectIntegration:
 
 class TestCLIIntegration:
     def test_cli_import(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_templates_importable(self):
-        from emsal_mcp.templates import (
+        from dayanak.templates import (
             get_template,
             get_template_types,
             list_templates,
@@ -351,7 +351,7 @@ class TestCLIIntegration:
 
 class TestMCPServerIntegration:
     def test_server_import(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
 

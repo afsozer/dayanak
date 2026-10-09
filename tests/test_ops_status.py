@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from emsal_mcp.ops_status import (
+from dayanak.ops_status import (
     JOBS,
     collect_scheduled_jobs,
     get_log_dir,
@@ -30,13 +30,13 @@ def _write(path: Path, text: str, age_hours: float = 0.0) -> Path:
 
 
 def test_log_dir_env_wins(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("EMSAL_CRAWL_LOG_DIR", str(tmp_path / "loglar"))
+    monkeypatch.setenv("DAYANAK_CRAWL_LOG_DIR", str(tmp_path / "loglar"))
     assert get_log_dir() == tmp_path / "loglar"
 
 
 def test_log_dir_defaults_next_to_cache(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("EMSAL_CRAWL_LOG_DIR", raising=False)
-    monkeypatch.setenv("EMSAL_CACHE_PATH", str(tmp_path / "cache.sqlite3"))
+    monkeypatch.delenv("DAYANAK_CRAWL_LOG_DIR", raising=False)
+    monkeypatch.setenv("DAYANAK_CACHE_PATH", str(tmp_path / "cache.sqlite3"))
     assert get_log_dir() == tmp_path / "crawl_logs"
 
 

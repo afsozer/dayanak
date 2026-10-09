@@ -13,7 +13,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.sources.base import (
+from dayanak.sources.base import (
     BedestenUpstreamError,
     check_bedesten_response_error,
 )
@@ -69,14 +69,14 @@ class TestCheckBedestenResponseError:
 class TestBedestenSearchUpstreamError:
     def test_search_raises_on_upstream_error(self):
         """After retry, persistent upstream error propagates (not empty list)."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         ci._upstream_retry_delay = 0.0  # no real sleep during the retry
         err_resp = _mock_resp({
             "data": None,
             "metadata": {"FMTY": "ERROR", "FMC": "ADALET_RUNTIME_EXCEPTION", "FMTE": "solr io"},
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=err_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -90,7 +90,7 @@ class TestBedestenSearchUpstreamError:
 
     def test_search_retries_then_succeeds(self):
         """First call faults, retry succeeds → returns results."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         ci._upstream_retry_delay = 0.0
         err_resp = _mock_resp({
@@ -101,7 +101,7 @@ class TestBedestenSearchUpstreamError:
             "data": {"emsalKararList": [{"id": "1", "itemType": {"description": "Yargıtay"}}]}
         })
         responses = iter([err_resp, ok_resp])
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=lambda *a, **k: next(responses))))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -113,14 +113,14 @@ class TestBedestenSearchUpstreamError:
 
 class TestMevzuatSearchUpstreamError:
     def test_search_raises_on_upstream_error(self):
-        from emsal_mcp.sources.mevzuat import MevzuatClient
+        from dayanak.sources.mevzuat import MevzuatClient
         mc_client = MevzuatClient()
         mc_client._upstream_retry_delay = 0.0
         err_resp = _mock_resp({
             "data": None,
             "metadata": {"FMTY": "ERROR", "FMC": "ADALET_RUNTIME_EXCEPTION"},
         })
-        with patch("emsal_mcp.sources.base.client") as mc:
+        with patch("dayanak.sources.base.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=err_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)

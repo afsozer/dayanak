@@ -5,7 +5,7 @@ taahhüdü" TBK m.352'yi bulamıyor çünkü ifade madde metninde geçmiyor.  Bu
 ``mevzuat_madde`` tablosundaki her maddeyi (mevzuat adı + kenar başlıkları +
 metin, bkz. ``madde_metni``) parçalayıp
 multilingual-e5-small ile fp16 gömer ve 2. aşamanın (faiss venv'i,
-``emsal_mcp.legislation_semantic.build_index``) okuyacağı bir sidecar yazar::
+``dayanak.legislation_semantic.build_index``) okuyacağı bir sidecar yazar::
 
     <vec_dir>\\<ad>.vectors.npy    float16 (N, 384)
     <vec_dir>\\<ad>.keys.parquet   mevzuat_id, sira, chunk_index, metin_hash
@@ -38,7 +38,7 @@ import pyarrow.parquet as pq
 import _yollar  # noqa: E402
 
 sys.path.insert(0, str(_yollar.SRC))
-from emsal_mcp.chunking import chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
+from dayanak.chunking import chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
 
 MODEL = "intfloat/multilingual-e5-small"
 _VARSAYILAN_DB = str(_yollar.CACHE_PATH)
@@ -82,9 +82,9 @@ def metin_hash(text: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db",
-                    default=os.environ.get("EMSAL_CACHE_PATH", _VARSAYILAN_DB))
+                    default=os.environ.get("DAYANAK_CACHE_PATH", _VARSAYILAN_DB))
     ap.add_argument("--vec-dir",
-                    default=os.environ.get("EMSAL_MEVZUAT_VEC_DIR", _VARSAYILAN_VEC))
+                    default=os.environ.get("DAYANAK_MEVZUAT_VEC_DIR", _VARSAYILAN_VEC))
     ap.add_argument("--name", default=time.strftime("mevzuat-%Y%m%d-%H%M"))
     ap.add_argument("--provider", default="fastembed-multilingual-e5")
     ap.add_argument("--device", default="cuda")

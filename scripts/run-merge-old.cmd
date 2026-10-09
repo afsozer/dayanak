@@ -1,7 +1,7 @@
 @echo off
-call "%~dp0emsal-env.cmd"
-cd /d "%EMSAL_REPO%"
-set LOG=%EMSAL_LOG_DIR%\merge_old_laptop.log
+call "%~dp0dayanak-env.cmd"
+cd /d "%DAYANAK_REPO%"
+set LOG=%DAYANAK_LOG_DIR%\merge_old_laptop.log
 echo %date% %time% START > %LOG%
 for /f "tokens=2" %%i in ('powershell -NoProfile -Command "(Get-Date).ToUniversalTime().AddMinutes(-2).ToString(\"yyyy-MM-ddTHH:mm:ss\")"') do set SINCE=%%i
 for /f %%i in ('powershell -NoProfile -Command "(Get-Date).ToUniversalTime().AddMinutes(-2).ToString(\"yyyy-MM-ddTHH:mm:ss\")"') do set SINCE=%%i

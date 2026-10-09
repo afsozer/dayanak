@@ -7,7 +7,7 @@ test:
 	python -m pytest tests/ -q --tb=short
 
 coverage:
-	python -m pytest tests/ -q --tb=short --cov=src/emsal_mcp --cov-report=term-missing
+	python -m pytest tests/ -q --tb=short --cov=src/dayanak --cov-report=term-missing
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +

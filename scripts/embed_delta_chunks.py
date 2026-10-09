@@ -8,7 +8,7 @@ fp16 — gömer ve toplu indekse eklenecek bir sidecar yazar:
     <vec_dir>\delta-YYYYMMDD.keys.parquet   document_id, source, chunk_index, text_len
     <vec_dir>\delta-YYYYMMDD.manifest.json  gömülen (document_id, source) listesi
 
-2. aşama (faiss venv'i): `emsal-mcp semantic bulk-append <vec_dir> delta-YYYYMMDD`,
+2. aşama (faiss venv'i): `dayanak semantic bulk-append <vec_dir> delta-YYYYMMDD`,
 sonra manifest'teki kararların delta satırları silinir (scripts/monthly_merge.cmd).
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ import pyarrow.parquet as pq
 import _yollar  # noqa: E402
 
 sys.path.insert(0, str(_yollar.SRC))
-from emsal_mcp.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
+from dayanak.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
 
 MODEL = "intfloat/multilingual-e5-small"
 

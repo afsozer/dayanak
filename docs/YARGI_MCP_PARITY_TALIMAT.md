@@ -1,6 +1,6 @@
 # Yargı-MCP Parite Talimatı
 
-**Amaç:** emsal-mcp'nin karar/mevzuat arama kalitesini hosted yargı-mcp (api.yargimcp.com) seviyesine yaklaştırmak.
+**Amaç:** Dayanak'ın karar/mevzuat arama kalitesini hosted yargı-mcp (api.yargimcp.com) seviyesine yaklaştırmak.
 
 **Bağlam:** İki araç da aynı arka ucu (Bedesten API, `bedesten.adalet.gov.tr`) kullanıyor. Kalite farkı veri kaynağından değil, dört şeyden geliyor: sıralama stratejisi, sorgu dialekti dokümantasyonu, snippet eksikliği ve mevzuat tarafında yanlış API tercihi. Bu talimat, tespit edilen farkları öncelik sırasıyla kapatır.
 
@@ -10,7 +10,7 @@
 
 ## Görev 1 — Bedesten Solr operatör dokümantasyonunu düzelt (boşluk = OR)
 
-**Sorun:** `src/emsal_mcp/server.py` içindeki `search_decisions` docstring'i (≈ satır 451–479, "QUERY HYGIENE" ve "BEDESTEN SOLR OPERATOR COOKBOOK" bölümleri) çıplak kelimeler arası boşluğun AND anlamına geldiğini varsayan örnekler veriyor:
+**Sorun:** `src/dayanak/server.py` içindeki `search_decisions` docstring'i (≈ satır 451–479, "QUERY HYGIENE" ve "BEDESTEN SOLR OPERATOR COOKBOOK" bölümleri) çıplak kelimeler arası boşluğun AND anlamına geldiğini varsayan örnekler veriyor:
 
 - `"iş kazası" tazminat → exact phrase "iş kazası" AND term "tazminat"` — **YANLIŞ**
 - `boşanma tazminat* → "boşanma" AND any word starting "tazminat"` — **YANLIŞ**
@@ -24,7 +24,7 @@ Bedesten, Solr StandardQueryParser kullanıyor ve varsayılan operatör **OR**'d
    - Doğru örnekler: `+"tahliye taahhüdü" +geçerlilik`, `+işçi +"kıdem tazminatı"`, `kıdem AND ihbar AND tazminat`.
    - Yanlış örnek olarak göster: `tahliye taahhüdü geçerlilik` (OR'a dönüşür, alakasız sonuç getirir).
 2. Aynı yanlış varsayım başka yerde varsa düzelt: `legal_research_guide` aracının içeriği, `docs/COOKBOOK.md`, `docs/MCP_CONTRACTS.md` içinde `boşanma tazminat*` / "implicit AND" benzeri ifadeleri ara ve düzelt.
-3. **Otomatik güvenlik ağı (opsiyonel ama önerilir):** `BedestenClient.search` içinde (`src/emsal_mcp/sources/bedesten.py`) sorgu ön-işleme ekle: sorgu hiç operatör içermiyorsa (`+`, `-`, `"`, `AND`, `OR`, `NOT`, `(` yoksa) ve birden fazla kelime varsa, her kelimeye otomatik `+` öneki ekle. Bu davranışı sonuç metadata'sında `query_rewritten: true` olarak raporla ki şeffaf kalsın. Docstring'e de yaz.
+3. **Otomatik güvenlik ağı (opsiyonel ama önerilir):** `BedestenClient.search` içinde (`src/dayanak/sources/bedesten.py`) sorgu ön-işleme ekle: sorgu hiç operatör içermiyorsa (`+`, `-`, `"`, `AND`, `OR`, `NOT`, `(` yoksa) ve birden fazla kelime varsa, her kelimeye otomatik `+` öneki ekle. Bu davranışı sonuç metadata'sında `query_rewritten: true` olarak raporla ki şeffaf kalsın. Docstring'e de yaz.
 
 **Doğrulama:** `pytest` yeşil; `grep -ri "implicit AND\|boşanma tazminat\*" src/ docs/` yanlış örnek döndürmüyor. Otomatik `+` katmanı eklendiyse birim testi yaz: `"tahliye taahhüdü geçerlilik"` → `"+tahliye +taahhüdü +geçerlilik"`, ama `'+"tahliye taahhüdü" +geçerlilik'` değişmeden geçer.
 
@@ -32,7 +32,7 @@ Bedesten, Solr StandardQueryParser kullanıyor ve varsayılan operatör **OR**'d
 
 ## Görev 2 — Relevance (alaka) sıralaması ekle, varsayılan yap
 
-**Sorun:** `src/emsal_mcp/sources/bedesten.py` (≈ satır 63) `sortFields: ["KARAR_TARIHI"]` değerini sabitliyor → her arama "en alakalı" değil "en yeni" kararları döndürüyor. Hosted yargı-mcp, `phrase` varsa varsayılan olarak relevance sıralaması kullanıyor ve `sort_by: relevance|date` parametresi sunuyor. `src/emsal_mcp/sources/mevzuat.py` (≈ satır 26) aynı sorunu `RESMI_GAZETE_TARIHI` ile yaşıyor.
+**Sorun:** `src/dayanak/sources/bedesten.py` (≈ satır 63) `sortFields: ["KARAR_TARIHI"]` değerini sabitliyor → her arama "en alakalı" değil "en yeni" kararları döndürüyor. Hosted yargı-mcp, `phrase` varsa varsayılan olarak relevance sıralaması kullanıyor ve `sort_by: relevance|date` parametresi sunuyor. `src/dayanak/sources/mevzuat.py` (≈ satır 26) aynı sorunu `RESMI_GAZETE_TARIHI` ile yaşıyor.
 
 **Yapılacaklar:**
 
@@ -51,11 +51,11 @@ Bedesten, Solr StandardQueryParser kullanıyor ve varsayılan operatör **OR**'d
 
 ## Görev 3 — Upstream hatasını sessizce "0 sonuç"a çevirme
 
-**Sorun:** Bedesten arıza durumunda `{"data": null, "metadata": {"FMTY": "ERROR", "FMC": "ADALET_RUNTIME_EXCEPTION", ...}}` döndürüyor. `src/emsal_mcp/sources/bedesten.py` (≈ satır 91–96) `data` dict değilse sessizce `[]` döndürüyor. LLM bunu "emsal bulunamadı" diye yorumluyor — halüsinasyona veya yanlış "içtihat yok" sonucuna yol açıyor. (Bu davranış canlı gözlemlendi: 2026-07-03'te Solr arızası sırasında `ftsemsal.uyap.gov.tr/solr` IOException'ı boş sonuç olarak yutuldu.)
+**Sorun:** Bedesten arıza durumunda `{"data": null, "metadata": {"FMTY": "ERROR", "FMC": "ADALET_RUNTIME_EXCEPTION", ...}}` döndürüyor. `src/dayanak/sources/bedesten.py` (≈ satır 91–96) `data` dict değilse sessizce `[]` döndürüyor. LLM bunu "emsal bulunamadı" diye yorumluyor — halüsinasyona veya yanlış "içtihat yok" sonucuna yol açıyor. (Bu davranış canlı gözlemlendi: 2026-07-03'te Solr arızası sırasında `ftsemsal.uyap.gov.tr/solr` IOException'ı boş sonuç olarak yutuldu.)
 
 **Yapılacaklar:**
 
-1. `src/emsal_mcp/sources/base.py` içine ortak bir kontrol ekle: yanıtın `metadata.FMTY` alanı `"ERROR"` ise yapılandırılmış hata üret (mevcut hata modeliniz neyse onu kullan — invariant #3: exception değil, yapılandırılmış sonuç). Hata mesajına `FMC` ve `FMTE` alanlarını koy ki üst katman "kaynak geçici olarak arızalı, sonuç yokluğu anlamına gelmez" diyebilsin.
+1. `src/dayanak/sources/base.py` içine ortak bir kontrol ekle: yanıtın `metadata.FMTY` alanı `"ERROR"` ise yapılandırılmış hata üret (mevcut hata modeliniz neyse onu kullan — invariant #3: exception değil, yapılandırılmış sonuç). Hata mesajına `FMC` ve `FMTE` alanlarını koy ki üst katman "kaynak geçici olarak arızalı, sonuç yokluğu anlamına gelmez" diyebilsin.
 2. `BedestenClient.search`, `BedestenClient.get_document`, `MevzuatClient.search`, `MevzuatClient.get_document` bu kontrolü kullanmalı.
 3. Bir kez otomatik retry (kısa bekleme ile) makul; ikinci deneme de hata verirse yapılandırılmış hata döndür.
 4. MCP araç çıktısında bu durum `ok: false` + açıklayıcı Türkçe mesaj olarak görünmeli: örn. *"Bedesten kaynağı geçici hata döndürdü (ADALET_RUNTIME_EXCEPTION); bu 'sonuç yok' anlamına gelmez, sorguyu daha sonra tekrarlayın."*
@@ -74,7 +74,7 @@ Bedesten, Solr StandardQueryParser kullanıyor ve varsayılan operatör **OR**'d
 2. `include_snippets: true` ise: ilk N (öneri: 5) sonucun tam metnini **eşzamanlı** çek (`concurrency.py`'deki mevcut altyapıyı kullan), sorgu terimlerinin geçtiği ilk pasajı (~300–400 karakter, terim ortalanmış) `snippet` alanı olarak sonuca ekle. PDF-only belgeleri atla; atlananları `snippet_note` ile raporla.
 3. **Yerel korpus entegrasyonu (bedava snippet):** sonuçtaki `document_id` yerel korpusta (~88k karar) zaten varsa, ağa çıkmadan korpustan snippet üret — `include_snippets: false` olsa bile bu bedava snippet'leri ekle.
 4. Çekilen tam metinler mevcut cache'e yazılsın ki peşinden gelen `get_document` çağrısı ağa çıkmasın.
-5. `SearchResult` modeline (`src/emsal_mcp/models.py`) `snippet: str | None` alanı ekle; `docs/MCP_CONTRACTS.md` ve JSON contract'ları güncelle.
+5. `SearchResult` modeline (`src/dayanak/models.py`) `snippet: str | None` alanı ekle; `docs/MCP_CONTRACTS.md` ve JSON contract'ları güncelle.
 
 **Doğrulama:** Canlı test — `include_snippets: true` ile arama, ilk 5 sonuçta sorgu terimlerini içeren snippet döndürüyor. Korpusta var olan bir kararın snippet'i ağ çağrısı olmadan geliyor (test: ağ mock'lanmışken korpus-hit snippet'i dolu).
 
@@ -82,7 +82,7 @@ Bedesten, Solr StandardQueryParser kullanıyor ve varsayılan operatör **OR**'d
 
 ## Görev 5 — Mevzuat aramasını mevzuat.gov.tr yaklaşımına taşı
 
-**Sorun:** `src/emsal_mcp/sources/mevzuat.py` Bedesten'in mevzuat endpoint'ini yalnızca gövde-metni araması + Resmî Gazete tarihi sıralamasıyla kullanıyor. Sonuç: "kişisel verilerin korunması" araması en yeni yönetmelik değişikliklerini üste koyuyor; KVKK'nın kendisi listeye girmeyebiliyor. Yargı-mcp `mevzuat_ara`'da şunları sunuyor:
+**Sorun:** `src/dayanak/sources/mevzuat.py` Bedesten'in mevzuat endpoint'ini yalnızca gövde-metni araması + Resmî Gazete tarihi sıralamasıyla kullanıyor. Sonuç: "kişisel verilerin korunması" araması en yeni yönetmelik değişikliklerini üste koyuyor; KVKK'nın kendisi listeye girmeyebiliyor. Yargı-mcp `mevzuat_ara`'da şunları sunuyor:
 
 - `mevzuat_adi` — **yalnızca başlıkta** arama (çok-kelime AND'lenir, operatör yok)
 - `mevzuat_no` — resmi numara ile doğrudan bulma (6698 → KVKK, 5237 → TCK)
@@ -107,7 +107,7 @@ Bedesten, Solr StandardQueryParser kullanıyor ve varsayılan operatör **OR**'d
 **Yapılacaklar:**
 
 1. `search_decisions`'da `source` parametresini opsiyonel yap; verilmezse Bedesten üzerinden `court_types` listesiyle ara ve varsayılanı `["YARGITAYKARARI", "DANISTAYKARAR"]` yap. (Bedesten `itemTypeList` zaten çoklu tür destekliyor — `bedesten.py` bunu şimdiden alıyor.)
-2. `birimAdi` için `src/emsal_mcp/birim_enum.py`'deki mevcut eşlemeyi araç şemasına enum olarak yansıt; docstring'e kod tablosunu koy (H12 = Yargıtay 12. Hukuk Dairesi vb.).
+2. `birimAdi` için `src/dayanak/birim_enum.py`'deki mevcut eşlemeyi araç şemasına enum olarak yansıt; docstring'e kod tablosunu koy (H12 = Yargıtay 12. Hukuk Dairesi vb.).
 3. Yargı-mcp'nin koruma kuralını ekle: **en az bir kriter zorunlu** — `query`, `esas_no`/`karar_no`, `birimAdi` veya tarih sınırından biri yoksa arama reddedilir (yalnız `court_types` yetmez). Bu, boş/anlamsız taramaları engeller.
 4. `docs/MCP_CONTRACTS.md` + drift testini güncelle.
 
@@ -132,7 +132,7 @@ Bedesten, Solr StandardQueryParser kullanıyor ve varsayılan operatör **OR**'d
 
 ## Görev sonrası: uçtan uca kalite testi
 
-Tüm görevler bitince aynı 5 gerçek soruyu iki araçta da çalıştırıp ilk-5 sonucu karşılaştır (örnek sorular: tahliye taahhüdünün geçerliliği, kıdem tazminatında zamanaşımı, destekten yoksun kalma tazminatı hesabı, idari işlemin iptalinde yürütmeyi durdurma şartları, KVKK veri ihlali bildirimi süresi). Hedef: emsal-mcp'nin ilk-5 alaka isabeti yargı-mcp ile başa baş. Fark kalan sorular için hangi görevden kaynaklandığını not et ve ROADMAP'e madde aç.
+Tüm görevler bitince aynı 5 gerçek soruyu iki araçta da çalıştırıp ilk-5 sonucu karşılaştır (örnek sorular: tahliye taahhüdünün geçerliliği, kıdem tazminatında zamanaşımı, destekten yoksun kalma tazminatı hesabı, idari işlemin iptalinde yürütmeyi durdurma şartları, KVKK veri ihlali bildirimi süresi). Hedef: dayanak'nin ilk-5 alaka isabeti yargı-mcp ile başa baş. Fark kalan sorular için hangi görevden kaynaklandığını not et ve ROADMAP'e madde aç.
 
 ---
 

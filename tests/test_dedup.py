@@ -7,8 +7,8 @@ pytestmark = [pytest.mark.integration]
 
 import json
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.dedup import (
+from dayanak.cache import Cache
+from dayanak.dedup import (
     find_duplicates,
     find_fuzzy_duplicates,
     get_dedup_cluster,
@@ -16,7 +16,7 @@ from emsal_mcp.dedup import (
     get_fuzzy_dedup_stats,
     merge_cluster,
 )
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.models import ContentStatus, Document
 
 
 def _make_doc(
@@ -144,7 +144,7 @@ class TestFindDuplicates:
 
     def test_dry_run_no_db_modifications(self, tmp_path):
         """Dry run should not modify the database."""
-        from emsal_mcp.dedup import _ensure_dedup_tables
+        from dayanak.dedup import _ensure_dedup_tables
 
         cache = Cache(tmp_path / "test.sqlite3")
         try:
@@ -377,17 +377,17 @@ class TestBuildIdempotence:
 class TestImports:
     def test_cli_imports(self):
         """CLI module should import without errors."""
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_mcp_imports(self):
         """Server module should import without errors."""
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
     def test_dedup_module_imports(self):
         """Dedup module should import without errors."""
-        from emsal_mcp.dedup import find_duplicates, get_dedup_cluster, get_dedup_stats, merge_cluster
+        from dayanak.dedup import find_duplicates, get_dedup_cluster, get_dedup_stats, merge_cluster
         assert callable(find_duplicates)
         assert callable(get_dedup_cluster)
         assert callable(get_dedup_stats)
@@ -488,7 +488,7 @@ class TestFuzzyDedupImports:
     """All new fuzzy dedup functions import cleanly."""
 
     def test_fuzzy_imports(self):
-        from emsal_mcp.dedup import (
+        from dayanak.dedup import (
             find_fuzzy_duplicates,
             get_fuzzy_dedup_stats,
             _cosine_similarity_dense,
@@ -501,7 +501,7 @@ class TestFuzzyDedupImports:
 
     def test_cosine_similarity_math(self):
         """_cosine_similarity_dense computes correct cosine."""
-        from emsal_mcp.dedup import _cosine_similarity_dense
+        from dayanak.dedup import _cosine_similarity_dense
         # Identical vectors → 1.0
         v = [1.0, 2.0, 3.0]
         sim = _cosine_similarity_dense(v, v)
@@ -512,7 +512,7 @@ class TestFuzzyDedupImports:
 
     def test_extract_year(self):
         """_extract_year correctly extracts years from various formats."""
-        from emsal_mcp.dedup import _extract_year
+        from dayanak.dedup import _extract_year
         assert _extract_year("2024-05-15") == 2024
         assert _extract_year("2024-05-15T10:30:00+00:00") == 2024
         assert _extract_year("15.05.2024") == 2024
@@ -521,10 +521,10 @@ class TestFuzzyDedupImports:
 
     def test_cli_fuzzy_duplicates_importable(self):
         """CLI fuzzy-duplicates command is importable."""
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_mcp_fuzzy_duplicates_importable(self):
         """MCP server with find_fuzzy_duplicates tool is importable."""
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)

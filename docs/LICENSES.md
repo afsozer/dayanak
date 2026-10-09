@@ -1,4 +1,4 @@
-# LICENSES.md — emsal-mcp Dependency Licenses
+# LICENSES.md — dayanak Dependency Licenses
 
 Last updated: 2026-10-07
 
@@ -48,5 +48,5 @@ Last updated: 2026-10-07
 
 - **All 13 dependencies** use permissive licenses (MIT, BSD-3-Clause, Apache-2.0).
 - **Zero copyleft** concerns (no GPL, LGPL, AGPL, or MPL dependencies).
-- emsal-mcp itself is licensed under AGPL-3.0-only (see [LICENSE](../LICENSE)); every dependency
+- dayanak itself is licensed under AGPL-3.0-only (see [LICENSE](../LICENSE)); every dependency
   above is compatible with it.

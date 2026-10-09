@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from emsal_mcp import legislation_semantic as ls
+from dayanak import legislation_semantic as ls
 
 np = pytest.importorskip("numpy")
 pytest.importorskip("faiss")
@@ -205,7 +205,7 @@ class TestSurumKatlama:
 
     @pytest.fixture()
     def seri(self, tmp_path):
-        from emsal_mcp import legislation_corpus as lc
+        from dayanak import legislation_corpus as lc
 
         db_path = tmp_path / "cache.sqlite3"
         db = sqlite3.connect(str(db_path))

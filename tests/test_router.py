@@ -19,7 +19,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.router import (
+from dayanak.router import (
     CAPABILITIES,
     get_capable_sources,
     get_source_by_capability,
@@ -383,7 +383,7 @@ class TestEdgeCases:
 
 class TestImports:
     def test_router_importable(self):
-        import emsal_mcp.router  # noqa: F401
+        import dayanak.router  # noqa: F401
         assert callable(get_capable_sources)
         assert callable(route_search)
         assert callable(route_get_document)

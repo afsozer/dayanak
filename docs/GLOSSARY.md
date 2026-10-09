@@ -1,6 +1,6 @@
 # docs/GLOSSARY.md — Türkçe / İngilizce Sözlük
 
-> Emsal-mcp projesinde kullanılan hukuki ve teknik terimlerin iki dilli karşılıkları.
+> Dayanak projesinde kullanılan hukuki ve teknik terimlerin iki dilli karşılıkları.
 
 ## Hukuki Terimler
 
@@ -47,7 +47,7 @@
 | Geçici Madde | Transitional Article | Temporary provisions |
 | Yürürlük | Entry into Force | Effective date |
 
-## Emsal-mcp Teknik Terimleri
+## Dayanak Teknik Terimleri
 
 | Türkçe | English | Bağlam |
 |---|---|---|

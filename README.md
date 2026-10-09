@@ -1,13 +1,17 @@
-# Emsal-mcp
+# Dayanak
 
-> **v1.1.1** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 79 test files · 48 source modules
+> **v2.0.0** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 80 test files · 48 source modules
 >
-> [![CI](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml)
+> [![CI](https://github.com/afsozer/dayanak/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/dayanak/actions/workflows/ci.yml)
 
-**Proje sayfası:** [avfatihsozer.com/projeler/emsal-mcp](https://avfatihsozer.com/projeler/emsal-mcp) · English: [README.en.md](README.en.md)
+**Proje sayfası:** [avfatihsozer.com/projeler/dayanak](https://avfatihsozer.com/projeler/dayanak) · English: [README.en.md](README.en.md)
 
 Resmî ve kamuya açık Türk hukuk kaynaklarında (emsal kararlar ve mevzuat)
 citation-safe arama, araştırma ve belge hazırlık için MCP sunucusu.
+
+Projenin eski adı **emsal-mcp**'dir; 2.0.0 sürümüyle Dayanak oldu. Eski `emsal-mcp`
+paketi artık `dayanak`'ı kurar, eski `EMSAL_*` ortam değişkenleri ve `~/.emsal_mcp`
+veri dizini okunmaya devam eder.
 
 İki şekilde çalışır:
 
@@ -41,7 +45,7 @@ Ayrıntı ve ölçümler: [`docs/BULK_INDEX.md`](docs/BULK_INDEX.md).
 
 ### Hızlı kurulum (korpussuz)
 
-Emsal MCP, 11 milyon kararlık yerel korpus olmadan da çalışır. Bu durumda karar ve
+Dayanak, 11 milyon kararlık yerel korpus olmadan da çalışır. Bu durumda karar ve
 mevzuat aramaları resmî kaynaklardan (Bedesten, mevzuat.gov.tr, AYM, Danıştay ve
 diğerleri) canlı yapılır, kararın tam metni de canlı getirilir. Yalnız yerel korpusta
 arayan araçlar (`search_local_corpus`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`)
@@ -49,16 +53,16 @@ boş sonuç döndürür ve canlı araca yönlendirir. Python 3.11 ya da üstü g
 
 ```bash
 # Kurmadan doğrudan çalıştırmak için (uv gerekir)
-uvx --from emsal-mcp emsal-mcp-server
+uvx --from dayanak dayanak-server
 
 # ya da kalıcı kurulum
-pipx install emsal-mcp
+pipx install dayanak
 ```
 
 Claude Code'a eklemek için:
 
 ```bash
-claude mcp add emsal -- uvx --from emsal-mcp emsal-mcp-server
+claude mcp add dayanak -- uvx --from dayanak dayanak-server
 ```
 
 Claude Desktop ya da başka bir MCP istemcisi için yapılandırma:
@@ -66,17 +70,17 @@ Claude Desktop ya da başka bir MCP istemcisi için yapılandırma:
 ```json
 {
   "mcpServers": {
-    "emsal": {
+    "dayanak": {
       "command": "uvx",
-      "args": ["--from", "emsal-mcp", "emsal-mcp-server"]
+      "args": ["--from", "dayanak", "dayanak-server"]
     }
   }
 }
 ```
 
-Varsayılan araç profili 11 temel araçtır; tamamı için `EMSAL_TOOL_PROFILE=full`
-ortam değişkenini verin. Çekilen belgeler `~/.emsal_mcp/cache.sqlite3` dosyasında
-önbelleğe alınır (`EMSAL_CACHE_PATH` ile değişir).
+Varsayılan araç profili 11 temel araçtır; tamamı için `DAYANAK_TOOL_PROFILE=full`
+ortam değişkenini verin. Çekilen belgeler `~/.dayanak/cache.sqlite3` dosyasında
+önbelleğe alınır (`DAYANAK_CACHE_PATH` ile değişir).
 
 ### Geliştirme kurulumu (korpusla)
 
@@ -93,7 +97,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,mcp,embeddings]"
 
-emsal-mcp version
+dayanak version
 ```
 
 Anlamsal aramanın toplu FAISS indeksini kullanabilmesi için ayrıca
@@ -105,7 +109,7 @@ Anlamsal aramanın toplu FAISS indeksini kullanabilmesi için ayrıca
 
 Canlı kurulumda sunucu `scripts\mcp_http_sunucu.cmd` ile başlar; bu betik
 ortam değişkenlerini kendi içinde kurar ve logu
-`%LOCALAPPDATA%\emsal-mcp\mcp_http.log` dosyasına yazar.
+`%LOCALAPPDATA%\dayanak\mcp_http.log` dosyasına yazar.
 
 ```powershell
 .\scripts\mcp_http_sunucu.cmd
@@ -117,32 +121,32 @@ Windows'ta `EmsalMcpHttp` zamanlanmış görevi aynı betiği oturum açılış�
 ### stdio sunucusu
 
 ```powershell
-call .\scripts\emsal-env.cmd
-emsal-mcp-server
+call .\scripts\dayanak-env.cmd
+dayanak-server
 ```
 
 ### Ortam değişkenleri
 
 | Değişken | Ne işe yarar | Örnek değer |
 |---|---|---|
-| `EMSAL_CACHE_PATH` | Korpus SQLite dosyası | `<veri-dizini>\cache.sqlite3` |
-| `EMSAL_BULK_VEC_DIR` | fp16 vektör sidecar'ları (refine için) | `<bench-dizini>\vec` |
-| `EMSAL_EMBEDDING_PROVIDER` | Gömme sağlayıcısı | `fastembed-multilingual-e5` |
-| `EMSAL_EMBEDDING_CACHE_DIR` | ONNX model önbelleği | `<veri-dizini>\models\fastembed` |
-| `EMSAL_MCP_TRANSPORT` | `stdio` (varsayılan) veya `streamable-http` | `streamable-http` |
-| `EMSAL_MCP_HOST` / `EMSAL_MCP_PORT` | HTTP dinleme adresi | `127.0.0.1` / `8790` |
-| `EMSAL_TOOL_PROFILE` | `core` (varsayılan) veya `full` | `core` |
-| `EMSAL_TOOL_THREADS` | Sync araçları için thread havuzu (0 = kapalı) | `6` |
-| `EMSAL_TOOL_TIMEOUT` | Araç başına saniye sınırı | `180` |
+| `DAYANAK_CACHE_PATH` | Korpus SQLite dosyası | `<veri-dizini>\cache.sqlite3` |
+| `DAYANAK_BULK_VEC_DIR` | fp16 vektör sidecar'ları (refine için) | `<bench-dizini>\vec` |
+| `DAYANAK_EMBEDDING_PROVIDER` | Gömme sağlayıcısı | `fastembed-multilingual-e5` |
+| `DAYANAK_EMBEDDING_CACHE_DIR` | ONNX model önbelleği | `<veri-dizini>\models\fastembed` |
+| `DAYANAK_MCP_TRANSPORT` | `stdio` (varsayılan) veya `streamable-http` | `streamable-http` |
+| `DAYANAK_MCP_HOST` / `DAYANAK_MCP_PORT` | HTTP dinleme adresi | `127.0.0.1` / `8790` |
+| `DAYANAK_TOOL_PROFILE` | `core` (varsayılan) veya `full` | `core` |
+| `DAYANAK_TOOL_THREADS` | Sync araçları için thread havuzu (0 = kapalı) | `6` |
+| `DAYANAK_TOOL_TIMEOUT` | Araç başına saniye sınırı | `180` |
 
-Tek seferlik CLI çağrıları için `scripts\emsal-env.cmd` aynı değişkenleri
-kurar (`call .\scripts\emsal-env.cmd && .venv\Scripts\emsal-mcp ...`).
+Tek seferlik CLI çağrıları için `scripts\dayanak-env.cmd` aynı değişkenleri
+kurar (`call .\scripts\dayanak-env.cmd && .venv\Scripts\dayanak ...`).
 
 Makineye özel değerler (veri dizini, dinleme adresi, yedek hedefi) repoda
 tutulmaz: `scripts\yerel-ayar.ornek.cmd` dosyasını `scripts\yerel-ayar.cmd`
-adıyla kopyalayıp doldurun (`.gitignore`'dadır). `emsal-env.cmd`,
+adıyla kopyalayıp doldurun (`.gitignore`'dadır). `dayanak-env.cmd`,
 `crawl_incremental.ps1` ve Python betikleri (`scripts/_yollar.py`) bu dosyayı
-okur; boş bırakılan her yol `~/.emsal_mcp` altından türetilir.
+okur; boş bırakılan her yol `~/.dayanak` altından türetilir.
 
 ## MCP araçları
 
@@ -189,12 +193,12 @@ Varsayılan profil `core` — 11 araç kayıtlı gelir. Geri kalanı çalışan 
 ## CLI örnekleri
 
 ```powershell
-emsal-mcp sources
-emsal-mcp search bedesten "muvazaa" --limit 5
-emsal-mcp get bedesten DOCUMENT_ID
-emsal-mcp semantic bulk-status
-emsal-mcp mevzuat korpus-ara "tahliye taahhüdü"
-emsal-mcp smoke --offline
+dayanak sources
+dayanak search bedesten "muvazaa" --limit 5
+dayanak get bedesten DOCUMENT_ID
+dayanak semantic bulk-status
+dayanak mevzuat korpus-ara "tahliye taahhüdü"
+dayanak smoke --offline
 ```
 
 ## Korpus crawl + panel
@@ -216,10 +220,10 @@ script ile yürür, durumu tarayıcıdan izlenir.
 
 Notlar:
 
-- Rate limit `EMSAL_RATE_LIMIT_MAX=12`. Ölçüldü: 12'de 429 yok (~2.800 belge/saat),
+- Rate limit `DAYANAK_RATE_LIMIT_MAX=12`. Ölçüldü: 12'de 429 yok (~2.800 belge/saat),
   15'te 429 cooldown döngüsüne girip hız sıfırlanıyor.
 - Panel, `cache.sqlite3` üzerinde yıl sayımı yapmaz — tek bir yıl sorgusu tam
-  tablo taraması yüzünden ~60 sn sürüyor. Sayımlar `~/.emsal-mcp/panel_stats.sqlite3`
+  tablo taraması yüzünden ~60 sn sürüyor. Sayımlar `~/.dayanak/panel_stats.sqlite3`
   içinde artımlı (yalnız yeni `rowid`'ler) tutulur, günde bir kez tam sayım yapılır.
 - Yıl hedefleri Bedesten'in `total` alanından ölçülür (`crawl_logs\hedefler.json`),
   tahmin edilmez.
@@ -238,7 +242,7 @@ Zamanlanmış işler (Windows Görev Zamanlayıcı, korpus sunucusu):
 `health_check` aracı bu işlerin son koşusunu `scheduled_jobs` bloğunda
 raporlar: `schtasks` çağırmaz, işlerin kendi log dosyalarına yazdığı bitiş
 işaretini ve dosya zaman damgasını okur. Bir iş gecikmişse ya da `rc != 0`
-ile bitmişse `overall` "degraded" döner (`src/emsal_mcp/ops_status.py`).
+ile bitmişse `overall` "degraded" döner (`src/dayanak/ops_status.py`).
 Aynı çıktıda `tool_runtime` bloğu thread havuzu / zaman aşımı sayaçlarını
 verir; `runaway > 0` ise sunucu yeniden başlatılmalıdır.
 
@@ -262,7 +266,7 @@ ruff check src tests scripts
 ```
 
 Canlı kaynağa giden testler varsayılan olarak atlanır; açmak için
-`EMSAL_LIVE_TESTS=1`.
+`DAYANAK_LIVE_TESTS=1`.
 
 ## Lisans
 
@@ -274,4 +278,4 @@ dosyasında anlatılıyor.
 
 Telif hakkı © 2026 Alpaslan Fatih Sözer
 
-<!-- mcp-name: io.github.afsozer/emsal-mcp -->
+<!-- mcp-name: io.github.afsozer/dayanak -->

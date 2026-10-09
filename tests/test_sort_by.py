@@ -28,7 +28,7 @@ def _run_search(client, query, **kw):
         captured.append(k.get("json", {}))
         return _mock_resp({"data": {"emsalKararList": [{"id": "1", "itemType": {"description": "Y"}}]}})
 
-    with patch("emsal_mcp.sources.bedesten.client") as mc:
+    with patch("dayanak.sources.bedesten.client") as mc:
         cm = AsyncMock()
         cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture)))
         cm.__aexit__ = AsyncMock(return_value=False)
@@ -39,30 +39,30 @@ def _run_search(client, query, **kw):
 
 class TestBedestenSortBy:
     def test_phrase_present_defaults_to_relevance(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         dp = _run_search(BedestenClient(), "+tahliye +geçerlilik")
         # relevance → no sortFields sent (Solr uses score default)
         assert "sortFields" not in dp
         assert "sortDirection" not in dp
 
     def test_empty_phrase_defaults_to_date(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         dp = _run_search(BedestenClient(), "")
         assert dp.get("sortFields") == ["KARAR_TARIHI"]
         assert dp.get("sortDirection") == "desc"
 
     def test_sort_by_date_forced(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         dp = _run_search(BedestenClient(), "tazminat", sort_by="date")
         assert dp.get("sortFields") == ["KARAR_TARIHI"]
 
     def test_sort_by_relevance_forced(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         dp = _run_search(BedestenClient(), "tazminat", sort_by="relevance")
         assert "sortFields" not in dp
 
     def test_invalid_sort_by_falls_back(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         dp = _run_search(BedestenClient(), "tazminat", sort_by="bogus")
         # query present + invalid → relevance default
         assert "sortFields" not in dp
@@ -70,14 +70,14 @@ class TestBedestenSortBy:
 
 class TestMevzuatSortBy:
     def _run(self, query, **kw):
-        from emsal_mcp.sources.mevzuat import MevzuatClient
+        from dayanak.sources.mevzuat import MevzuatClient
         captured: list[dict] = []
 
         async def _capture(*a, **k):
             captured.append(k.get("json", {}))
             return _mock_resp({"data": {"mevzuatList": [{"documentId": "m1", "mevzuatAdi": "X"}]}})
 
-        with patch("emsal_mcp.sources.base.client") as mc:
+        with patch("dayanak.sources.base.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture)))
             cm.__aexit__ = AsyncMock(return_value=False)

@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.semantic import build_semantic_index, get_index_status
+from dayanak.cache import Cache
+from dayanak.models import ContentStatus, Document
+from dayanak.semantic import build_semantic_index, get_index_status
 
 pytestmark = [pytest.mark.integration]
 

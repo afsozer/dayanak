@@ -8,8 +8,8 @@ pytestmark = [pytest.mark.integration]
 import json
 import zipfile
 
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.verification import (
+from dayanak.models import ContentStatus, Document
+from dayanak.verification import (
     check_cache_integrity,
     smoke_test_offline,
     verify_bundle_archive_integrity,

@@ -5,7 +5,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.snippet import extract_query_terms, make_snippet
+from dayanak.snippet import extract_query_terms, make_snippet
 
 
 class TestExtractQueryTerms:

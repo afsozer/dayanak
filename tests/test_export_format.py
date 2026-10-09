@@ -5,7 +5,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.exporter import (
+from dayanak.exporter import (
     DISCLAIMER_TEXT,
     export_plain_text,
     export_to_format,
@@ -18,7 +18,7 @@ from emsal_mcp.exporter import (
 SAMPLE_DRAFT = """\
 # DİLEKÇE
 
-DİKKAT: Bu belge emsal-mcp tarafından otomatik olarak oluşturulmuştur.
+DİKKAT: Bu belge dayanak tarafından otomatik olarak oluşturulmuştur.
 Avukat denetimi ve resmi doğrulama gerektirir.
 Bu belgedeki {PLACEHOLDER} formatındaki alanlar yalnızca doğrulanmış
 bilgilerle doldurulmalıdır; eksik bırakılabilir ama uydurma bilgiyle
@@ -47,7 +47,7 @@ Daha fazla bilgi için [buraya tıklayın](https://example.com).
 
 ## Uyarılar
 
-- Bu belge emsal-mcp tarafından üretilmiştir.
+- Bu belge dayanak tarafından üretilmiştir.
 """
 
 
@@ -81,7 +81,7 @@ class TestExportPlainText:
         result = export_plain_text(draft, tmp_path / "out.txt")
         assert result["disclaimer_present"] is True
         content = (tmp_path / "out.txt").read_text(encoding="utf-8")
-        assert "emsal-mcp" in content.lower()
+        assert "dayanak" in content.lower()
 
     def test_disclaimer_added_when_missing(self, tmp_path):
         content_no_disclaimer = "# Title\n\nSome body text.\n"
@@ -198,7 +198,7 @@ class TestExportToFormat:
         result = export_to_format(draft, format="txt", out_path=tmp_path / "out.txt")
         assert result["ok"] is True
         content = (tmp_path / "out.txt").read_text(encoding="utf-8")
-        assert "emsal-mcp" in content.lower()
+        assert "dayanak" in content.lower()
 
 
 # ── get_export_capabilities tests ───────────────────────────────────────────
@@ -250,17 +250,17 @@ class TestExportCapabilities:
 class TestImports:
     def test_cli_imports(self):
         """Verify export functions are importable from CLI module."""
-        from emsal_mcp.cli import export_app  # noqa: F401
+        from dayanak.cli import export_app  # noqa: F401
         assert export_app is not None
 
     def test_server_imports(self):
         """Verify export functions are importable from server module."""
-        from emsal_mcp.server import main  # noqa: F401
+        from dayanak.server import main  # noqa: F401
         assert callable(main)
 
     def test_exporter_imports(self):
         """Verify all new exporter functions are importable."""
-        from emsal_mcp.exporter import (  # noqa: F401
+        from dayanak.exporter import (  # noqa: F401
             export_plain_text,
             export_to_format,
             get_export_capabilities,

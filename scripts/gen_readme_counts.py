@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _tool_counts() -> tuple[int, int]:
     """Return (total_tools, core_tools) from server.py."""
-    server = ROOT / "src" / "emsal_mcp" / "server.py"
+    server = ROOT / "src" / "dayanak" / "server.py"
     text = server.read_text(encoding="utf-8")
     total = len(re.findall(r"@_tool", text))
     # Count core entries in _TOOL_PROFILES
@@ -36,14 +36,14 @@ def _tool_counts() -> tuple[int, int]:
 
 
 def _count_cli_commands() -> int:
-    cli = ROOT / "src" / "emsal_mcp" / "cli.py"
+    cli = ROOT / "src" / "dayanak" / "cli.py"
     text = cli.read_text(encoding="utf-8")
     # Typer commands: @xxx.command("name") or @app.command(...)
     return len(re.findall(r'\.(?:command|add_typer)\b', text))
 
 
 def _count_modules() -> int:
-    src = ROOT / "src" / "emsal_mcp"
+    src = ROOT / "src" / "dayanak"
     return len(list(src.glob("*.py")))
 
 
@@ -53,7 +53,7 @@ def _count_test_files() -> int:
 
 
 def _version_from_init() -> str:
-    init = ROOT / "src" / "emsal_mcp" / "__init__.py"
+    init = ROOT / "src" / "dayanak" / "__init__.py"
     text = init.read_text(encoding="utf-8")
     m = re.search(r'__version__\s*=\s*"([^"]+)"', text)
     return m.group(1) if m else "?.?.?"

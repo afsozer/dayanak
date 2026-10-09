@@ -63,7 +63,7 @@ def _capturing_client(captured: list[dict], responses: list[dict] | None = None)
             return _mock_resp(queue.pop(0))
         return _mock_resp(default)
 
-    mc = patch("emsal_mcp.sources.bedesten.client")
+    mc = patch("dayanak.sources.bedesten.client")
     started = mc.start()
     cm = AsyncMock()
     cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture)))
@@ -77,7 +77,7 @@ class TestDefaultCourtTypes:
     should run a combined Yargıtay+Danıştay sweep."""
 
     def test_default_court_types_yargitay_danistay(self):
-        from emsal_mcp.sources.bedesten import DEFAULT_COURT_TYPES, BedestenClient
+        from dayanak.sources.bedesten import DEFAULT_COURT_TYPES, BedestenClient
         ci = BedestenClient()
         captured: list[dict] = []
         mc = _capturing_client(captured)
@@ -91,14 +91,14 @@ class TestDefaultCourtTypes:
         """Regression: the old default said DANISTAYKARARI, which Bedesten
         answers with a silent total=0 — every Danıştay decision vanished from
         every default search.  The trailing I must stay gone."""
-        from emsal_mcp.sources.bedesten import DEFAULT_COURT_TYPES, VALID_ITEM_TYPES
+        from dayanak.sources.bedesten import DEFAULT_COURT_TYPES, VALID_ITEM_TYPES
         assert DEFAULT_COURT_TYPES == ["YARGITAYKARARI", "DANISTAYKARAR"]
         assert set(DEFAULT_COURT_TYPES) <= VALID_ITEM_TYPES
 
 
 class TestItemTypeNormalization:
     def test_known_bad_spellings_are_repaired(self):
-        from emsal_mcp.sources.bedesten import normalize_item_types
+        from dayanak.sources.bedesten import normalize_item_types
         valid, unknown = normalize_item_types(
             ["DANISTAYKARARI", "ISTINAFKARARI", "YERELKARARI", "KYBKARAR"]
         )
@@ -106,25 +106,25 @@ class TestItemTypeNormalization:
         assert unknown == []
 
     def test_lowercase_and_diacritics_normalized(self):
-        from emsal_mcp.sources.bedesten import normalize_item_type
+        from dayanak.sources.bedesten import normalize_item_type
         assert normalize_item_type("danıştaykarar") == "DANISTAYKARAR"
         assert normalize_item_type(" yargitaykarari ") == "YARGITAYKARARI"
 
     def test_unknown_reported_not_forwarded(self):
-        from emsal_mcp.sources.bedesten import normalize_item_types
+        from dayanak.sources.bedesten import normalize_item_types
         valid, unknown = normalize_item_types(["YARGITAYKARARI", "ANAYASAMAHKEMESI"])
         assert valid == ["YARGITAYKARARI"]
         assert unknown == ["ANAYASAMAHKEMESI"]
 
     def test_duplicates_collapsed(self):
-        from emsal_mcp.sources.bedesten import normalize_item_types
+        from dayanak.sources.bedesten import normalize_item_types
         valid, _ = normalize_item_types(["DANISTAYKARAR", "DANISTAYKARARI"])
         assert valid == ["DANISTAYKARAR"]
 
     def test_all_invalid_raises_instead_of_silent_zero(self):
         """Sending a bogus itemType returns total=0, which reads as 'no such
         precedent'.  Refuse the call so the caller sees the real cause."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         captured: list[dict] = []
         mc = _capturing_client(captured)
@@ -136,7 +136,7 @@ class TestItemTypeNormalization:
         assert captured == [], "invalid itemType must never reach the upstream"
 
     def test_partial_invalid_warns_and_keeps_valid(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         captured: list[dict] = []
         mc = _capturing_client(captured)
@@ -157,7 +157,7 @@ class TestAndToOrFallback:
     pass cannot fill the requested page."""
 
     def test_empty_and_result_retries_as_or(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         captured: list[dict] = []
         mc = _capturing_client(captured, responses=[
@@ -184,7 +184,7 @@ class TestAndToOrFallback:
         returns 2 incidental hits, not 0.  A couple of accidental
         co-occurrences look like an answer and are worse than an empty page —
         they must trigger the fallback too."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         captured: list[dict] = []
         mc = _capturing_client(captured, responses=[
@@ -206,7 +206,7 @@ class TestAndToOrFallback:
         assert any("2 sonuç" in w for w in sp.warnings)
 
     def test_full_page_of_and_results_does_not_fall_back(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         captured: list[dict] = []
         mc = _capturing_client(captured, responses=[
@@ -226,7 +226,7 @@ class TestAndToOrFallback:
 
     def test_operator_query_never_falls_back(self):
         """The caller used operators deliberately — 0 hits is a real answer."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         captured: list[dict] = []
         mc = _capturing_client(captured, responses=[

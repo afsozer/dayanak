@@ -10,7 +10,7 @@ sunucuya taşıma adımlarını anlatır.
 |---|---|---|---|
 | 1. Kararları SQLite'a al | `scripts/import_hf_parquet.py` | parquet → `documents_v2` (+FTS5 trigger) | 11 M satır 86 dk, DB 72 GB, FTS sorgusu 0,65 s |
 | 2. Parçalı gömme | `scripts/embed_parquet_worker.py` | parquet → `<kaynak>-<dosya>.vectors.npy` (fp16) + `.keys.parquet` | RTX 4060: ~360-540 parça/sn; M5 MPS: ~335 |
-| 3. Toplu indeks | `emsal-mcp semantic bulk-build <vec_dir>` | sidecar'lar → `bulk-<provider>.faiss/.keys.npz/.meta.json` | 11,5 M vektör 7 dk; 27 M ≈ 15 dk |
+| 3. Toplu indeks | `dayanak semantic bulk-build <vec_dir>` | sidecar'lar → `bulk-<provider>.faiss/.keys.npz/.meta.json` | 11,5 M vektör 7 dk; 27 M ≈ 15 dk |
 
 Kaynak eşlemesi: HF `yargitay/emsal/danistay` kimlikleri Bedesten kimlikleriyle
 aynı (2.000 örnekte %97,7 örtüşme ölçüldü) → `source='bedesten'`; AYM →
@@ -32,7 +32,7 @@ aynı (2.000 örnekte %97,7 örtüşme ölçüldü) → `source='bedesten'`; AYM
    eski yolla (mmap matrisi) taranıp aynı belgede max skorla birleşir.
    Yöntem adı `dense_bulk`.
 
-Refine için vektör dosyaları sunucuda bulunmalı: `EMSAL_BULK_VEC_DIR` ya da
+Refine için vektör dosyaları sunucuda bulunmalı: `DAYANAK_BULK_VEC_DIR` ya da
 cache'in yanındaki `vec/`. Yoksa PQ skoruyla (düşük kalite) devam eder,
 `bulk-status` bunu söyler.
 
@@ -52,7 +52,7 @@ cache'in yanındaki `vec/`. Yoksa PQ skoruyla (düşük kalite) devam eder,
 
 1. `pip install faiss-cpu` (1.15, numpy 2 ile uyumlu) sunucu venv'ine.
 2. `cache.sqlite3` (72 GB) + `bulk-*.{faiss,keys.npz,meta.json}` + `vec/`
-   (≈20 GB fp16) → `EMSAL_CACHE_PATH` dizini. Aynı ağda LAN ile taşıyın.
+   (≈20 GB fp16) → `DAYANAK_CACHE_PATH` dizini. Aynı ağda LAN ile taşıyın.
 3. Mevcut desktop DB'sinden yalnız iki şey aktarılır: `uyap_arsiv` (2020 UYAP
    offline arşivi: Uyuşmazlık, AİHM) ve HF kesiminden (Yargıtay Mayıs 2026,
    Emsal Haziran 2026) sonra crawl'lanan `bedesten` satırları.
@@ -131,8 +131,8 @@ kullanmaz — VRAM çakışması yok.
 3. Canlı `bulk-*.{faiss,keys.npz,meta.json}` → `<veri-dizini>\bulk-v1-yedek\`
    (**silinmez**), hazırlık üçlüsü canlı dizine taşınır. Taşıma yarıda
    kalırsa geri alınır ve sunucu eski indeksle açılır.
-4. Dizin takası: `vec` → `vec_v1`, `vec2` → `vec`. `EMSAL_BULK_VEC_DIR`
-   değişmez (`emsal-env.cmd`, `mcp_http_sunucu.cmd` dokunulmadı).
+4. Dizin takası: `vec` → `vec_v1`, `vec2` → `vec`. `DAYANAK_BULK_VEC_DIR`
+   değişmez (`dayanak-env.cmd`, `mcp_http_sunucu.cmd` dokunulmadı).
 5. `drop_delta_rows.py delta-reembed-<tarih>`: yeniden gömülen kararların
    delta satırları silinir. Koşu sırasında crawl'ın eklediği YENİ kararlar
    manifest'te olmadığı için delta'da kalır → aramada görünmeye devam eder.

@@ -4,7 +4,7 @@
 - corpus_coverage metadata
 - discovery (not forbidden) positioning
 
-M-110: these used to exercise ``emsal_mcp.facades``, a parallel module that
+M-110: these used to exercise ``dayanak.facades``, a parallel module that
 ``server.py`` never imported.  The features were implemented there and nowhere
 else, so the tests passed while the live MCP tool returned neither field.  They
 now run against the tool the server actually registers.
@@ -28,11 +28,11 @@ class TestEnrichRelatedQuotes:
 
     def test_related_quotes_attached(self, tmp_path, monkeypatch):
         # Point the cache to an isolated DB and populate it with one doc.
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.cache import Cache
+        from dayanak.models import Document, ContentStatus
 
         db = tmp_path / "disco.sqlite3"
-        monkeypatch.setenv("EMSAL_CACHE_PATH", str(db))
+        monkeypatch.setenv("DAYANAK_CACHE_PATH", str(db))
         cache = Cache(db)
         doc = Document(
             source="bedesten", document_id="d1", title="Karar",
@@ -56,11 +56,11 @@ class TestEnrichRelatedQuotes:
             assert "related_quotes" in r
 
     def test_corpus_coverage_reported(self, tmp_path, monkeypatch):
-        from emsal_mcp.cache import Cache
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.cache import Cache
+        from dayanak.models import Document, ContentStatus
 
         db = tmp_path / "cov.sqlite3"
-        monkeypatch.setenv("EMSAL_CACHE_PATH", str(db))
+        monkeypatch.setenv("DAYANAK_CACHE_PATH", str(db))
         cache = Cache(db)
         for i, d in enumerate(["2023-01-01", "2024-06-15"]):
             cache.store_document(Document(

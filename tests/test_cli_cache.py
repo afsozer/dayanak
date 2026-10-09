@@ -9,9 +9,9 @@ import json
 
 from typer.testing import CliRunner
 
-from emsal_mcp.cache import Cache, CACHE_SCHEMA_VERSION
-from emsal_mcp.cli import app
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.cache import Cache, CACHE_SCHEMA_VERSION
+from dayanak.cli import app
+from dayanak.models import ContentStatus, Document
 
 runner = CliRunner()
 
@@ -140,15 +140,15 @@ class TestMcpImports:
     """Test MCP server imports with cache v2 tools."""
 
     def test_search_local_cache_importable(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
     def test_cache_module_importable(self):
-        from emsal_mcp.cache import Cache
+        from dayanak.cache import Cache
         assert callable(Cache)
 
     def test_cached_document_importable(self):
-        from emsal_mcp.models import CachedDocument
+        from dayanak.models import CachedDocument
         assert CachedDocument is not None
 
 
@@ -158,7 +158,7 @@ class TestCliGetStoresDocument:
     def test_get_stores_in_cache(self, tmp_path):
         """Verify get command writes to cache by checking cache contents."""
         from unittest.mock import AsyncMock, patch
-        from emsal_mcp.models import Document, ContentStatus
+        from dayanak.models import Document, ContentStatus
 
         mock_doc = Document(
             source="test", document_id="cli1", title="CLI Test",
@@ -166,7 +166,7 @@ class TestCliGetStoresDocument:
             court="Test Court", decision_date="2024-01-01",
         )
 
-        with patch("emsal_mcp.sources.registry.get_source") as mock_get_source:
+        with patch("dayanak.sources.registry.get_source") as mock_get_source:
             mock_client = AsyncMock()
             mock_client.get_document = AsyncMock(return_value=mock_doc)
             mock_get_source.return_value = mock_client

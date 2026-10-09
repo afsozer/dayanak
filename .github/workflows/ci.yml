@@ -34,11 +34,11 @@ jobs:
 
       - name: Smoke test (imports)
         run: |
-          python -c "from emsal_mcp.server import main"
-          python -m emsal_mcp.cli version
+          python -c "from dayanak.server import main"
+          python -m dayanak.cli version
 
       - name: Release readiness
-        run: python -m emsal_mcp.cli release v1-readiness --json
+        run: python -m dayanak.cli release v1-readiness --json
 
   type-check:
     runs-on: ubuntu-latest

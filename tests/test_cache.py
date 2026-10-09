@@ -7,8 +7,8 @@ pytestmark = [pytest.mark.integration]
 
 from hashlib import sha256
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.models import ContentStatus, Document, InputPack
+from dayanak.cache import Cache
+from dayanak.models import ContentStatus, Document, InputPack
 
 
 class TestCacheHashVerification:

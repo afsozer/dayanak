@@ -8,8 +8,8 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-import emsal_mcp.udf as udf_mod
-from emsal_mcp.udf import (
+import dayanak.udf as udf_mod
+from dayanak.udf import (
     UDF_AUTHORING_NOTE,
     UDF_TOOLKIT_VERSION,
     UdfError,
@@ -28,7 +28,7 @@ from emsal_mcp.udf import (
 
 @pytest.fixture(autouse=True)
 def isolate_managed_udf_toolkit(monkeypatch, tmp_path):
-    monkeypatch.setenv("EMSAL_UDF_AUTO_INSTALL", "0")
+    monkeypatch.setenv("DAYANAK_UDF_AUTO_INSTALL", "0")
     monkeypatch.setattr(udf_mod, "BUNDLED_UDF_TOOLKIT_DIR", tmp_path / "missing-managed-toolkit")
 
 
@@ -105,7 +105,7 @@ class TestUDF:
 class TestToolKitStatus:
     def test_status_disabled_by_default(self, monkeypatch):
         """No toolkit dir configured — should return disabled with warnings."""
-        monkeypatch.delenv("EMSAL_UDF_TOOLKIT_DIR", raising=False)
+        monkeypatch.delenv("DAYANAK_UDF_TOOLKIT_DIR", raising=False)
         monkeypatch.delenv("UDF_TOOLKIT_DIR", raising=False)
         monkeypatch.setattr(udf_mod, "_resolve_toolkit_dir", lambda: None)
         monkeypatch.setattr(udf_mod, "_discover_libreoffice", lambda: None)
@@ -128,13 +128,13 @@ class TestToolKitStatus:
         toolkit_dir.mkdir()
         (toolkit_dir / "udf_to_docx.py").write_text("# stub", encoding="utf-8")
         monkeypatch.setenv("LOCAL_YARGI_UDF_TOOLS", "1")
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(toolkit_dir))
         status = get_udf_toolkit_status()
         assert status["enabled"] is True
         assert status["toolkit_dir"] == str(toolkit_dir)
 
     def test_status_env_priority(self, monkeypatch, tmp_path):
-        """EMSAL_UDF_TOOLKIT_DIR takes priority over UDF_TOOLKIT_DIR."""
+        """DAYANAK_UDF_TOOLKIT_DIR takes priority over UDF_TOOLKIT_DIR."""
         dir1 = tmp_path / "dir1"
         dir2 = tmp_path / "dir2"
         dir1.mkdir()
@@ -143,7 +143,7 @@ class TestToolKitStatus:
         (dir2 / "udf_to_docx.py").write_text("# stub", encoding="utf-8")
         monkeypatch.setenv("LOCAL_YARGI_UDF_TOOLS", "1")
         monkeypatch.setenv("UDF_TOOLKIT_DIR", str(dir1))
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(dir2))
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(dir2))
         status = get_udf_toolkit_status()
         assert status["toolkit_dir"] == str(dir2)
 
@@ -153,7 +153,7 @@ class TestToolKitStatus:
         for script in ("udf_to_docx.py", "udf_to_pdf.py", "docx_to_udf.py"):
             (toolkit_dir / script).write_text("# stub", encoding="utf-8")
         monkeypatch.delenv("LOCAL_YARGI_UDF_TOOLS", raising=False)
-        monkeypatch.delenv("EMSAL_UDF_TOOLS", raising=False)
+        monkeypatch.delenv("DAYANAK_UDF_TOOLS", raising=False)
         monkeypatch.setattr(udf_mod, "BUNDLED_UDF_TOOLKIT_DIR", toolkit_dir)
         status = get_udf_toolkit_status()
         assert status["enabled"] is True
@@ -170,7 +170,7 @@ class TestToolKitStatus:
         assert result["toolkit_dir"] == str(toolkit_dir.resolve())
 
     def test_status_nonexistent_env(self, monkeypatch):
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", "/nonexistent/path")
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", "/nonexistent/path")
         monkeypatch.delenv("UDF_TOOLKIT_DIR", raising=False)
         # Hermetic: mock all external state so the test is deterministic
         # regardless of host OS, LibreOffice installation, or env vars.
@@ -232,9 +232,9 @@ class TestConvertUdfToDocx:
         """When toolkit is available but file doesn't exist, returns file_not_found."""
         toolkit_dir = tmp_path / "tk"
         toolkit_dir.mkdir()
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(toolkit_dir))
         # Mock shutil.which to pretend soffice is available
-        with patch("emsal_mcp.udf.shutil.which", return_value="/usr/bin/soffice"):
+        with patch("dayanak.udf.shutil.which", return_value="/usr/bin/soffice"):
             result = convert_udf_to_docx(tmp_path / "missing.udf")
             assert result["ok"] is False
             assert result["errorCode"] == "FILE_NOT_FOUND"
@@ -264,8 +264,8 @@ class TestConvertUdfToPdf:
         """When toolkit is available but file doesn't exist, returns file_not_found."""
         toolkit_dir = tmp_path / "tk"
         toolkit_dir.mkdir()
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
-        with patch("emsal_mcp.udf.shutil.which", return_value="/usr/bin/soffice"):
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(toolkit_dir))
+        with patch("dayanak.udf.shutil.which", return_value="/usr/bin/soffice"):
             result = convert_udf_to_pdf(tmp_path / "missing.udf")
             assert result["ok"] is False
             assert result["errorCode"] == "FILE_NOT_FOUND"
@@ -320,7 +320,7 @@ class TestConvertDocxToUdf:
             encoding="utf-8",
         )
         monkeypatch.setenv("LOCAL_YARGI_UDF_TOOLS", "1")
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(toolkit_dir))
         monkeypatch.setattr(udf_mod, "_discover_python", lambda: sys.executable)
         docx = tmp_path / "in.docx"
         docx.write_bytes(b"fake docx")
@@ -333,8 +333,8 @@ class TestConvertDocxToUdf:
     def test_file_not_found(self, tmp_path, monkeypatch):
         toolkit_dir = tmp_path / "tk"
         toolkit_dir.mkdir()
-        monkeypatch.setenv("EMSAL_UDF_TOOLKIT_DIR", str(toolkit_dir))
-        with patch("emsal_mcp.udf.shutil.which", return_value="/usr/bin/soffice"):
+        monkeypatch.setenv("DAYANAK_UDF_TOOLKIT_DIR", str(toolkit_dir))
+        with patch("dayanak.udf.shutil.which", return_value="/usr/bin/soffice"):
             result = convert_docx_to_udf(tmp_path / "missing.docx")
             assert result["ok"] is False
             assert result["errorCode"] == "FILE_NOT_FOUND"
@@ -348,7 +348,7 @@ class TestConvertDocxToUdf:
         assert "action" in result
 
     def test_deprecated_alias_still_works(self, tmp_path):
-        from emsal_mcp.udf import convert_docx_to_udf_experimental
+        from dayanak.udf import convert_docx_to_udf_experimental
 
         path = tmp_path / "test.docx"
         path.write_bytes(b"content")
@@ -361,11 +361,11 @@ class TestConvertDocxToUdf:
 
 class TestCLIImports:
     def test_cli_import(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_mcp_import(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
 

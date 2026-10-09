@@ -27,21 +27,21 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.models import (
+from dayanak.models import (
     ContentStatus,
     Document,
     SourceSmokeResult,
     finalize_document,
     MIN_CONTENT_LENGTH,
 )
-from emsal_mcp.sources.base import (
+from dayanak.sources.base import (
     check_http_response,
     decode_b64,
     html_to_text,
     metadata_doc,
     sha,
 )
-from emsal_mcp.sources.registry import (
+from dayanak.sources.registry import (
     capabilities,
     registry,
     smoke_all,
@@ -354,7 +354,7 @@ def _mock_httpx_response(json_data=None, text="", status_code=200):
 
 class TestBedestenMocked:
     def test_search_basic(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {
@@ -370,7 +370,7 @@ class TestBedestenMocked:
                 ]
             }
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -384,7 +384,7 @@ class TestBedestenMocked:
 
     def test_get_document_with_html(self):
         import base64
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         html_content = "<html><body><p>This is a test document with enough content to pass the minimum length check for the finalization step in the system.</p></body></html>"
         encoded = base64.b64encode(html_content.encode()).decode()
@@ -395,7 +395,7 @@ class TestBedestenMocked:
                 "mimeType": "text/html",
             }
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -407,7 +407,7 @@ class TestBedestenMocked:
         assert "test document" in (doc.text or "").lower()
 
     def test_get_document_bad_b64_returns_unavailable(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         # Use a non-ASCII string that causes base64 decode to fail
         mock_resp = _mock_httpx_response(json_data={
@@ -417,7 +417,7 @@ class TestBedestenMocked:
                 "mimeType": "text/html",
             }
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -426,10 +426,10 @@ class TestBedestenMocked:
         assert doc.content_status == ContentStatus.UNAVAILABLE
 
     def test_get_document_http_error(self):
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(status_code=500)
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -439,10 +439,10 @@ class TestBedestenMocked:
 
     def test_get_document_404_returns_unavailable(self):
         """404 (full text not yet published) degrades gracefully, not raises."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(status_code=404)
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -456,7 +456,7 @@ class TestBedestenMocked:
 
     def test_search_court_types_multi(self):
         """Multi-court search with court_types list."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {
@@ -480,7 +480,7 @@ class TestBedestenMocked:
                 ]
             }
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -492,13 +492,13 @@ class TestBedestenMocked:
 
     def test_search_esas_no_karar_no_parsing(self):
         """YIL/SIRA format parsed into separate int fields for upstream API."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"emsalKararList": []}
         })
         sent_payload = []
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             async def _capture_post(*args, **kwargs):
                 sent_payload.append(kwargs.get("json", {}))
@@ -516,13 +516,13 @@ class TestBedestenMocked:
 
     def test_search_esas_no_invalid_format_graceful(self):
         """Invalid YIL/SIRA format is silently ignored (no crash)."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"emsalKararList": [{"id": "1", "itemType": {"description": "Yargıtay"}, "kararTarihiStr": "2024-01-01"}]}
         })
         sent_payload = []
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             async def _capture_post(*args, **kwargs):
                 sent_payload.append(kwargs.get("json", {}))
@@ -539,13 +539,13 @@ class TestBedestenMocked:
 
     def test_search_birimadi_filter(self):
         """birimAdi filter is passed through to the API payload."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"emsalKararList": []}
         })
         sent_payload = []
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             async def _capture_post(*args, **kwargs):
                 sent_payload.append(kwargs.get("json", {}))
@@ -559,13 +559,13 @@ class TestBedestenMocked:
 
     def test_search_tarih_range_filter(self):
         """karar_tarihi_start/end passed through to API payload."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"emsalKararList": []}
         })
         sent_payload = []
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             async def _capture_post(*args, **kwargs):
                 sent_payload.append(kwargs.get("json", {}))
@@ -581,13 +581,13 @@ class TestBedestenMocked:
 
     def test_search_legacy_chamber_still_works(self):
         """Old 'chamber' parameter still maps to birimAdi (backward compat)."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"emsalKararList": []}
         })
         sent_payload = []
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             async def _capture_post(*args, **kwargs):
                 sent_payload.append(kwargs.get("json", {}))
@@ -601,13 +601,13 @@ class TestBedestenMocked:
 
     def test_search_legacy_start_date_still_works(self):
         """Old 'start_date' parameter still works (backward compat)."""
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"emsalKararList": []}
         })
         sent_payload = []
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             async def _capture_post(*args, **kwargs):
                 sent_payload.append(kwargs.get("json", {}))
@@ -623,13 +623,13 @@ class TestBedestenMocked:
 
 class TestYargitayMocked:
     def test_source_id_preserved(self):
-        from emsal_mcp.sources.registry import YargitayClient
+        from dayanak.sources.registry import YargitayClient
         y = YargitayClient()
         assert y.source_id == "yargitay"
         assert y._default_item_type == "YARGITAYKARARI"
 
     def test_smoke(self):
-        from emsal_mcp.sources.registry import YargitayClient
+        from dayanak.sources.registry import YargitayClient
         y = YargitayClient()
         result = asyncio.run(y.smoke(online=False))
         assert result.source_id == "yargitay"
@@ -638,7 +638,7 @@ class TestYargitayMocked:
 
 class TestMevzuatMocked:
     def test_search_title_priority(self):
-        from emsal_mcp.sources.mevzuat import MevzuatClient
+        from dayanak.sources.mevzuat import MevzuatClient
         mc = MevzuatClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {
@@ -652,7 +652,7 @@ class TestMevzuatMocked:
                 ]
             }
         })
-        with patch("emsal_mcp.sources.base.client") as mock_client:
+        with patch("dayanak.sources.base.client") as mock_client:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -665,7 +665,7 @@ class TestMevzuatMocked:
 
     def test_get_document_title_priority(self):
         import base64
-        from emsal_mcp.sources.mevzuat import MevzuatClient
+        from dayanak.sources.mevzuat import MevzuatClient
         mc = MevzuatClient()
         html_content = "<html><body><p>Mevzuat metni burada yer alır ve yeterli uzunluktadır. Bu metin minimum içerik uzunluğunu aşar.</p></body></html>"
         encoded = base64.b64encode(html_content.encode()).decode()
@@ -675,7 +675,7 @@ class TestMevzuatMocked:
                 "content": encoded,
             }
         })
-        with patch("emsal_mcp.sources.base.client") as mock_client:
+        with patch("dayanak.sources.base.client") as mock_client:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -685,12 +685,12 @@ class TestMevzuatMocked:
         assert doc.title == "Kanun No 123"
 
     def test_get_document_bad_b64(self):
-        from emsal_mcp.sources.mevzuat import MevzuatClient
+        from dayanak.sources.mevzuat import MevzuatClient
         mc = MevzuatClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"mevzuatAdi": "X", "content": "\x80\x81\x82"}
         })
-        with patch("emsal_mcp.sources.base.client") as mock_client:
+        with patch("dayanak.sources.base.client") as mock_client:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -713,9 +713,9 @@ class TestAymMocked:
         return cm
 
     def test_search_kbb_api(self):
-        from emsal_mcp.sources.simple_public import AymClient
+        from dayanak.sources.simple_public import AymClient
         ac = AymClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             mc.return_value = self._mock_kbb_client({
                 "total": 1,
                 "page": 1,
@@ -735,15 +735,15 @@ class TestAymMocked:
         assert sp.results[0].content_status == ContentStatus.METADATA_ONLY
 
     def test_search_kbb_empty(self):
-        from emsal_mcp.sources.simple_public import AymClient
+        from dayanak.sources.simple_public import AymClient
         ac = AymClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             mc.return_value = self._mock_kbb_client({"total": 0, "page": 1, "data": []})
             results = asyncio.run(ac.search("nonexistent"))
         assert results == []
 
     def test_smoke(self):
-        from emsal_mcp.sources.simple_public import AymClient
+        from dayanak.sources.simple_public import AymClient
         ac = AymClient()
         result = asyncio.run(ac.smoke(online=False))
         assert result.source_id == "aym"
@@ -752,7 +752,7 @@ class TestAymMocked:
 
 class TestDanistayMocked:
     def test_search_basic(self):
-        from emsal_mcp.sources.simple_public import DanistayClient
+        from dayanak.sources.simple_public import DanistayClient
         dc = DanistayClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {
@@ -761,7 +761,7 @@ class TestDanistayMocked:
                 ]
             }
         })
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -771,7 +771,7 @@ class TestDanistayMocked:
         assert results[0].source == "danistay"
 
     def test_smoke(self):
-        from emsal_mcp.sources.simple_public import DanistayClient
+        from dayanak.sources.simple_public import DanistayClient
         dc = DanistayClient()
         result = asyncio.run(dc.smoke(online=False))
         assert result.source_id == "danistay"
@@ -780,7 +780,7 @@ class TestDanistayMocked:
 
 class TestGibMocked:
     def test_search_normalization(self):
-        from emsal_mcp.sources.simple_public import GibClient
+        from dayanak.sources.simple_public import GibClient
         gc = GibClient()
         mock_resp = _mock_httpx_response(json_data={
             "resultContainer": {
@@ -789,7 +789,7 @@ class TestGibMocked:
                 ]
             }
         })
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -799,12 +799,12 @@ class TestGibMocked:
         assert results[0].source == "gib"
 
     def test_get_document_not_found(self):
-        from emsal_mcp.sources.simple_public import GibClient
+        from dayanak.sources.simple_public import GibClient
         gc = GibClient()
         mock_resp = _mock_httpx_response(json_data={
             "resultContainer": {"content": []}
         })
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -814,7 +814,7 @@ class TestGibMocked:
         assert doc.metadata.get("not_found") is True
 
     def test_smoke(self):
-        from emsal_mcp.sources.simple_public import GibClient
+        from dayanak.sources.simple_public import GibClient
         gc = GibClient()
         result = asyncio.run(gc.smoke(online=False))
         assert result.source_id == "gib"
@@ -823,9 +823,9 @@ class TestGibMocked:
 
 class TestUyusmazlikMocked:
     def test_search_graceful_unavailable_on_error(self):
-        from emsal_mcp.sources.simple_public import UyusmazlikClient
+        from dayanak.sources.simple_public import UyusmazlikClient
         uc = UyusmazlikClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(side_effect=Exception("connection refused"))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -835,7 +835,7 @@ class TestUyusmazlikMocked:
         assert results[0].content_status == ContentStatus.UNAVAILABLE
 
     def test_get_document_pdf_link(self):
-        from emsal_mcp.sources.simple_public import UyusmazlikClient
+        from dayanak.sources.simple_public import UyusmazlikClient
         import base64
         uc = UyusmazlikClient()
         url = "https://example.com/test.pdf"
@@ -845,9 +845,9 @@ class TestUyusmazlikMocked:
         assert doc.metadata.get("pdfUrl") == url
 
     def test_get_document_graceful_unavailable(self):
-        from emsal_mcp.sources.simple_public import UyusmazlikClient
+        from dayanak.sources.simple_public import UyusmazlikClient
         uc = UyusmazlikClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(side_effect=Exception("fail"))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -856,7 +856,7 @@ class TestUyusmazlikMocked:
         assert doc.content_status == ContentStatus.UNAVAILABLE
 
     def test_smoke(self):
-        from emsal_mcp.sources.simple_public import UyusmazlikClient
+        from dayanak.sources.simple_public import UyusmazlikClient
         uc = UyusmazlikClient()
         result = asyncio.run(uc.smoke(online=False))
         assert result.source_id == "uyusmazlik"
@@ -865,9 +865,9 @@ class TestUyusmazlikMocked:
 
 class TestRekabetMocked:
     def test_search_graceful_unavailable(self):
-        from emsal_mcp.sources.simple_public import RekabetClient
+        from dayanak.sources.simple_public import RekabetClient
         rc = RekabetClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(side_effect=Exception("fail"))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -877,9 +877,9 @@ class TestRekabetMocked:
         assert results[0].content_status == ContentStatus.UNAVAILABLE
 
     def test_get_document_graceful_unavailable(self):
-        from emsal_mcp.sources.simple_public import RekabetClient
+        from dayanak.sources.simple_public import RekabetClient
         rc = RekabetClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(side_effect=Exception("fail"))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -888,7 +888,7 @@ class TestRekabetMocked:
         assert doc.content_status == ContentStatus.UNAVAILABLE
 
     def test_smoke(self):
-        from emsal_mcp.sources.simple_public import RekabetClient
+        from dayanak.sources.simple_public import RekabetClient
         rc = RekabetClient()
         result = asyncio.run(rc.smoke(online=False))
         assert result.source_id == "rekabet"
@@ -896,9 +896,9 @@ class TestRekabetMocked:
 
 class TestSayistayMocked:
     def test_search_graceful_unavailable(self):
-        from emsal_mcp.sources.simple_public import SayistayClient
+        from dayanak.sources.simple_public import SayistayClient
         sc = SayistayClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(side_effect=Exception("fail"))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -908,9 +908,9 @@ class TestSayistayMocked:
         assert results[0].content_status == ContentStatus.UNAVAILABLE
 
     def test_get_document_graceful_unavailable(self):
-        from emsal_mcp.sources.simple_public import SayistayClient
+        from dayanak.sources.simple_public import SayistayClient
         sc = SayistayClient()
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(side_effect=Exception("fail"))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -919,7 +919,7 @@ class TestSayistayMocked:
         assert doc.content_status == ContentStatus.UNAVAILABLE
 
     def test_smoke(self):
-        from emsal_mcp.sources.simple_public import SayistayClient
+        from dayanak.sources.simple_public import SayistayClient
         sc = SayistayClient()
         result = asyncio.run(sc.smoke(online=False))
         assert result.source_id == "sayistay"
@@ -938,7 +938,7 @@ class TestNoErrorHtmlCitationSafe:
 class TestCliSmokeCommand:
     def test_sources_smoke_command(self):
         from typer.testing import CliRunner
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         runner = CliRunner()
         result = runner.invoke(app, ["sources-smoke"])
         assert result.exit_code == 0
@@ -946,7 +946,7 @@ class TestCliSmokeCommand:
 
     def test_sources_smoke_json(self):
         from typer.testing import CliRunner
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         runner = CliRunner()
         result = runner.invoke(app, ["sources-smoke", "--json"])
         assert result.exit_code == 0
@@ -956,7 +956,7 @@ class TestCliSmokeCommand:
 
     def test_sources_command(self):
         from typer.testing import CliRunner
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         runner = CliRunner()
         result = runner.invoke(app, ["sources"])
         assert result.exit_code == 0
@@ -1024,7 +1024,7 @@ class TestRateLimiter:
     def test_burst_then_paced(self):
         import time
 
-        from emsal_mcp.sources.base import _SlidingWindowLimiter
+        from dayanak.sources.base import _SlidingWindowLimiter
 
         async def run():
             lim = _SlidingWindowLimiter(max_requests=2, window=0.3)
@@ -1043,7 +1043,7 @@ class TestRateLimiter:
     def test_penalize_forces_cooldown(self):
         import time
 
-        from emsal_mcp.sources.base import _SlidingWindowLimiter
+        from dayanak.sources.base import _SlidingWindowLimiter
 
         async def run():
             lim = _SlidingWindowLimiter(max_requests=10, window=0.1)
@@ -1056,7 +1056,7 @@ class TestRateLimiter:
 
     def test_disabled_flag_skips_throttle(self, monkeypatch):
         """When disabled, the request hook returns without creating a bucket."""
-        import emsal_mcp.sources.base as base
+        import dayanak.sources.base as base
 
         monkeypatch.setattr(base, "_RL_DISABLED", True)
         monkeypatch.setattr(base, "_BUCKETS", {})
@@ -1068,7 +1068,7 @@ class TestRateLimiter:
         """A fresh limiter instance inherits recent timestamps via the state file."""
         import time
 
-        from emsal_mcp.sources.base import _SlidingWindowLimiter
+        from dayanak.sources.base import _SlidingWindowLimiter
 
         state = tmp_path / "rl.json"
 
@@ -1088,7 +1088,7 @@ class TestRateLimiter:
         assert waited >= 1.0  # had to wait out part of the window, not instant
 
     def test_no_persist_path_is_in_memory(self, tmp_path):
-        from emsal_mcp.sources.base import _SlidingWindowLimiter
+        from dayanak.sources.base import _SlidingWindowLimiter
 
         lim = _SlidingWindowLimiter(2, 0.3)  # no persist_path
         assert lim.persist_path is None
@@ -1103,14 +1103,14 @@ class TestBirimAdi:
     """Tests for the 79-code birimAdi chamber enum (M-93)."""
 
     def test_smoke_count_is_79(self):
-        from emsal_mcp.birim_enum import _smoke
+        from dayanak.birim_enum import _smoke
         s = _smoke()
         assert s["ok"] is True
         assert s["count"] == 79
         assert len(s["issues"]) == 0
 
     def test_is_valid_birim_adi_known_codes(self):
-        from emsal_mcp.birim_enum import is_valid_birim_adi
+        from dayanak.birim_enum import is_valid_birim_adi
         assert is_valid_birim_adi("H1") is True
         assert is_valid_birim_adi("H23") is True
         assert is_valid_birim_adi("C1") is True
@@ -1122,20 +1122,20 @@ class TestBirimAdi:
         assert is_valid_birim_adi("AYIM") is True
 
     def test_is_valid_birim_adi_unknown_codes(self):
-        from emsal_mcp.birim_enum import is_valid_birim_adi
+        from dayanak.birim_enum import is_valid_birim_adi
         assert is_valid_birim_adi("XYZ") is False
         assert is_valid_birim_adi("H99") is False
         assert is_valid_birim_adi("") is False
         assert is_valid_birim_adi("1. Daire") is False  # "1. Daire" alone isn't known; Danistay uses D1-D17
 
     def test_validate_birim_adi_valid(self):
-        from emsal_mcp.birim_enum import validate_birim_adi
+        from dayanak.birim_enum import validate_birim_adi
         assert validate_birim_adi("H1") is None
         assert validate_birim_adi("HGK") is None
         assert validate_birim_adi(None) is None
 
     def test_validate_birim_adi_invalid_returns_error_dict(self):
-        from emsal_mcp.birim_enum import validate_birim_adi
+        from dayanak.birim_enum import validate_birim_adi
         err = validate_birim_adi("INVALID_CHAMBER")
         assert err is not None
         assert isinstance(err, dict)
@@ -1147,7 +1147,7 @@ class TestBirimAdi:
         assert "valid_codes" in err.get("details", {})
 
     def test_validate_birim_adi_never_raises(self):
-        from emsal_mcp.birim_enum import validate_birim_adi
+        from dayanak.birim_enum import validate_birim_adi
         # Must handle all inputs gracefully
         for val in [None, "", "X", "1", 42]:  # type: ignore[assignment]
             try:
@@ -1158,7 +1158,7 @@ class TestBirimAdi:
                 pytest.fail(f"validate_birim_adi({val!r}) raised {exc}")
 
     def test_describe_birim_adi_tr(self):
-        from emsal_mcp.birim_enum import describe_birim_adi
+        from dayanak.birim_enum import describe_birim_adi
         d = describe_birim_adi("H1", lang="tr")
         assert d["code"] == "H1"
         assert "1. Hukuk Dairesi" in d["description"]
@@ -1169,27 +1169,27 @@ class TestBirimAdi:
         assert "Daire" in d2["description"]
 
     def test_describe_birim_adi_en(self):
-        from emsal_mcp.birim_enum import describe_birim_adi
+        from dayanak.birim_enum import describe_birim_adi
         d = describe_birim_adi("HGK", lang="en")
         assert d["code"] == "HGK"
         assert "General Assembly of Civil Chambers" == d["description"]
         assert d["court"] == "Yargitay"
 
     def test_describe_birim_adi_unknown(self):
-        from emsal_mcp.birim_enum import describe_birim_adi
+        from dayanak.birim_enum import describe_birim_adi
         d = describe_birim_adi("NOPE")
         assert d["code"] == "NOPE"
         assert "bilinmiyor" in d["description"]
 
     def test_list_birim_codes_all(self):
-        from emsal_mcp.birim_enum import list_birim_codes
+        from dayanak.birim_enum import list_birim_codes
         codes = list_birim_codes()
         assert len(codes) == 79
         assert all(isinstance(c, dict) for c in codes)
         assert all("code" in c and "description_tr" in c for c in codes)
 
     def test_list_birim_codes_filter_by_court(self):
-        from emsal_mcp.birim_enum import list_birim_codes
+        from dayanak.birim_enum import list_birim_codes
         yarg = list_birim_codes(court="Yargitay")
         # H1-H23 (23) + C1-C23 (23) + HGK/CGK/BGK (3) + 3 alternatif = 52
         # Actually: "1. Hukuk Dairesi", "1. Ceza Dairesi", "Hukuk Genel Kurulu",
@@ -1210,12 +1210,12 @@ class TestBirimAdi:
 
         # We can't call search_decisions directly since it requires async MCP context.
         # Instead test the validation logic through the Bedesten client path.
-        from emsal_mcp.sources.bedesten import BedestenClient
+        from dayanak.sources.bedesten import BedestenClient
         ci = BedestenClient()
         mock_resp = _mock_httpx_response(json_data={
             "data": {"emsalKararList": [{"id": "1", "itemType": {"description": "Yargitay"}}]}
         })
-        with _patch("emsal_mcp.sources.bedesten.client") as mc:
+        with _patch("dayanak.sources.bedesten.client") as mc:
             cm = _AM()
             cm.__aenter__ = _AM(return_value=_MM(post=_AM(return_value=mock_resp)))
             cm.__aexit__ = _AM(return_value=False)
@@ -1254,7 +1254,7 @@ class TestResmiGazeteParsing:
     hold one item link each."""
 
     def _client(self):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         return ResmiGazeteClient()
 
     def test_index_items_inherit_headings(self):
@@ -1278,11 +1278,11 @@ class TestResmiGazeteParsing:
     def test_windows_1254_is_decoded_from_the_meta_tag(self):
         """The server sends no charset, so httpx would guess UTF-8 and mangle
         every Turkish character. Decoding must follow the declared charset."""
-        from emsal_mcp.sources.resmigazete import _decode
+        from dayanak.sources.resmigazete import _decode
         assert "Yargının" in _decode(_rg_resp(_RG_INDEX_HTML))
 
     def test_mukerrer_and_malformed_ids(self):
-        from emsal_mcp.sources.resmigazete import _parse_item_id
+        from dayanak.sources.resmigazete import _parse_item_id
         assert _parse_item_id("20260731-1") == ("20260731", "20260731-1")
         assert _parse_item_id("20260731m1-4") == ("20260731", "20260731m1-4")
         assert _parse_item_id("https://example.com/x.htm") is None
@@ -1296,7 +1296,7 @@ class TestResmiGazeteSearch:
         async def _get(*a, **k):
             return queue.pop(0)
 
-        mc = patch("emsal_mcp.sources.resmigazete.client")
+        mc = patch("dayanak.sources.resmigazete.client")
         started = mc.start()
         cm = AsyncMock()
         cm.__aenter__ = AsyncMock(return_value=MagicMock(get=AsyncMock(side_effect=_get)))
@@ -1305,7 +1305,7 @@ class TestResmiGazeteSearch:
         return mc
 
     def test_search_lists_the_issue(self):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         mc = self._patched([_rg_resp(_RG_INDEX_HTML)])
         try:
             sp = asyncio.run(ResmiGazeteClient().search_page("", limit=10, date="2026-07-31"))
@@ -1318,7 +1318,7 @@ class TestResmiGazeteSearch:
 
     def test_query_filters_diacritic_insensitively(self):
         """'yonetmelik' must find 'YÖNETMELİKLER'."""
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         mc = self._patched([_rg_resp(_RG_INDEX_HTML)])
         try:
             sp = asyncio.run(
@@ -1329,7 +1329,7 @@ class TestResmiGazeteSearch:
         assert [r.document_id for r in sp.results] == ["20260731-9"]
 
     def test_pdf_items_are_marked_pdf_link_only(self):
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         mc = self._patched([_rg_resp(_RG_INDEX_HTML)])
         try:
             sp = asyncio.run(ResmiGazeteClient().search_page("", limit=10, date="2026-07-31"))
@@ -1339,7 +1339,7 @@ class TestResmiGazeteSearch:
 
     def test_missing_issue_is_reported_not_crashed(self):
         """Weekends and future dates 404; that is a real answer, not an error."""
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         mc = self._patched([_rg_resp("", status=404)])
         try:
             sp = asyncio.run(ResmiGazeteClient().search_page("", limit=10, date="2026-08-02"))
@@ -1351,7 +1351,7 @@ class TestResmiGazeteSearch:
     def test_bad_document_id_explains_the_format(self):
         """A full URL was the first thing tried by hand; the error must say
         what the id should look like instead of a bare 'unavailable'."""
-        from emsal_mcp.sources.resmigazete import ResmiGazeteClient
+        from dayanak.sources.resmigazete import ResmiGazeteClient
         doc = asyncio.run(ResmiGazeteClient().get_document("https://example.com/x"))
         assert doc.content_status.value == "unavailable"
         warns = (doc.metadata or {}).get("_emsal_warnings", [])
@@ -1364,7 +1364,7 @@ class TestStubDetection:
     unimplemented resmigazete adapter sit behind a green health_check."""
 
     def test_declared_support_over_a_stub_fails_smoke(self):
-        from emsal_mcp.sources.kvkk import KvkkClient
+        from dayanak.sources.kvkk import KvkkClient
 
         class Lying(KvkkClient):
             _supports_search = True
@@ -1379,13 +1379,13 @@ class TestStubDetection:
     def test_honest_stub_passes_but_is_still_reported(self):
         """kvkk declares no search support, so it is not a contradiction —
         but callers must still be able to see it produces nothing."""
-        from emsal_mcp.sources.registry import registry
+        from dayanak.sources.registry import registry
         r = asyncio.run(registry()["kvkk"].smoke(online=False))
         assert r.offline_ok is True
         assert "search" in r.stub_methods
 
     def test_implemented_adapters_are_not_flagged(self):
-        from emsal_mcp.sources.registry import registry
+        from dayanak.sources.registry import registry
         for sid in ("bedesten", "mevzuat", "resmigazete"):
             r = asyncio.run(registry()[sid].smoke(online=False))
             assert r.stub_methods == [], f"{sid} wrongly flagged as a stub"

@@ -14,8 +14,8 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.models import ContentStatus, Document, SearchResult
-from emsal_mcp.research import (
+from dayanak.models import ContentStatus, Document, SearchResult
+from dayanak.research import (
     INDEX_MANUAL_END,
     INDEX_MANUAL_START,
     _hash_bundle,
@@ -462,11 +462,11 @@ class TestRefreshResearchBundle:
 
 class TestCLIIntegration:
     def test_cli_import(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_research_commands_registered(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         # The typer sub-app commands aren't directly on app, but the group is registered
         assert "research" in [t.name for t in app.registered_groups] if hasattr(app, 'registered_groups') else True
 
@@ -477,11 +477,11 @@ class TestCLIIntegration:
 
 class TestMCPServerIntegration:
     def test_server_import(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)
 
     def test_research_functions_importable(self):
-        from emsal_mcp.research import (
+        from dayanak.research import (
             refresh_research_bundle,
             research_quality_dashboard,
             research_topic,

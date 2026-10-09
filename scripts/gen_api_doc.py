@@ -8,7 +8,7 @@ Writes docs/API.md with function signatures and docstrings extracted via ast.
 import ast
 from pathlib import Path
 
-SRC_DIR = Path(__file__).resolve().parent.parent / "src" / "emsal_mcp"
+SRC_DIR = Path(__file__).resolve().parent.parent / "src" / "dayanak"
 OUT_DIR = Path(__file__).resolve().parent.parent / "docs"
 EXCLUDE_FILES = {"__init__.py", "__pycache__"}
 EXCLUDE_DIRS = {"sources", "__pycache__"}
@@ -63,7 +63,7 @@ def extract_public_functions(filepath: Path) -> list[dict]:
 def generate_api_doc() -> str:
     """Generate API reference markdown from all public functions."""
     lines = [
-        "# Emsal-mcp API Reference",
+        "# Dayanak API Reference",
         "",
         "Auto-generated from module docstrings.",
         "",

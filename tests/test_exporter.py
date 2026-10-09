@@ -5,8 +5,8 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.exporter import create_bundle, export_draft_to_docx, verify_bundle
-from emsal_mcp.models import ContentStatus, Document, Draft, InputPack
+from dayanak.exporter import create_bundle, export_draft_to_docx, verify_bundle
+from dayanak.models import ContentStatus, Document, Draft, InputPack
 
 
 def make_pack_and_draft():

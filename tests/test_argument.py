@@ -15,8 +15,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.argument import (
+from dayanak.models import ContentStatus, Document
+from dayanak.argument import (
     build_argument_chain,
     score_argument,
     get_argument_strength_report,
@@ -85,7 +85,7 @@ def _make_pack(
     extra_args: list[dict[str, Any]] | None = None,
 ) -> Path:
     """Create a minimal petition pack directory for testing."""
-    from emsal_mcp.petition import prepare_drafting_input_pack
+    from dayanak.petition import prepare_drafting_input_pack
 
     docs = docs or []
     pack_dir = tmp_path / "test_pack"
@@ -434,7 +434,7 @@ class TestRenderArgumentsToMarkdown:
         docs = [_make_doc()]
         pack_dir = _make_pack(tmp_path, docs)
         md = render_arguments_to_markdown(pack_dir)
-        assert "emsal-mcp" in md
+        assert "dayanak" in md
 
 
 # ---------------------------------------------------------------------------
@@ -520,11 +520,11 @@ class TestSafetyInvariants:
 
 class TestCLIIntegration:
     def test_cli_import(self):
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
         assert app is not None
 
     def test_argument_functions_importable(self):
-        from emsal_mcp.argument import (
+        from dayanak.argument import (
             build_argument_chain,
             score_argument,
             get_argument_strength_report,
@@ -538,5 +538,5 @@ class TestCLIIntegration:
 
 class TestMCPServerIntegration:
     def test_server_import(self):
-        from emsal_mcp.server import main
+        from dayanak.server import main
         assert callable(main)

@@ -2,7 +2,7 @@
 
 ## Security maintainer
 
-Emsal MCP has a single security maintainer, Alpaslan Fatih Sözer
+Dayanak has a single security maintainer, Alpaslan Fatih Sözer
 (GitHub [@afsozer](https://github.com/afsozer)), who receives every report,
 decides on fixes and publishes security advisories.
 
@@ -11,10 +11,10 @@ decides on fixes and publishes security advisories.
 Please do not open a public issue for a security problem. Report it privately
 through GitHub's private vulnerability reporting: open the repository's
 **Security** tab and choose **Report a vulnerability**, or go directly to
-<https://github.com/afsozer/emsal-mcp/security/advisories/new>.
+<https://github.com/afsozer/dayanak/security/advisories/new>.
 
 If you cannot use GitHub, email bilgi@avfatihsozer.com with a subject line
-that starts with `[SECURITY] emsal-mcp`.
+that starts with `[SECURITY] dayanak`.
 
 A useful report names the affected version or commit, says how the server was
 run (stdio or streamable HTTP, and which tool profile), lists the steps to
@@ -56,7 +56,7 @@ Out of scope:
 - vulnerabilities in the official sources that the adapters query, such as
   mevzuat.gov.tr or the Ministry of Justice's Bedesten service, which should be
   reported to their operators;
-- publicly known vulnerabilities in third-party dependencies, unless Emsal MCP
+- publicly known vulnerabilities in third-party dependencies, unless Dayanak
   uses the dependency in a way that makes them exploitable;
 - installations run by other people.
 
@@ -72,7 +72,7 @@ maintainer.
 
 Güvenlik açıklarını herkese açık issue olarak değil, deponun **Security**
 sekmesindeki **Report a vulnerability** bağlantısıyla ya da konu satırı
-`[SECURITY] emsal-mcp` ile başlayan bir e-postayla bilgi@avfatihsozer.com
+`[SECURITY] dayanak` ile başlayan bir e-postayla bilgi@avfatihsozer.com
 adresine bildirin. Bildirimler 3 iş günü içinde yanıtlanır; düzeltme
 yayımlandıktan sonra GitHub güvenlik duyurusu çıkar ve uygunsa CVE istenir.
 Testleri yalnızca kendi kurulumunuzda yapın.

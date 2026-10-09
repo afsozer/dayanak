@@ -15,10 +15,10 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from emsal_mcp.models import SourceStatus
-from emsal_mcp.sources.bedesten import BedestenClient
-from emsal_mcp.sources.mevzuat import MevzuatClient
-from emsal_mcp.sources.simple_public import DanistayClient, GibClient, SayistayClient
+from dayanak.models import SourceStatus
+from dayanak.sources.bedesten import BedestenClient
+from dayanak.sources.mevzuat import MevzuatClient
+from dayanak.sources.simple_public import DanistayClient, GibClient, SayistayClient
 
 
 # ── Unit: _check_response_schema ───────────────────────────────────────
@@ -137,7 +137,7 @@ class TestSchemaDeclarations:
 
     def test_html_adapters_no_schema(self):
         """AYM, Uyusmazlik, Rekabet are HTML-based — no schema declared."""
-        from emsal_mcp.sources.simple_public import AymClient, UyusmazlikClient, RekabetClient
+        from dayanak.sources.simple_public import AymClient, UyusmazlikClient, RekabetClient
         for cls in [AymClient, UyusmazlikClient, RekabetClient]:
             ci = cls()
             assert ci._search_response_keys is None, f"{cls.__name__} should skip schema validation"
@@ -145,7 +145,7 @@ class TestSchemaDeclarations:
 
     def test_yargitay_inherits_bedesten_schema(self):
         """Yargıtay extends Bedesten — inherits schema keys."""
-        from emsal_mcp.sources.registry import YargitayClient
+        from dayanak.sources.registry import YargitayClient
         ci = YargitayClient()
         # Inherited from BedestenClient
         assert ci._search_response_keys == ["emsalKararList", "items", "data", "content"]
@@ -178,7 +178,7 @@ class TestBedestenSchemaDrift:
                 ]
             }
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -200,7 +200,7 @@ class TestBedestenSchemaDrift:
                 "items": [{"id": "456", "itemType": {"description": "Yargıtay"}, "esasNo": "2024/2"}],
             }
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -222,7 +222,7 @@ class TestBedestenSchemaDrift:
                 "sonuc": None,
             }
         })
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -247,7 +247,7 @@ class TestMevzuatSchemaDrift:
                 ]
             }
         })
-        with patch("emsal_mcp.sources.base.client") as mc:
+        with patch("dayanak.sources.base.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -267,7 +267,7 @@ class TestMevzuatSchemaDrift:
                 "items": [{"documentId": "m2", "mevzuatAdi": "KHK 456"}],
             }
         })
-        with patch("emsal_mcp.sources.base.client") as mc:
+        with patch("dayanak.sources.base.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -285,7 +285,7 @@ class TestDanistaySchemaDrift:
         """'data' key missing: capability downgrade."""
         ci = DanistayClient()
         mock_resp = _mock_httpx_resp(json_data={"results": []})  # no "data" key
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -303,7 +303,7 @@ class TestGibSchemaDrift:
         """All expected keys missing."""
         ci = GibClient()
         mock_resp = _mock_httpx_resp(json_data={"sonuc": []})  # completely different
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -321,7 +321,7 @@ class TestSayistaySchemaDrift:
         """Normal DataTables response."""
         ci = SayistayClient()
         # Mock both the GET (for CSRF token) and POST responses
-        with patch("emsal_mcp.sources.simple_public.client") as mc:
+        with patch("dayanak.sources.simple_public.client") as mc:
             cm = AsyncMock()
             # First call: GET for CSRF token page
             get_resp = MagicMock()
@@ -359,7 +359,7 @@ class TestCapabilityModelAfterDrift:
 
         # Simulate drift
         mock_resp = _mock_httpx_resp(json_data={"data": {"yeni": []}})
-        with patch("emsal_mcp.sources.bedesten.client") as mc:
+        with patch("dayanak.sources.bedesten.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=mock_resp)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -397,7 +397,7 @@ class TestSmokeSchemaHealth:
 
     def test_html_adapter_no_schema_health(self):
         """AYM (HTML-based, no schema) — schema_health should be None."""
-        from emsal_mcp.sources.simple_public import AymClient
+        from dayanak.sources.simple_public import AymClient
         ci = AymClient()
         result = asyncio.run(ci.smoke(online=False))
         assert result.schema_health is None
@@ -429,7 +429,7 @@ class TestSmokeSchemaHealth:
 
     def test_smoke_model_dump_schema_health_none_for_html_adapter(self):
         """schema_health is null in JSON output when no schema is declared."""
-        from emsal_mcp.sources.simple_public import AymClient
+        from dayanak.sources.simple_public import AymClient
         ci = AymClient()
         result = asyncio.run(ci.smoke(online=False))
         dumped = result.model_dump(mode="json")

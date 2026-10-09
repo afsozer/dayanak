@@ -4,7 +4,7 @@ Verifies:
 - Core profile exposes exactly 11 tools (2026-09-06: drafting/files/meta
   kategorileri extended'a tasindi).
 - Full profile tool count >= previous snapshot (regression guard).
-- EMSAL_TOOL_PROFILE env var controls registration.
+- DAYANAK_TOOL_PROFILE env var controls registration.
 """
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ def _unwrap_threaded(fn):
     onlarin davranisini da atlardi.  Isaretli tek katmani soyuyoruz (M-119: async araclardaki zaman
     siniri sarmalayicisi da ayni sekilde isaretli).
     """
-    if getattr(fn, "__emsal_threaded__", False) or getattr(
-        fn, "__emsal_timeout__", False
+    if getattr(fn, "__dayanak_threaded__", False) or getattr(
+        fn, "__dayanak_timeout__", False
     ):
         return fn.__wrapped__
     return fn
@@ -65,25 +65,25 @@ def _capture_tools(profile: str) -> dict[str, object]:
     mock_mcp.tool = capture_tool
     mock_mcp.run = MagicMock()
     # Save/restore env to avoid cross-test contamination
-    prev_profile = os.environ.get("EMSAL_TOOL_PROFILE")
-    os.environ["EMSAL_TOOL_PROFILE"] = profile
+    prev_profile = os.environ.get("DAYANAK_TOOL_PROFILE")
+    os.environ["DAYANAK_TOOL_PROFILE"] = profile
     try:
         with patch(
             "mcp.server.fastmcp.FastMCP", return_value=mock_mcp
         ), patch.object(sys.stdin, "isatty", return_value=False):
-            # Force fresh import by clearing all emsal_mcp modules
+            # Force fresh import by clearing all dayanak modules
             for key in list(sys.modules.keys()):
-                if key.startswith("emsal_mcp."):
+                if key.startswith("dayanak."):
                     del sys.modules[key]
-            if "emsal_mcp" in sys.modules:
-                del sys.modules["emsal_mcp"]
-            import emsal_mcp.server
-            emsal_mcp.server.main()
+            if "dayanak" in sys.modules:
+                del sys.modules["dayanak"]
+            import dayanak.server
+            dayanak.server.main()
     finally:
         if prev_profile is None:
-            os.environ.pop("EMSAL_TOOL_PROFILE", None)
+            os.environ.pop("DAYANAK_TOOL_PROFILE", None)
         else:
-            os.environ["EMSAL_TOOL_PROFILE"] = prev_profile
+            os.environ["DAYANAK_TOOL_PROFILE"] = prev_profile
 
     return registered
 
@@ -233,7 +233,7 @@ class TestProfileTableDrift:
     """``tool_profile.py`` must describe the tools ``server.py`` registers."""
 
     def test_category_tools_match_registered_tools(self) -> None:
-        from emsal_mcp.tool_profile import CATEGORY_TOOLS, CORE_TOOLS as _CORE
+        from dayanak.tool_profile import CATEGORY_TOOLS, CORE_TOOLS as _CORE
 
         registered = set(_capture_tools("full"))
         declared = set(_CORE)
@@ -246,12 +246,12 @@ class TestProfileTableDrift:
         )
 
     def test_core_tools_lists_agree(self) -> None:
-        from emsal_mcp.tool_profile import CORE_TOOLS as _CORE
+        from dayanak.tool_profile import CORE_TOOLS as _CORE
 
         assert sorted(_CORE) == sorted(CORE_TOOLS)
 
     def test_retired_tools_are_actually_gone(self) -> None:
-        from emsal_mcp.tool_profile import RETIRED_TOOLS
+        from dayanak.tool_profile import RETIRED_TOOLS
 
         registered = set(_capture_tools("full"))
         still_there = sorted(set(RETIRED_TOOLS) & registered)
@@ -260,7 +260,7 @@ class TestProfileTableDrift:
         )
 
     def test_removed_tools_are_not_registered(self) -> None:
-        from emsal_mcp.tool_profile import REMOVED_TOOLS
+        from dayanak.tool_profile import REMOVED_TOOLS
 
         registered = set(_capture_tools("full"))
         still_there = sorted(set(REMOVED_TOOLS) & registered)
@@ -270,7 +270,7 @@ class TestProfileTableDrift:
         )
 
     def test_removed_tools_explain_themselves(self) -> None:
-        from emsal_mcp.tool_profile import REMOVED_TOOLS, RETIRED_TOOLS
+        from dayanak.tool_profile import REMOVED_TOOLS, RETIRED_TOOLS
 
         # A removed tool has no facade, so the note must say what to do
         # instead — otherwise the name just vanishes with no trail.
@@ -281,7 +281,7 @@ class TestProfileTableDrift:
             )
 
     def test_every_retired_tool_points_at_a_live_tool(self) -> None:
-        from emsal_mcp.tool_profile import RETIRED_TOOLS
+        from dayanak.tool_profile import RETIRED_TOOLS
 
         registered = set(_capture_tools("full"))
         for old, replacement in RETIRED_TOOLS.items():
@@ -293,7 +293,7 @@ class TestProfileTableDrift:
 
 
 class TestProfileEnvVar:
-    """EMSAL_TOOL_PROFILE env var correctly controls registration."""
+    """DAYANAK_TOOL_PROFILE env var correctly controls registration."""
 
     def test_core_vs_full_counts_differ(self) -> None:
         tools_core = _capture_tools("core")

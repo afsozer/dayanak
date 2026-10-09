@@ -1,4 +1,4 @@
-"""Tests for emsal_mcp.embeddings module and M-24 dense embedding integration.
+"""Tests for dayanak.embeddings module and M-24 dense embedding integration.
 
 Covers:
   - LocalHashProvider (deterministic, 128 dims, batch, Turkish, empty text)
@@ -24,8 +24,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.embeddings import (
+from dayanak.cache import Cache
+from dayanak.embeddings import (
     EMBEDDING_VERSION,
     EmbeddingProvider,
     FastEmbedProvider,
@@ -37,8 +37,8 @@ from emsal_mcp.embeddings import (
     rerank_results,
     unpack_vector,
 )
-from emsal_mcp.models import ContentStatus, Document
-from emsal_mcp.semantic import (
+from dayanak.models import ContentStatus, Document
+from dayanak.semantic import (
     build_embedding_index,
     build_semantic_index,
     embedding_search,
@@ -276,15 +276,15 @@ class TestProviderFactory:
         assert isinstance(p, LocalHashProvider)
 
     def test_env_override(self) -> None:
-        """EMSAL_EMBEDDING_PROVIDER env overrides default."""
-        with patch.dict(os.environ, {"EMSAL_EMBEDDING_PROVIDER": "local-hash-v1"}):
+        """DAYANAK_EMBEDDING_PROVIDER env overrides default."""
+        with patch.dict(os.environ, {"DAYANAK_EMBEDDING_PROVIDER": "local-hash-v1"}):
             p = get_embedding_provider()
             assert p is not None
             assert p.id == "local-hash-v1"
 
     def test_fastembed_when_unavailable(self) -> None:
         """fastembed provider returns provider or None depending on install status."""
-        with patch.dict(os.environ, {"EMSAL_EMBEDDING_PROVIDER": "fastembed-minilm-l6-v2"}):
+        with patch.dict(os.environ, {"DAYANAK_EMBEDDING_PROVIDER": "fastembed-minilm-l6-v2"}):
             p = get_embedding_provider()
             # If fastembed is installed, returns FastEmbedProvider; otherwise None
             if p is not None:
@@ -304,7 +304,7 @@ class TestProviderFactory:
 
     def test_fastembed_alias(self) -> None:
         """'fastembed' alias resolves to fastembed provider or None."""
-        with patch.dict(os.environ, {"EMSAL_EMBEDDING_PROVIDER": "fastembed"}):
+        with patch.dict(os.environ, {"DAYANAK_EMBEDDING_PROVIDER": "fastembed"}):
             p = get_embedding_provider()
             # If fastembed is installed, returns FastEmbedProvider; otherwise None
             if p is not None:
@@ -429,7 +429,7 @@ class TestEmbeddingVectorsTable:
 
     def test_table_created(self) -> None:
         """embedding_vectors table is created after ensure call."""
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.semantic import _ensure_embedding_vectors
 
         cache = Cache(Path("test_emb.sqlite3"))
         try:
@@ -450,7 +450,7 @@ class TestEmbeddingVectorsTable:
 
     def test_insert_and_retrieve(self) -> None:
         """Insert a vector row and retrieve it."""
-        from emsal_mcp.semantic import _ensure_embedding_vectors
+        from dayanak.semantic import _ensure_embedding_vectors
 
         cache = Cache(Path("test_emb_ir.sqlite3"))
         try:
@@ -618,7 +618,7 @@ class TestEmbeddingSearch:
         cache = Cache(tmp_path / "emb_bad_prov.sqlite3")
         # Override get_embedding_provider to return None for this test
         from unittest.mock import patch as _patch
-        with _patch("emsal_mcp.embeddings.get_embedding_provider", return_value=None):
+        with _patch("dayanak.embeddings.get_embedding_provider", return_value=None):
             result = embedding_search("test", provider="nonexistent", cache=cache)
         assert result["ok"] is False
         assert "EMBEDDING_BACKEND_UNAVAILABLE" in result.get("errorCode", "")
@@ -807,7 +807,7 @@ class TestCLIImports:
         """CLI app has embed-index, embed-search, providers commands."""
         from typer.testing import CliRunner
 
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
 
         runner = CliRunner()
         # Test providers command exists and works
@@ -819,7 +819,7 @@ class TestCLIImports:
         """CLI embed-index command runs successfully."""
         from typer.testing import CliRunner
 
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["semantic", "embed-index", "--json"])
@@ -830,7 +830,7 @@ class TestCLIImports:
         """CLI embed-search command runs successfully."""
         from typer.testing import CliRunner
 
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["semantic", "embed-search", "test", "--json"])
@@ -841,7 +841,7 @@ class TestCLIImports:
         """CLI embedding-status command runs successfully."""
         from typer.testing import CliRunner
 
-        from emsal_mcp.cli import app
+        from dayanak.cli import app
 
         runner = CliRunner()
         result = runner.invoke(app, ["semantic", "embedding-status", "--json"])
@@ -859,13 +859,13 @@ class TestMCPImports:
 
     def test_server_imports(self) -> None:
         """Server module can be imported (tools registered)."""
-        from emsal_mcp.server import main
+        from dayanak.server import main
 
         assert callable(main)
 
     def test_semantic_imports_all_new_functions(self) -> None:
         """All new semantic functions are importable."""
-        from emsal_mcp.semantic import (
+        from dayanak.semantic import (
             build_embedding_index,
             embedding_search,
             get_embedding_index_status,
@@ -877,7 +877,7 @@ class TestMCPImports:
 
     def test_embeddings_imports_all(self) -> None:
         """All embeddings module exports are importable."""
-        from emsal_mcp.embeddings import (
+        from dayanak.embeddings import (
             EMBEDDING_VERSION,
             EmbeddingProvider,
             FastEmbedProvider,
@@ -895,43 +895,43 @@ class TestMCPImports:
 
 
 class TestConfigEmbeddingProperties:
-    """Tests for EmsalConfig embedding properties."""
+    """Tests for DayanakConfig embedding properties."""
 
     def test_embedding_provider_default(self) -> None:
         """Default embedding_provider is 'local-hash-v1'."""
-        from emsal_mcp.config import EmsalConfig
+        from dayanak.config import DayanakConfig
 
-        c = EmsalConfig()
+        c = DayanakConfig()
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("EMSAL_EMBEDDING_PROVIDER", None)
+            os.environ.pop("DAYANAK_EMBEDDING_PROVIDER", None)
             assert c.embedding_provider == "local-hash-v1"
 
-    def test_embedding_cache_dir_default(self) -> None:
-        """Default embedding_cache_dir is ~/.emsal_mcp/models/fastembed."""
-        from emsal_mcp.config import EmsalConfig
+    def test_embedding_cache_dir_default(self, tmp_path) -> None:
+        """Default embedding_cache_dir is ~/.dayanak/models/fastembed."""
+        from dayanak.config import DayanakConfig
 
-        c = EmsalConfig()
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("EMSAL_EMBEDDING_CACHE_DIR", None)
+        c = DayanakConfig()
+        with patch.dict(os.environ, {}, clear=False), patch.object(Path, "home", lambda: tmp_path):
+            os.environ.pop("DAYANAK_EMBEDDING_CACHE_DIR", None)
             d = c.embedding_cache_dir
-            assert d == Path.home() / ".emsal_mcp" / "models" / "fastembed"
+            assert d == tmp_path / ".dayanak" / "models" / "fastembed"
 
     def test_embedding_batch_size_default(self) -> None:
         """Default embedding_batch_size is 16."""
-        from emsal_mcp.config import EmsalConfig
+        from dayanak.config import DayanakConfig
 
-        c = EmsalConfig()
+        c = DayanakConfig()
         with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("EMSAL_EMBEDDING_BATCH_SIZE", None)
+            os.environ.pop("DAYANAK_EMBEDDING_BATCH_SIZE", None)
             assert c.embedding_batch_size == 16
 
     def test_hybrid_weights_defaults(self) -> None:
         """Default hybrid weights: bm25=0.4, tfidf=0.6, dense=0.0."""
-        from emsal_mcp.config import EmsalConfig
+        from dayanak.config import DayanakConfig
 
-        c = EmsalConfig()
+        c = DayanakConfig()
         with patch.dict(os.environ, {}, clear=False):
-            for k in ("EMSAL_HYBRID_W_BM25", "EMSAL_HYBRID_W_TFIDF", "EMSAL_HYBRID_W_DENSE"):
+            for k in ("DAYANAK_HYBRID_W_BM25", "DAYANAK_HYBRID_W_TFIDF", "DAYANAK_HYBRID_W_DENSE"):
                 os.environ.pop(k, None)
             assert c.hybrid_w_bm25 == 0.4
             assert c.hybrid_w_tfidf == 0.6

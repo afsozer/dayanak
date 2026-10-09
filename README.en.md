@@ -1,14 +1,18 @@
-# Emsal-mcp
+# Dayanak
 
-> **v1.1.1** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 79 test files · 48 source modules
+> **v2.0.0** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 80 test files · 48 source modules
 >
-> [![CI](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/emsal-mcp/actions/workflows/ci.yml)
+> [![CI](https://github.com/afsozer/dayanak/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/dayanak/actions/workflows/ci.yml)
 
-**Project page:** [avfatihsozer.com/en/projects/emsal-mcp](https://avfatihsozer.com/en/projects/emsal-mcp) · Türkçe: [README.md](README.md)
+**Project page:** [avfatihsozer.com/en/projects/dayanak](https://avfatihsozer.com/en/projects/dayanak) · Türkçe: [README.md](README.md)
 
 An MCP server for citation-safe search, research and document preparation
 across official and publicly available Turkish legal sources (case law and
 legislation).
+
+This project was formerly called **emsal-mcp** and became Dayanak in 2.0.0. The old
+`emsal-mcp` package now installs `dayanak`; legacy `EMSAL_*` environment variables
+and the `~/.emsal_mcp` data directory are still honoured.
 
 It works in two ways:
 
@@ -46,7 +50,7 @@ Details and measurements: [`docs/BULK_INDEX.md`](docs/BULK_INDEX.md).
 
 ### Quick install (without the corpus)
 
-Emsal MCP also works without the 11-million-decision local corpus. In that case
+Dayanak also works without the 11-million-decision local corpus. In that case
 decision and legislation searches run live against the official sources (Bedesten,
 mevzuat.gov.tr, the Constitutional Court, the Council of State and others), and full
 decision texts are fetched live as well. Only the tools that search the local corpus
@@ -55,16 +59,16 @@ results and point to the live tools. Python 3.11 or later is required.
 
 ```bash
 # Run without installing (requires uv)
-uvx --from emsal-mcp emsal-mcp-server
+uvx --from dayanak dayanak-server
 
 # or install permanently
-pipx install emsal-mcp
+pipx install dayanak
 ```
 
 To add it to Claude Code:
 
 ```bash
-claude mcp add emsal -- uvx --from emsal-mcp emsal-mcp-server
+claude mcp add dayanak -- uvx --from dayanak dayanak-server
 ```
 
 Configuration for Claude Desktop or another MCP client:
@@ -72,17 +76,17 @@ Configuration for Claude Desktop or another MCP client:
 ```json
 {
   "mcpServers": {
-    "emsal": {
+    "dayanak": {
       "command": "uvx",
-      "args": ["--from", "emsal-mcp", "emsal-mcp-server"]
+      "args": ["--from", "dayanak", "dayanak-server"]
     }
   }
 }
 ```
 
-The default tool profile exposes 11 core tools; set `EMSAL_TOOL_PROFILE=full` for all
-of them. Fetched documents are cached in `~/.emsal_mcp/cache.sqlite3` (change it with
-`EMSAL_CACHE_PATH`).
+The default tool profile exposes 11 core tools; set `DAYANAK_TOOL_PROFILE=full` for all
+of them. Fetched documents are cached in `~/.dayanak/cache.sqlite3` (change it with
+`DAYANAK_CACHE_PATH`).
 
 ### Development install (with the corpus)
 
@@ -99,7 +103,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,mcp,embeddings]"
 
-emsal-mcp version
+dayanak version
 ```
 
 For semantic search to use the bulk FAISS index you also need
@@ -111,7 +115,7 @@ For semantic search to use the bulk FAISS index you also need
 
 In the live deployment the server is started with `scripts\mcp_http_sunucu.cmd`;
 this script sets up the environment variables itself and writes its log to
-`%LOCALAPPDATA%\emsal-mcp\mcp_http.log`.
+`%LOCALAPPDATA%\dayanak\mcp_http.log`.
 
 ```powershell
 .\scripts\mcp_http_sunucu.cmd
@@ -123,32 +127,32 @@ Endpoint: `http://<host>:<port>/mcp`.
 ### stdio server
 
 ```powershell
-call .\scripts\emsal-env.cmd
-emsal-mcp-server
+call .\scripts\dayanak-env.cmd
+dayanak-server
 ```
 
 ### Environment variables
 
 | Variable | Purpose | Example value |
 |---|---|---|
-| `EMSAL_CACHE_PATH` | Corpus SQLite file | `<veri-dizini>\cache.sqlite3` |
-| `EMSAL_BULK_VEC_DIR` | fp16 vector sidecars (for refine) | `<bench-dizini>\vec` |
-| `EMSAL_EMBEDDING_PROVIDER` | Embedding provider | `fastembed-multilingual-e5` |
-| `EMSAL_EMBEDDING_CACHE_DIR` | ONNX model cache | `<veri-dizini>\models\fastembed` |
-| `EMSAL_MCP_TRANSPORT` | `stdio` (default) or `streamable-http` | `streamable-http` |
-| `EMSAL_MCP_HOST` / `EMSAL_MCP_PORT` | HTTP listen address | `127.0.0.1` / `8790` |
-| `EMSAL_TOOL_PROFILE` | `core` (default) or `full` | `core` |
-| `EMSAL_TOOL_THREADS` | Thread pool for sync tools (0 = off) | `6` |
-| `EMSAL_TOOL_TIMEOUT` | Per-tool limit in seconds | `180` |
+| `DAYANAK_CACHE_PATH` | Corpus SQLite file | `<veri-dizini>\cache.sqlite3` |
+| `DAYANAK_BULK_VEC_DIR` | fp16 vector sidecars (for refine) | `<bench-dizini>\vec` |
+| `DAYANAK_EMBEDDING_PROVIDER` | Embedding provider | `fastembed-multilingual-e5` |
+| `DAYANAK_EMBEDDING_CACHE_DIR` | ONNX model cache | `<veri-dizini>\models\fastembed` |
+| `DAYANAK_MCP_TRANSPORT` | `stdio` (default) or `streamable-http` | `streamable-http` |
+| `DAYANAK_MCP_HOST` / `DAYANAK_MCP_PORT` | HTTP listen address | `127.0.0.1` / `8790` |
+| `DAYANAK_TOOL_PROFILE` | `core` (default) or `full` | `core` |
+| `DAYANAK_TOOL_THREADS` | Thread pool for sync tools (0 = off) | `6` |
+| `DAYANAK_TOOL_TIMEOUT` | Per-tool limit in seconds | `180` |
 
-For one-off CLI calls, `scripts\emsal-env.cmd` sets the same variables
-(`call .\scripts\emsal-env.cmd && .venv\Scripts\emsal-mcp ...`).
+For one-off CLI calls, `scripts\dayanak-env.cmd` sets the same variables
+(`call .\scripts\dayanak-env.cmd && .venv\Scripts\dayanak ...`).
 
 Machine-specific values (data directory, listen address, backup target) are not
 kept in the repo: copy `scripts\yerel-ayar.ornek.cmd` to
-`scripts\yerel-ayar.cmd` and fill it in (it is in `.gitignore`). `emsal-env.cmd`,
+`scripts\yerel-ayar.cmd` and fill it in (it is in `.gitignore`). `dayanak-env.cmd`,
 `crawl_incremental.ps1` and the Python scripts (`scripts/_yollar.py`) read this
-file; every path left empty is derived from `~/.emsal_mcp`.
+file; every path left empty is derived from `~/.dayanak`.
 
 ## MCP tools
 
@@ -196,12 +200,12 @@ the running server category by category with `load_extended_tools`. Contracts:
 ## CLI examples
 
 ```powershell
-emsal-mcp sources
-emsal-mcp search bedesten "muvazaa" --limit 5
-emsal-mcp get bedesten DOCUMENT_ID
-emsal-mcp semantic bulk-status
-emsal-mcp mevzuat korpus-ara "tahliye taahhüdü"
-emsal-mcp smoke --offline
+dayanak sources
+dayanak search bedesten "muvazaa" --limit 5
+dayanak get bedesten DOCUMENT_ID
+dayanak semantic bulk-status
+dayanak mevzuat korpus-ara "tahliye taahhüdü"
+dayanak smoke --offline
 ```
 
 ## Corpus crawl + dashboard
@@ -224,11 +228,11 @@ browser.
 
 Notes:
 
-- Rate limit `EMSAL_RATE_LIMIT_MAX=12`. Measured: no 429s at 12 (~2,800 documents/hour);
+- Rate limit `DAYANAK_RATE_LIMIT_MAX=12`. Measured: no 429s at 12 (~2,800 documents/hour);
   at 15 it falls into a 429 cooldown loop and throughput drops to zero.
 - The dashboard does not count years on `cache.sqlite3`: a single per-year query
   takes ~60 s because of a full table scan. Counts are kept incrementally (new
-  `rowid`s only) in `~/.emsal-mcp/panel_stats.sqlite3`, with a full recount once a day.
+  `rowid`s only) in `~/.dayanak/panel_stats.sqlite3`, with a full recount once a day.
 - Per-year targets are measured from Bedesten's `total` field (`crawl_logs\hedefler.json`),
   not estimated.
 
@@ -247,7 +251,7 @@ The `health_check` tool reports the last run of these jobs in the
 `scheduled_jobs` block: it does not call `schtasks`, but reads the completion
 marker each job writes to its own log file, plus the file timestamp. If a job is
 overdue or finished with `rc != 0`, `overall` returns "degraded"
-(`src/emsal_mcp/ops_status.py`). In the same output, the `tool_runtime` block
+(`src/dayanak/ops_status.py`). In the same output, the `tool_runtime` block
 gives thread pool / timeout counters; if `runaway > 0`, the server should be
 restarted.
 
@@ -271,7 +275,7 @@ ruff check src tests scripts
 ```
 
 Tests that hit live sources are skipped by default; set
-`EMSAL_LIVE_TESTS=1` to enable them.
+`DAYANAK_LIVE_TESTS=1` to enable them.
 
 ## License
 
@@ -283,4 +287,4 @@ source code available to those users under the same licence. See
 
 Copyright © 2026 Alpaslan Fatih Sözer
 
-<!-- mcp-name: io.github.afsozer/emsal-mcp -->
+<!-- mcp-name: io.github.afsozer/dayanak -->

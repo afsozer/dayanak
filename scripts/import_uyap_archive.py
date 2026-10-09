@@ -1,4 +1,4 @@
-"""Import the offline UYAP Mevzuat (2020) içtihat archive into the emsal-mcp cache.
+"""Import the offline UYAP Mevzuat (2020) içtihat archive into the dayanak cache.
 
 Source: the unencrypted SQLite DB shipped inside UYAPMevzuat_Setup.msi (table
 ``ictihat``, ~46.7k full-text decisions: Yargıtay, Danıştay, Uyuşmazlık, AYM, AİHM).
@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SOURCE_ID = "uyap_arsiv"
-DEFAULT_CACHE = str(Path.home() / ".emsal-mcp" / "cache.sqlite3")
+DEFAULT_CACHE = str(Path.home() / ".dayanak" / "cache.sqlite3")
 
 # dokumanTuru.id -> human label (içtihat category only; mevzuat types excluded)
 TYPE_LABEL = {
@@ -57,7 +57,7 @@ def html_to_text(s: str | None) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True, help="UYAP offline SQLite (the 'db' file)")
-    ap.add_argument("--cache", default=DEFAULT_CACHE, help="emsal-mcp cache.sqlite3")
+    ap.add_argument("--cache", default=DEFAULT_CACHE, help="dayanak cache.sqlite3")
     ap.add_argument("--dry-run", action="store_true", help="report mapping, write nothing")
     ap.add_argument("--batch", type=int, default=500)
     args = ap.parse_args()

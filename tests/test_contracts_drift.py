@@ -1,6 +1,6 @@
 """M-107: MCP_CONTRACTS.md drift test.
 
-Compares ``docs/MCP_CONTRACTS.md`` against ``src/emsal_mcp/tool_profile.py``
+Compares ``docs/MCP_CONTRACTS.md`` against ``src/dayanak/tool_profile.py``
 (the single source of truth for profiles and categories).  Fails if the
 document is out of sync with the code — catching the same class of drift
 that M-58 catches for README.md.
@@ -38,7 +38,7 @@ def _read_section(start_marker: str, end_marker: str) -> str:
 
 def test_core_tools_match_profile() -> None:
     """The 14 core tool names in MCP_CONTRACTS.md match CORE_TOOLS."""
-    from emsal_mcp.tool_profile import CORE_TOOLS
+    from dayanak.tool_profile import CORE_TOOLS
 
     section = _read_section(
         "<!-- drift:core-tools-start -->",
@@ -63,7 +63,7 @@ def test_core_tools_match_profile() -> None:
 
 def test_category_names_match_profile() -> None:
     """Category names in MCP_CONTRACTS.md table match CATEGORY_TOOLS keys."""
-    from emsal_mcp.tool_profile import CATEGORY_TOOLS
+    from dayanak.tool_profile import CATEGORY_TOOLS
 
     section = _read_section(
         "<!-- drift:categories-start -->",
@@ -87,7 +87,7 @@ def test_category_names_match_profile() -> None:
 
 def test_category_contents_match_profile() -> None:
     """Each category row's tool list matches CATEGORY_TOOLS[cat]."""
-    from emsal_mcp.tool_profile import CATEGORY_TOOLS
+    from dayanak.tool_profile import CATEGORY_TOOLS
 
     section = _read_section(
         "<!-- drift:categories-start -->",
@@ -120,7 +120,7 @@ def test_category_contents_match_profile() -> None:
 
 def test_core_count_is_14() -> None:
     """Document says 14 core tools, code agrees."""
-    from emsal_mcp.tool_profile import CORE_TOOLS
+    from dayanak.tool_profile import CORE_TOOLS
 
     section = _read_section(
         "<!-- drift:core-tools-start -->",

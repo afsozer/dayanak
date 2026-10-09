@@ -29,7 +29,7 @@ class TestGracefulDegradationPerTool:
     """Each critical tool handles invalid inputs without raising."""
 
     def test_search_decisions_invalid_source(self) -> None:
-        from emsal_mcp.sources.registry import get_source
+        from dayanak.sources.registry import get_source
         try:
             get_source("nonexistent___xyz")
             pytest.fail("Should have raised KeyError")
@@ -38,7 +38,7 @@ class TestGracefulDegradationPerTool:
 
     def test_get_document_bogus_id(self) -> None:
         """get_document with bogus ID on bedesten should not crash."""
-        from emsal_mcp.sources.registry import get_source
+        from dayanak.sources.registry import get_source
         try:
             src = get_source("bedesten")
             # This would make a live HTTP call — skip in CI
@@ -49,46 +49,46 @@ class TestGracefulDegradationPerTool:
 
     def test_citation_safety_validates_input(self) -> None:
         """citation_safety with empty dict returns structured result."""
-        from emsal_mcp.safety import citation_check
-        from emsal_mcp.models import Document
+        from dayanak.safety import citation_check
+        from dayanak.models import Document
         doc = Document(source="test", document_id="empty", title="Test")
         result = citation_check(doc)
         _assert_structured(result.model_dump(mode="json"))
 
     def test_hybrid_search_empty_query(self) -> None:
-        from emsal_mcp.semantic import hybrid_search
+        from dayanak.semantic import hybrid_search
         result = hybrid_search("")
         _assert_structured(result)
 
     def test_semantic_search_empty_query(self) -> None:
-        from emsal_mcp.semantic import semantic_search
+        from dayanak.semantic import semantic_search
         result = semantic_search("")
         _assert_structured(result)
 
     def test_build_input_pack_invalid(self) -> None:
-        from emsal_mcp.safety import build_input_pack
-        from emsal_mcp.models import Document
+        from dayanak.safety import build_input_pack
+        from dayanak.models import Document
         doc = Document(source="test", document_id="x", title="Test")
         result = build_input_pack("matter", "issue", [doc])
         _assert_structured(result.model_dump(mode="json"))
 
     def test_format_legal_citation_minimal(self) -> None:
-        from emsal_mcp.citation import format_legal_citation
+        from dayanak.citation import format_legal_citation
         result = format_legal_citation(source={"title": "X"}, style="petition")
         _assert_structured(result)
 
     def test_verify_legal_citation_no_input(self) -> None:
-        from emsal_mcp.citation import verify_legal_citation
+        from dayanak.citation import verify_legal_citation
         result = verify_legal_citation()
         _assert_structured(result)
 
     def test_inspect_petition_pack_nonexistent(self) -> None:
-        from emsal_mcp.petition import inspect_petition_pack
+        from dayanak.petition import inspect_petition_pack
         result = inspect_petition_pack("/nonexistent/pack/path")
         _assert_structured(result)
 
     def test_build_semantic_index_empty(self) -> None:
-        from emsal_mcp.semantic import build_semantic_index
+        from dayanak.semantic import build_semantic_index
         result = build_semantic_index()
         _assert_structured(result)
 
@@ -97,14 +97,14 @@ class TestBuildErrorInvariant:
     """build_error() ensures consistent error shapes across the codebase."""
 
     def test_build_error_has_required_keys(self) -> None:
-        from emsal_mcp.models import build_error
+        from dayanak.models import build_error
         result = build_error("TEST_CODE", "test message")
         assert result["ok"] is False
         assert result["errorCode"] == "TEST_CODE"
         assert result["message"] == "test message"
 
     def test_build_error_with_extra(self) -> None:
-        from emsal_mcp.models import build_error
+        from dayanak.models import build_error
         result = build_error("TEST", "msg", source="test_source", retryable=True,
                              warnings=["w1"], recommended_next_steps=["step1"])
         assert result["source"] == "test_source"

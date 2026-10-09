@@ -10,9 +10,9 @@ import sqlite3
 
 import pytest
 
-from emsal_mcp import legislation_corpus as lc
-from emsal_mcp import legislation_update as lu
-from emsal_mcp.models import ContentStatus, SearchPage, SearchResult
+from dayanak import legislation_corpus as lc
+from dayanak import legislation_update as lu
+from dayanak.models import ContentStatus, SearchPage, SearchResult
 
 
 @pytest.fixture()

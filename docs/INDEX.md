@@ -1,4 +1,4 @@
-# Emsal-mcp Documentation Index
+# Dayanak Documentation Index
 
 > v1.0.0
 
@@ -47,7 +47,7 @@ Documents are grouped by category for easy navigation.
 
 ## Quick Links
 
-- **Source code**: `src/emsal_mcp/`
+- **Source code**: `src/dayanak/`
 - **Tests**: `tests/`
 - **Configuration**: `pyproject.toml`
 - **Golden corpus (test fixtures)**: `tests/fixtures/sample_decisions.json`

@@ -4,7 +4,7 @@ M-118 sync araclari worker thread'e tasidi ama bir arac sonsuza kadar
 kosabiliyordu.  ``server.main()`` artik her arac cagrisini
 ``anyio.fail_after`` ile sariyor:
 
-* varsayilan tavan ``EMSAL_TOOL_TIMEOUT`` (saniye, varsayilan 120; ``0`` =
+* varsayilan tavan ``DAYANAK_TOOL_TIMEOUT`` (saniye, varsayilan 120; ``0`` =
   sinirsiz), arac bazli tavan ``_TOOL_TIMEOUTS``;
 * zaman asiminda istemciye ``build_error("TOOL_TIMEOUT", ...)`` govdesi
   doner (arac adi, gecen sure, "arka planda surebilir" uyarisi,
@@ -43,20 +43,20 @@ def _capture_registered(profile: str = "full") -> dict:
     mock_mcp.tool = capture_tool
     mock_mcp.run = MagicMock()
 
-    prev = os.environ.get("EMSAL_TOOL_PROFILE")
-    os.environ["EMSAL_TOOL_PROFILE"] = profile
+    prev = os.environ.get("DAYANAK_TOOL_PROFILE")
+    os.environ["DAYANAK_TOOL_PROFILE"] = profile
     try:
         with patch(
             "mcp.server.fastmcp.FastMCP", return_value=mock_mcp
         ), patch.object(sys.stdin, "isatty", return_value=False):
-            import emsal_mcp.server
+            import dayanak.server
 
-            emsal_mcp.server.main()
+            dayanak.server.main()
     finally:
         if prev is None:
-            os.environ.pop("EMSAL_TOOL_PROFILE", None)
+            os.environ.pop("DAYANAK_TOOL_PROFILE", None)
         else:
-            os.environ["EMSAL_TOOL_PROFILE"] = prev
+            os.environ["DAYANAK_TOOL_PROFILE"] = prev
     return registered
 
 
@@ -66,7 +66,7 @@ ASYNC_TOOL = "check_government_servers_health"
 
 def _make_sync_tool_slow(monkeypatch, seconds: float) -> None:
     """``list_sources(detail="birim_codes")`` govdesini yavaslatir."""
-    import emsal_mcp.birim_enum as birim_enum
+    import dayanak.birim_enum as birim_enum
 
     original = birim_enum.list_birim_codes
 
@@ -85,11 +85,11 @@ def _make_health_check_cheap(monkeypatch) -> None:
     """
     import importlib
 
-    import emsal_mcp.semantic as semantic
+    import dayanak.semantic as semantic
 
-    # ``emsal_mcp.sources`` paketinde ayni adli bir fonksiyon oldugu icin
+    # ``dayanak.sources`` paketinde ayni adli bir fonksiyon oldugu icin
     # ``import ... as registry`` alt modulu DEGIL fonksiyonu getirir.
-    registry = importlib.import_module("emsal_mcp.sources.registry")
+    registry = importlib.import_module("dayanak.sources.registry")
 
     monkeypatch.setattr(registry, "smoke_all_sync", lambda **kw: [])
     monkeypatch.setattr(semantic, "get_index_status", lambda *a, **kw: {"stub": True})
@@ -98,8 +98,8 @@ def _make_health_check_cheap(monkeypatch) -> None:
 # ── 1. Sync arac: zaman asimi hata govdesi ────────────────────────────────
 
 def test_sync_tool_timeout_returns_error_body(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "0.2")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "0.2")
     _make_sync_tool_slow(monkeypatch, 1.0)
 
     tool = _capture_registered("full")[SYNC_TOOL]
@@ -126,19 +126,19 @@ def test_sync_tool_timeout_returns_error_body(monkeypatch) -> None:
 
 
 def test_sync_tool_under_the_limit_is_untouched(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "5")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "5")
     tool = _capture_registered("full")[SYNC_TOOL]
     result = asyncio.run(tool(detail="birim_codes"))
     assert result["ok"] is True
     assert "errorCode" not in result
 
 
-# ── 2. EMSAL_TOOL_TIMEOUT=0 → sinirsiz ────────────────────────────────────
+# ── 2. DAYANAK_TOOL_TIMEOUT=0 → sinirsiz ────────────────────────────────────
 
 def test_timeout_zero_means_unlimited(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "0")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "0")
     _make_sync_tool_slow(monkeypatch, 0.4)
 
     tool = _capture_registered("full")[SYNC_TOOL]
@@ -148,12 +148,12 @@ def test_timeout_zero_means_unlimited(monkeypatch) -> None:
 
     assert result["ok"] is True, result
     assert elapsed >= 0.4, "sinirsiz modda govde tam kosmaliydi"
-    assert getattr(tool, "__emsal_threaded__", False) is True
+    assert getattr(tool, "__dayanak_threaded__", False) is True
 
 
 def test_invalid_timeout_falls_back_to_default(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "abc")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "abc")
     _make_health_check_cheap(monkeypatch)
     tools = _capture_registered("full")
     hc = asyncio.run(tools["health_check"]())
@@ -185,15 +185,15 @@ class _SlowAsyncClient:
 def test_async_tool_is_really_cancelled(monkeypatch) -> None:
     import httpx
 
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "0.2")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "0.2")
     _SlowAsyncClient.finished = False
     monkeypatch.setattr(httpx, "AsyncClient", _SlowAsyncClient)
 
     tool = _capture_registered("full")[ASYNC_TOOL]
     # async arac thread'e tasinmaz, sadece zaman siniri sarmalayicisi alir
-    assert getattr(tool, "__emsal_timeout__", False) is True
-    assert getattr(tool, "__emsal_threaded__", False) is False
+    assert getattr(tool, "__dayanak_timeout__", False) is True
+    assert getattr(tool, "__dayanak_threaded__", False) is False
 
     started = time.monotonic()
     result = asyncio.run(tool())
@@ -210,8 +210,8 @@ def test_async_tool_is_really_cancelled(monkeypatch) -> None:
 # ── 4. Sayaclar / health_check tool_runtime ───────────────────────────────
 
 def test_health_check_reports_tool_runtime(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "5")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "30")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "5")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "30")
     _make_health_check_cheap(monkeypatch)
 
     tools = _capture_registered("full")
@@ -238,8 +238,8 @@ def test_runaway_counter_rises_then_falls(monkeypatch) -> None:
     health_check'in kendisini TOOL_TIMEOUT'a dusurup ``tool_runtime``
     anahtarini kaybettiriyordu (flaky).  1 sn yeterli pay birakir.
     """
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "1.0")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "1.0")
     _make_sync_tool_slow(monkeypatch, 2.5)
     _make_health_check_cheap(monkeypatch)
 
@@ -264,9 +264,9 @@ def test_runaway_counter_rises_then_falls(monkeypatch) -> None:
 
 
 def test_timed_out_total_accumulates(monkeypatch) -> None:
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
     # health_check de bu sinira tabi; 0.2 sn CI'da flaky (bkz. ustteki test).
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "1.0")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "1.0")
     _make_sync_tool_slow(monkeypatch, 1.3)
     _make_health_check_cheap(monkeypatch)
 
@@ -288,13 +288,13 @@ def test_timed_out_total_accumulates(monkeypatch) -> None:
 def test_timeout_wrapper_keeps_markers_and_signature(monkeypatch) -> None:
     import inspect
 
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "4")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "120")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "4")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "120")
     tools = _capture_registered("full")
 
     sync_tool = tools["search_local_corpus"]
-    assert getattr(sync_tool, "__emsal_threaded__", False) is True
-    assert getattr(sync_tool, "__emsal_timeout__", False) is True
+    assert getattr(sync_tool, "__dayanak_threaded__", False) is True
+    assert getattr(sync_tool, "__dayanak_timeout__", False) is True
     assert inspect.signature(sync_tool) == inspect.signature(sync_tool.__wrapped__)
 
     async_tool = tools[ASYNC_TOOL]
@@ -305,37 +305,37 @@ def test_threads_zero_disables_timeout_for_sync_tools(monkeypatch) -> None:
     """Thread yoksa bloklayan cagriya zaman siniri UYGULANAMAZ; sarmalanmaz."""
     import inspect
 
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "0")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "0.2")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "0")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "0.2")
     tools = _capture_registered("full")
 
     assert not inspect.iscoroutinefunction(tools[SYNC_TOOL])
-    assert not getattr(tools[SYNC_TOOL], "__emsal_timeout__", False)
+    assert not getattr(tools[SYNC_TOOL], "__dayanak_timeout__", False)
     # Async araclar yine de zaman sinirli kalir.
-    assert getattr(tools[ASYNC_TOOL], "__emsal_timeout__", False) is True
+    assert getattr(tools[ASYNC_TOOL], "__dayanak_timeout__", False) is True
 
 
 def test_runaway_triggers_warning_log(monkeypatch, caplog) -> None:
     """Kacak sayisi limiter kapasitesine yaklasinca WARNING dusmeli.
 
-    Esik ``max(1, EMSAL_TOOL_THREADS - 1)``; 2 thread ile tek bir kacak
+    Esik ``max(1, DAYANAK_TOOL_THREADS - 1)``; 2 thread ile tek bir kacak
     yeter.
     """
     import logging
 
-    monkeypatch.setenv("EMSAL_TOOL_THREADS", "2")
-    monkeypatch.setenv("EMSAL_TOOL_TIMEOUT", "0.2")
+    monkeypatch.setenv("DAYANAK_TOOL_THREADS", "2")
+    monkeypatch.setenv("DAYANAK_TOOL_TIMEOUT", "0.2")
     _make_sync_tool_slow(monkeypatch, 1.0)
 
     tool = _capture_registered("full")[SYNC_TOOL]
 
-    with caplog.at_level(logging.WARNING, logger="emsal_mcp.server"):
+    with caplog.at_level(logging.WARNING, logger="dayanak.server"):
         result = asyncio.run(tool(detail="birim_codes"))
 
     assert result["errorCode"] == "TOOL_TIMEOUT"
     hits = [
         r for r in caplog.records
-        if r.name == "emsal_mcp.server" and "iptal edilemeyen" in r.getMessage()
+        if r.name == "dayanak.server" and "iptal edilemeyen" in r.getMessage()
     ]
     assert hits, [r.getMessage() for r in caplog.records]
     assert "kuyrukta bekleyebilir" in hits[0].getMessage()

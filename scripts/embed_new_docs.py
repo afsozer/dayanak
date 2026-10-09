@@ -4,7 +4,7 @@
 `search_vectors` boş olduğu için o adım tüm korpusu hesaplamaya kalkar. Bu betik
 yalnız dense kısmını yapar: embedding_vectors'ta olmayan ve `--since`'ten sonra
 alınmış kararları fastembed (ONNX, CPU) ile belge başına tek vektör olarak
-gömer. Ardından `emsal-mcp semantic build-matrix` çağrılmalı (delta matrisi).
+gömer. Ardından `dayanak semantic build-matrix` çağrılmalı (delta matrisi).
 
 Kullanım: python scripts/embed_new_docs.py --since 2026-09-05T00:00:00 [--limit 20000]
 """
@@ -23,14 +23,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", required=True, help="ISO zaman (retrieved_at >= since)")
-    ap.add_argument("--provider", default=os.environ.get("EMSAL_EMBEDDING_PROVIDER", "fastembed-multilingual-e5"))
+    ap.add_argument("--provider", default=os.environ.get("DAYANAK_EMBEDDING_PROVIDER", "fastembed-multilingual-e5"))
     ap.add_argument("--limit", type=int, default=50_000)
     ap.add_argument("--batch", type=int, default=32)
     args = ap.parse_args()
 
-    from emsal_mcp.cache import Cache
-    from emsal_mcp.embeddings import get_embedding_provider, pack_vector
-    from emsal_mcp import semantic
+    from dayanak.cache import Cache
+    from dayanak.embeddings import get_embedding_provider, pack_vector
+    from dayanak import semantic
 
     c = Cache()
     db = c.db

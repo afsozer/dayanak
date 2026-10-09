@@ -1,8 +1,8 @@
-"""Gocten onceki laptop korpusundaki (~/.emsal-mcp/cache.sqlite3) yeni korpusta olmayan kararlari aktar; retrieved_at=simdi (delta gomme secimi icin)."""
+"""Gocten onceki laptop korpusundaki (~/.dayanak/cache.sqlite3) yeni korpusta olmayan kararlari aktar; retrieved_at=simdi (delta gomme secimi icin)."""
 import sqlite3, time, datetime
 
 import _yollar
-DB = str(_yollar.CACHE_PATH); OLD = str(_yollar.Path.home() / ".emsal-mcp" / "cache.sqlite3")
+DB = str(_yollar.CACHE_PATH); OLD = str(_yollar.Path.home() / ".dayanak" / "cache.sqlite3")
 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 c = sqlite3.connect(DB, timeout=600, uri=False); c.execute("PRAGMA busy_timeout=600000")
 oldp = OLD.replace("\\", "/")

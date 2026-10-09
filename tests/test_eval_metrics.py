@@ -14,14 +14,14 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.cache import Cache
-from emsal_mcp.eval_metrics import (
+from dayanak.cache import Cache
+from dayanak.eval_metrics import (
     evaluate_search,
     evaluate_search_simple,
     ndcg_at_k,
     recall_at_k,
 )
-from emsal_mcp.models import ContentStatus, Document
+from dayanak.models import ContentStatus, Document
 
 FIXTURES = Path(__file__).parent / "fixtures"
 GOLDEN_QUERIES_PATH = Path(__file__).resolve().parent.parent / "eval" / "golden_queries.json"

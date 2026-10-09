@@ -34,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from emsal_mcp.legislation_corpus import split_articles
+from dayanak.legislation_corpus import split_articles
 
 
 def main() -> None:

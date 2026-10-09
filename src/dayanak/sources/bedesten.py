@@ -1,0 +1,633 @@
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from .base import (
+    BedestenUpstreamError,
+    SourceClient,
+    check_bedesten_response_error,
+    check_http_response,
+    client,
+    decode_b64,
+    html_to_text,
+    sha,
+)
+from dayanak.models import ContentStatus, Document, SearchPage, SearchResult, SourceSmokeResult, finalize_document
+
+
+# ── Bedesten Solr query preprocessing ────────────────────────────────────────
+# Bedesten runs Apache Solr with StandardQueryParser and the *default operator
+# is OR*.  That means bare terms separated by whitespace match the UNION of the
+# terms, not the intersection — `tahliye taahhüdü geçerlilik` returns any
+# decision containing *any* of the three words, which is rarely what the caller
+# wants.  Hosted yargı-mcp documents this explicitly; we go one step further and
+# transparently rewrite queries that contain no Solr operators so that every
+# bare term becomes required (`+term`).  Operator-bearing queries are passed
+# through untouched.  The rewrite is reported back via `query_rewritten` so the
+# behaviour stays auditable.
+
+_SOLR_OPERATOR_RE = re.compile(r'[+\-"()]|\b(?:AND|OR|NOT)\b', re.UNICODE)
+
+# ── Bedesten phrase character whitelist ──────────────────────────────────────
+# Bedesten validates `phrase` BEFORE Solr sees it and rejects anything outside
+# a small character set with ADALET_PARAMETER_VALIDATION_EXCEPTION ("Sadece
+# harf ve rakam içeren aramalar yapılabilir").  Measured live, 22 Eyl 2026,
+# one character at a time on YARGITAYKARARI:
+#   accepted: letters, digits, whitespace, + - " ( ), AND/OR/NOT, && || !
+#   rejected: / * ? . , ' : _ ~ % ; § [ ] \ ^ @ # = < { … – “ ”
+# So the Solr syntax that matters (+, -, quotes, parens, boolean words) works;
+# wildcards (* ?), fuzzy (~), boost (^) and every punctuation mark do not.
+# The index tokenizer splits on that punctuation anyway: "83/a" is stored as
+# the tokens "83" "a" (phrase "83 a" ≈ 35 000 hits, "83a" ≈ 7), so a
+# punctuated token maps faithfully to a quoted phrase of its parts.
+_ALLOWED_PUNCT = frozenset('+-"()&|!')
+_SMART_QUOTES = str.maketrans({"“": '"', "”": '"', "„": '"', "«": '"', "»": '"', "″": '"'})
+_WILDCARDS = frozenset("*?")
+# A (possibly operator-prefixed) quoted phrase, or a run of non-space chars.
+_QUERY_TOKEN_RE = re.compile(r'[+\-(]*"[^"]*"\)*|[^\s"]+')
+
+
+def _allowed_char(ch: str) -> bool:
+    return (ch.isalnum() and ch != "_") or ch.isspace() or ch in _ALLOWED_PUNCT
+
+
+def _split_disallowed(text: str) -> list[str]:
+    """Split ``text`` on runs of characters Bedesten rejects."""
+    parts: list[str] = []
+    cur: list[str] = []
+    for ch in text:
+        if _allowed_char(ch) and ch not in '"':
+            cur.append(ch)
+        else:
+            if cur:
+                parts.append("".join(cur))
+            cur = []
+    if cur:
+        parts.append("".join(cur))
+    return [p for p in (x.strip() for x in parts) if p]
+
+
+def sanitize_bedesten_query(query: str) -> tuple[str, list[str]]:
+    """Make a query acceptable to Bedesten's phrase validator.
+
+    Characters Bedesten rejects are removed without changing what the caller
+    asked for, as far as the index allows:
+
+    * inside a token (``83/a``, ``+83/a``, ``maaş'ın``) they become a quoted
+      phrase of the parts — ``"83 a"``, ``+"83 a"`` — so the token stays one
+      required/excluded unit instead of splitting into loose OR terms;
+    * inside a quoted phrase they become spaces (``"83/a"`` → ``"83 a"``);
+    * leading/trailing ones are dropped (``maaş.`` → ``maaş``), including the
+      unsupported wildcards ``*`` and ``?``;
+    * typographic quotes become ``"``; an unmatched ``"`` is dropped.
+
+    Returns ``(clean_query, removed_chars)``; ``removed_chars`` is empty when
+    the query was already clean (then ``clean_query`` is the input unchanged).
+    """
+    if not query:
+        return query, []
+    removed: list[str] = []
+
+    def note(text: str) -> None:
+        for ch in text:
+            if ch not in removed and not _allowed_char(ch):
+                removed.append(ch)
+
+    text = query.translate(_SMART_QUOTES)
+    if text != query:
+        removed.extend(ch for ch in "“”„«»″" if ch in query and ch not in removed)
+    if text.count('"') % 2:
+        idx = text.rfind('"')
+        text = text[:idx] + " " + text[idx + 1:]
+        removed.append('"')
+    note(text)
+    if not removed:
+        return query, []
+
+    out: list[str] = []
+    for m in _QUERY_TOKEN_RE.finditer(text):
+        tok = m.group(0)
+        q = tok.find('"')
+        if q != -1:
+            prefix, rest = tok[:q], tok[q + 1:]
+            end = rest.rfind('"')
+            inner, suffix = rest[:end], rest[end + 1:]
+            words = _split_disallowed(inner)
+            if words:
+                out.append(f'{prefix}"{" ".join(words)}"{suffix}')
+            continue
+        # Bare token: peel operator prefix and closing parens, clean the core.
+        i = 0
+        while i < len(tok) and tok[i] in "+-(":
+            i += 1
+        j = len(tok)
+        while j > i and tok[j - 1] == ")":
+            j -= 1
+        prefix, core, suffix = tok[:i], tok[i:j], tok[j:]
+        parts = _split_disallowed(core)
+        if not parts:
+            # Nothing searchable left ("*", "/", "+."): keep bare parens only
+            # so grouping stays balanced.
+            kept = "".join(c for c in prefix if c == "(") + suffix
+            if kept:
+                out.append(kept)
+            continue
+        core = parts[0] if len(parts) == 1 else f'"{" ".join(parts)}"'
+        out.append(f"{prefix}{core}{suffix}")
+    return " ".join(out), removed
+
+
+# ── Bedesten itemType vocabulary ─────────────────────────────────────────────
+# Verified live against /emsal-karar/searchDocuments (phrase="tazminat"):
+#   YARGITAYKARARI 1_124_297 · DANISTAYKARAR 33_437 · YERELHUKUK 385_707
+#   ISTINAFHUKUK 136_892 · KYB 14
+# ⚠️ Bedesten does NOT reject an unknown itemType — it silently returns
+# total=0.  A typo therefore looks exactly like "no precedent exists", which
+# is how the default `DANISTAYKARARI` (correct: `DANISTAYKARAR`) dropped every
+# Danıştay decision from every default search without anyone noticing.  Hence
+# the explicit whitelist below: unknown values are surfaced, never sent.
+VALID_ITEM_TYPES: frozenset[str] = frozenset({
+    "YARGITAYKARARI",
+    "DANISTAYKARAR",
+    "YERELHUKUK",
+    "ISTINAFHUKUK",
+    "KYB",
+})
+
+# Historical/incorrect spellings we accept and repair rather than reject, so
+# callers pinned to the old (broken) docstring keep working.
+_ITEM_TYPE_ALIASES: dict[str, str] = {
+    "DANISTAYKARARI": "DANISTAYKARAR",
+    "DANISTAYKARARLARI": "DANISTAYKARAR",
+    "YERELKARARI": "YERELHUKUK",
+    "YERELKARAR": "YERELHUKUK",
+    "ISTINAFKARARI": "ISTINAFHUKUK",
+    "ISTINAFKARAR": "ISTINAFHUKUK",
+    "KYBKARAR": "KYB",
+    "KYBKARARI": "KYB",
+    "YARGITAYKARAR": "YARGITAYKARARI",
+}
+
+# Default sweep for a bedesten search with no explicit court_types.
+DEFAULT_COURT_TYPES: list[str] = ["YARGITAYKARARI", "DANISTAYKARAR"]
+
+
+def normalize_item_type(raw: str) -> str:
+    """Upper-case an itemType and repair known incorrect spellings.
+
+    Returns the canonical value when recognised, otherwise the upper-cased
+    input unchanged (the caller decides whether to reject it).
+    """
+    if not raw:
+        return raw
+    key = (
+        raw.strip().upper()
+        .replace(" ", "")
+        .replace("İ", "I").replace("Ş", "S").replace("Ğ", "G")
+        .replace("Ü", "U").replace("Ö", "O").replace("Ç", "C")
+    )
+    return _ITEM_TYPE_ALIASES.get(key, key)
+
+
+def normalize_item_types(raw: list[str]) -> tuple[list[str], list[str]]:
+    """Normalize a court_types list.
+
+    Returns ``(valid, unknown)`` — ``valid`` holds canonical itemTypes in the
+    caller's order (deduplicated), ``unknown`` holds the original spellings
+    that match no known type.
+    """
+    valid: list[str] = []
+    unknown: list[str] = []
+    for item in raw:
+        norm = normalize_item_type(str(item))
+        if norm in VALID_ITEM_TYPES:
+            if norm not in valid:
+                valid.append(norm)
+        else:
+            unknown.append(str(item))
+    return valid, unknown
+
+
+def rewrite_solr_query(query: str, has_operators: bool | None = None) -> tuple[str, bool]:
+    """Rewrite a bare-term Solr query so every term is required.
+
+    Bedesten's default Solr operator is OR — whitespace between bare terms
+    means UNION.  When the caller writes a plain multi-word phrase without any
+    Solr operator (``+``, ``-``, ``"``, ``AND``, ``OR``, ``NOT``, parens), we
+    prefix each whitespace-separated token with ``+`` so all terms become
+    required (intersection).  Queries that already use operators are returned
+    unchanged — the caller clearly knows the dialect.
+
+    ⚠️ The rewrite is precision-first and BRITTLE: Bedesten's index is not
+    Turkish-stemmed (``+taahhüdü`` ≈ 16 700 hits, ``+taahhüt`` ≈ 43 800 — two
+    different tokens), so every inflected form must appear literally.  Four
+    required terms routinely intersect to zero.  ``search_page`` therefore
+    retries the original OR query when the AND form comes back empty; see
+    ``fallback_to_or``.
+
+    ``has_operators`` overrides the operator detection — ``search_page``
+    passes the verdict on the caller's ORIGINAL query, so quotes introduced
+    by sanitisation (``83/a`` → ``"83 a"``) do not disable the rewrite.
+
+    Returns ``(rewritten_query, was_rewritten)``.
+    """
+    if not query or not query.strip():
+        return query, False
+    # If the query already uses any Solr operator, leave it alone.
+    if has_operators is None:
+        has_operators = bool(_SOLR_OPERATOR_RE.search(query))
+    if has_operators:
+        return query, False
+    # Quote-aware: a phrase produced by sanitize_bedesten_query ("83 a") is
+    # one token.
+    tokens = _QUERY_TOKEN_RE.findall(query)
+    # Single token — no rewrite needed.
+    if len(tokens) <= 1:
+        return query, False
+    rewritten = " ".join(f"+{t}" for t in tokens)
+    return rewritten, True
+
+
+# ── Bedesten date filters ────────────────────────────────────────────────────
+# kararTarihiStart/End are deserialised as java.time.LocalDateTime upstream; a
+# bare `2026-01-01` fails with DateTimeParseException ("could not be parsed at
+# index 10"), which Bedesten wraps as ADALET_EMPTY_EXCEPTION.  Measured live,
+# 8 Eki 2026: `2026-01-01T00:00:00.000Z` works.  Bare dates (ISO or the
+# DD.MM.YYYY form search results print) are widened to the start/end of the
+# day; values that already carry a time part are passed through untouched.
+
+_ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})$")
+_TR_DATE_RE = re.compile(r"^(\d{1,2})[./](\d{1,2})[./](\d{4})$")
+
+
+def normalize_bedesten_date(value: Any, *, end: bool = False) -> Any:
+    """Turn a bare date into the LocalDateTime string Bedesten accepts.
+
+    ``2026-01-01`` → ``2026-01-01T00:00:00.000Z`` (``T23:59:59.999Z`` when
+    ``end``); ``01.01.2026`` is read as day-month-year.  Anything else is
+    returned unchanged so callers that already send a timestamp keep working.
+    """
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    m = _ISO_DATE_RE.match(text)
+    if m:
+        y, mo, d = m.groups()
+    else:
+        m = _TR_DATE_RE.match(text)
+        if not m:
+            return value
+        d, mo, y = m.groups()
+    suffix = "T23:59:59.999Z" if end else "T00:00:00.000Z"
+    return f"{y}-{int(mo):02d}-{int(d):02d}{suffix}"
+
+
+def _result_count(raw_data: Any) -> int:
+    """How many records the upstream reports for a search response.
+
+    Prefers ``data.total``; falls back to the length of the item list when the
+    upstream omits a total.
+    """
+    data = raw_data.get("data", raw_data) if isinstance(raw_data, dict) else None
+    if not isinstance(data, dict):
+        return 0
+    total = data.get("total")
+    if isinstance(total, int):
+        return total
+    items = (
+        data.get("emsalKararList") or data.get("data")
+        or data.get("items") or data.get("content") or []
+    )
+    return len(items) if isinstance(items, list) else 0
+
+
+class InvalidQueryError(ValueError):
+    """The query cannot be sent to Bedesten at all (nothing searchable left)."""
+
+
+class BedestenClient(SourceClient):
+    source_id = "bedesten"
+    name = "Bedesten/Yargıtay"
+    base = "https://bedesten.adalet.gov.tr"
+    headers = {
+        "AdaletApplicationName": "UyapMevzuat",
+        "Origin": "https://mevzuat.adalet.gov.tr",
+        "Referer": "https://mevzuat.adalet.gov.tr/",
+    }
+
+    # Delay (seconds) before the single upstream-error retry.  Overridable in
+    # tests so the suite isn't slowed by a real sleep at the tail position.
+    _upstream_retry_delay: float = 1.0
+
+    # Bedesten item_type constants (used by Yargıtay adapter override)
+    _default_item_type = "YARGITAYKARARI"
+
+    # Response schema — declared for M-60 schema-drift detection.
+    _search_response_keys = ["emsalKararList", "items", "data", "content"]
+    _get_document_response_keys = ["content", "document", "data"]
+
+    async def _post_search(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST a search payload, retrying once on a transient upstream fault."""
+        async with client() as c:
+            r = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
+            check_http_response(r, self.source_id)
+            raw_data = r.json()
+        try:
+            check_bedesten_response_error(raw_data, source=self.source_id)
+        except BedestenUpstreamError as exc:
+            if not exc.retryable:
+                raise
+            import asyncio as _aio
+            await _aio.sleep(self._upstream_retry_delay)
+            async with client() as c:
+                r2 = await c.post(f"{self.base}/emsal-karar/searchDocuments", json=payload, headers=self.headers)
+                check_http_response(r2, self.source_id)
+                raw_data = r2.json()
+            check_bedesten_response_error(raw_data, source=self.source_id)
+        return raw_data  # type: ignore[no-any-return]
+
+    async def search(self, query: str, limit: int = 10, **filters: Any) -> list[SearchResult]:
+        """Search and return only the results list.
+
+        Delegates to ``search_page()`` and unwraps the ``SearchPage``
+        container.  Keeps the ``list[SearchResult]`` contract intact.
+        """
+        page_num = filters.pop("page", 1)
+        sp = await self.search_page(query=query, limit=limit, page=page_num, **filters)
+        return sp.results
+
+    async def search_page(self, query: str, limit: int = 10, page: int = 1, **filters: Any) -> SearchPage:
+        """Search with pagination metadata from the upstream Bedesten response.
+
+        The upstream returns ``data.total`` (total matching records) and
+        ``data.start`` (0-based offset), letting us compute ``total_pages``.
+        """
+        # ── Solr query preprocessing ────────────────────────────────────
+        original_query = query
+        clean_query, removed_chars = sanitize_bedesten_query(query or "")
+        if original_query and original_query.strip() and not clean_query.strip():
+            raise InvalidQueryError(
+                f"'{original_query}' Bedesten'in kabul ettiği hiçbir terim içermiyor "
+                "(yalnızca harf, rakam ve + - \" ( ) AND OR NOT kabul edilir)."
+            )
+        query, query_rewritten = rewrite_solr_query(
+            clean_query, has_operators=bool(_SOLR_OPERATOR_RE.search(original_query or "")),
+        )
+
+        # ── court_types → itemTypeList ────────────────────────────────
+        warnings: list[str] = []
+        if removed_chars:
+            warnings.append(
+                f"Bedesten yalnızca harf, rakam ve + - \" ( ) operatörlerini kabul eder; "
+                f"sorgudaki {' '.join(removed_chars)} karakterleri temizlendi. "
+                f"Gönderilen sorgu: {clean_query}"
+                + (" (joker * ve ? Bedesten'de desteklenmez, kelimenin tam hâlini yazın)"
+                   if any(c in _WILDCARDS for c in removed_chars) else "")
+            )
+        court_types: list[str] | None = filters.get("court_types") or filters.get("court_types_list")
+        if court_types and isinstance(court_types, list) and len(court_types) > 0:
+            item_type_list, unknown_types = normalize_item_types(court_types)
+            if unknown_types:
+                warnings.append(
+                    f"Geçersiz court_types değeri yok sayıldı: {', '.join(unknown_types)}. "
+                    f"Geçerli değerler: {', '.join(sorted(VALID_ITEM_TYPES))}."
+                )
+            if not item_type_list:
+                # Every requested type was bogus.  Sending them would return a
+                # silent total=0 that reads as "no such precedent" — refuse
+                # instead, so the caller sees the real cause.
+                raise ValueError(
+                    f"Geçerli court_types kalmadı ({', '.join(unknown_types)}). "
+                    f"Geçerli değerler: {', '.join(sorted(VALID_ITEM_TYPES))}."
+                )
+        else:
+            item_type = filters.get("item_type") or filters.get("court") or self._default_item_type
+            item_type_list = [normalize_item_type(str(item_type))]
+
+        # ── esas_no / karar_no parsing ─────────────────────────────────
+        def _parse_yy_slash_ss(raw: str | None) -> tuple[int | None, int | None]:
+            if not raw:
+                return None, None
+            parts = raw.split("/")
+            if len(parts) != 2:
+                return None, None
+            try:
+                return int(parts[0].strip()), int(parts[1].strip())
+            except (ValueError, TypeError):
+                return None, None
+
+        esas_yil, esas_sira = _parse_yy_slash_ss(filters.get("esas_no"))
+        karar_yil, karar_sira = _parse_yy_slash_ss(filters.get("karar_no"))
+
+        # ── sort_by ────────────────────────────────────────────────────
+        sort_by = filters.get("sort_by")
+        if sort_by is None:
+            sort_by = "relevance" if query and query.strip() else "date"
+        sort_by = str(sort_by).lower()
+        if sort_by not in ("relevance", "date"):
+            sort_by = "relevance" if query and query.strip() else "date"
+
+        data_payload: dict[str, Any] = {
+            "pageSize": min(int(limit), 100),
+            "pageNumber": page,
+            "itemTypeList": item_type_list,
+            "phrase": query,
+        }
+        if sort_by == "date":
+            data_payload["sortFields"] = ["KARAR_TARIHI"]
+            data_payload["sortDirection"] = filters.get("sort_direction") or "desc"
+        payload: dict[str, Any] = {
+            "data": data_payload,
+            "applicationName": "UyapMevzuat",
+            "paging": True,
+        }
+        birim = filters.get("birimAdi") or filters.get("chamber")
+        if birim:
+            data_payload["birimAdi"] = birim
+        if filters.get("start_date") or filters.get("karar_tarihi_start"):
+            data_payload["kararTarihiStart"] = normalize_bedesten_date(
+                filters.get("start_date") or filters.get("karar_tarihi_start"))
+        if filters.get("end_date") or filters.get("karar_tarihi_end"):
+            data_payload["kararTarihiEnd"] = normalize_bedesten_date(
+                filters.get("end_date") or filters.get("karar_tarihi_end"), end=True)
+        if esas_yil is not None:
+            data_payload["esasNoYil"] = esas_yil
+        if esas_sira is not None:
+            data_payload["esasNoSira"] = esas_sira
+        if karar_yil is not None:
+            data_payload["kararNoYil"] = karar_yil
+        if karar_sira is not None:
+            data_payload["kararNoSira"] = karar_sira
+        raw_data = await self._post_search(payload)
+
+        # ── AND → OR fallback ──────────────────────────────────────────
+        # The auto-`+` rewrite is precision-first, but the index is unstemmed,
+        # so a 3–4 term conjunction of inflected words routinely matches almost
+        # nothing — and the handful it does match are usually incidental
+        # co-occurrences, which is worse than an empty result because they look
+        # like an answer.  ("tahliye taahhüdü adli tatil" → 2 hits, one of them
+        # a Ceza Genel Kurulu görevi-kötüye-kullanma decision.)
+        #
+        # So: if the AND pass cannot even fill the requested page, re-run the
+        # caller's ORIGINAL query as OR.  Nothing is lost by discarding the AND
+        # hits — an OR query is a strict superset of the AND query, and Solr
+        # scores documents matching more terms higher, so any genuine
+        # conjunction match floats to the top of the OR results anyway.
+        # Reported via `fallback_to_or` + `warnings`.  The threshold depends
+        # only on the query, so it stays stable across pages.
+        fallback_to_or = False
+        and_count = _result_count(raw_data)
+        if query_rewritten and and_count < limit:
+            # Fresh payload — never mutate the one already sent, so the two
+            # passes stay independently inspectable.
+            or_payload = dict(payload)
+            or_payload["data"] = {**data_payload, "phrase": clean_query}
+            raw_data = await self._post_search(or_payload)
+            fallback_to_or = True
+            query_rewritten = False
+            warnings.append(
+                f"'{original_query}' tüm terimler zorunlu (AND) biçiminde yalnızca "
+                f"{and_count} sonuç verdi (istenen: {limit}); sorgu OR olarak yeniden "
+                "çalıştırıldı ve sonuçlar Solr alaka sırasına göre döndürüldü. "
+                "Bedesten indeksi Türkçe kök analizi yapmaz, bu yüzden çekimli "
+                "kelimelerin kesişimi çoğu zaman boş kalır. Kesişim gerçekten "
+                "isteniyorsa terimleri öbek hâlinde verin, örn. "
+                "+\"tahliye taahhüdü\" +\"adli tatil\"."
+            )
+
+        data = raw_data.get("data", raw_data)
+        _ = self._check_response_schema(data, self._search_response_keys, "search")
+
+        # ── Extract total before processing items ──────────────────────
+        total: int | None = data.get("total") if isinstance(data, dict) else None
+        page_size = min(int(limit), 100)
+        total_pages: int | None = None
+        if total is not None and isinstance(total, int):
+            total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 0
+
+        if not isinstance(data, dict):
+            return SearchPage(
+                results=[], total=total, page=page, page_size=page_size,
+                total_pages=total_pages, warnings=warnings,
+            )
+
+        items = data.get("emsalKararList") or data.get("data") or data.get("items") or data.get("content") or []
+        out: list[SearchResult] = []
+        for it in items[:limit]:
+            did = str(it.get("id") or it.get("documentId") or it.get("docId") or it.get("uuid") or "")
+            if not did:
+                continue
+            item_type_obj = it.get("itemType") if isinstance(it.get("itemType"), dict) else {}
+            court = item_type_obj.get("description") or item_type_obj.get("name") or it.get("itemType")
+            chamber = it.get("birimAdi") or it.get("daire") or it.get("chamber")
+            title = " | ".join([
+                str(x) for x in [
+                    court, chamber,
+                    it.get("kararTarihiStr") or it.get("kararTarihi"),
+                    it.get("esasNo"), it.get("kararNo"),
+                ] if x
+            ]) or did
+            meta = dict(it) if isinstance(it, dict) else {}
+            if query_rewritten:
+                meta["query_rewritten"] = True
+                meta["original_query"] = original_query
+            if fallback_to_or:
+                meta["fallback_to_or"] = True
+                meta["original_query"] = original_query
+            if removed_chars:
+                meta["query_sanitized"] = True
+                meta["original_query"] = original_query
+            # Legacy link kept as alternate_url for callers depending on it.
+            meta["alternate_url"] = f"https://emsal.uyap.gov.tr/getDokuman?id={did}"
+            out.append(SearchResult(
+                source=self.source_id, document_id=did, title=title,
+                court=court, chamber=chamber,
+                decision_date=it.get("kararTarihiStr") or it.get("kararTarihi"),
+                esas_no=it.get("esasNo"), karar_no=it.get("kararNo"),
+                source_url=f"https://mevzuat.adalet.gov.tr/ictihat/{did}",
+                content_status=ContentStatus.METADATA_ONLY, metadata=meta,
+            ))
+        return SearchPage(
+            results=out, total=total, page=page, page_size=page_size,
+            total_pages=total_pages, warnings=warnings,
+        )
+
+    async def get_document(self, document_id: str, **kwargs: Any) -> Document:
+        import httpx
+
+        payload = {"data": {"documentId": document_id}, "applicationName": "UyapMevzuat"}
+        try:
+            async with client() as c:
+                r = await c.post(f"{self.base}/emsal-karar/getDocumentContent", json=payload, headers=self.headers)
+                check_http_response(r, self.source_id)
+                raw = r.json()
+        except httpx.HTTPStatusError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            # 404 = full text not (yet) published by the source. Very recent
+            # decisions often have searchable metadata but no uploaded content.
+            # Degrade gracefully (invariant #3: structured result, not exception)
+            # so callers get a fast UNAVAILABLE instead of a crash. Date-agnostic:
+            # once the source backfills the text, the same code returns it.
+            if status_code == 404:
+                doc = Document(
+                    source=self.source_id, document_id=document_id,
+                    title=document_id, content_status=ContentStatus.UNAVAILABLE,
+                )
+                return finalize_document(doc, [
+                    f"{self.source_id}/{document_id}: tam metin kaynakta yok (HTTP 404); "
+                    "büyük olasılıkla çok yeni bir karar, içerik henüz yayımlanmamış."
+                ])
+            raise
+        # Surface upstream faults explicitly (do not silently return UNAVAILABLE).
+        try:
+            check_bedesten_response_error(raw, source=self.source_id)
+        except BedestenUpstreamError as exc:
+            if not exc.retryable:
+                raise
+            import asyncio as _aio
+            await _aio.sleep(self._upstream_retry_delay)
+            async with client() as c:
+                r2 = await c.post(f"{self.base}/emsal-karar/getDocumentContent", json=payload, headers=self.headers)
+                check_http_response(r2, self.source_id)
+                raw = r2.json()
+            check_bedesten_response_error(raw, source=self.source_id)
+        data = raw.get("data", raw)
+        # M-60: schema validation
+        _ = self._check_response_schema(data, self._get_document_response_keys, "get_document")
+        encoded = data.get("content") or data.get("document") or data.get("data") or ""
+        mime = data.get("mimeType") or "text/html"
+        text = ""
+        status = ContentStatus.METADATA_ONLY
+        warnings: list[str] = []
+        if encoded:
+            blob = decode_b64(encoded) if isinstance(encoded, str) else encoded
+            if not blob:
+                warnings.append(f"Base64 decode failed for {self.source_id}/{document_id}; content unavailable.")
+                status = ContentStatus.UNAVAILABLE
+            elif "pdf" in mime:
+                status = ContentStatus.PDF_LINK_ONLY
+            else:
+                try:
+                    html = blob.decode("utf-8", errors="ignore")
+                except Exception:
+                    html = ""
+                    warnings.append("Failed to decode content blob as UTF-8.")
+                if html:
+                    text = html_to_text(html)
+                    status = ContentStatus.HTML_MARKDOWN
+        doc = Document(
+            source=self.source_id, document_id=document_id,
+            title=data.get("title") or document_id,
+            full_text=text, markdown=text, mime_type=mime,
+            content_hash=sha(text) if text else None,
+            source_url=f"https://mevzuat.adalet.gov.tr/ictihat/{document_id}",
+            content_status=status, raw=raw,
+            metadata={**data, "alternate_url": f"https://emsal.uyap.gov.tr/getDokuman?id={document_id}"} if isinstance(data, dict) else data,
+        )
+        return finalize_document(doc, warnings)
+
+    async def smoke(self, online: bool = False) -> SourceSmokeResult:
+        result = await super().smoke(online=online)
+        result.min_content_length_ok = True  # Bedesten returns full HTML
+        return result

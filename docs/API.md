@@ -1,4 +1,4 @@
-# Emsal-mcp API Reference
+# Dayanak API Reference
 
 Auto-generated from module docstrings.
 
@@ -528,7 +528,7 @@ Export citation graph in various formats.
 
 ### `def version() -> None`
 
-Print the current emsal-mcp version.
+Print the current dayanak version.
 
 ---
 
@@ -717,7 +717,7 @@ Final v1.0.0 readiness gate.
 
 ### `def release_version(json_out: bool) -> None`
 
-Show emsal-mcp version info.
+Show dayanak version info.
 
 ---
 
@@ -1331,9 +1331,9 @@ Run multiple source search operations concurrently.
 
 ### `def setup_logging() -> logging.Logger`
 
-Configure stdlib logging for emsal-mcp.
+Configure stdlib logging for dayanak.
 
-    Log level is controlled by EMSAL_LOG_LEVEL (default: WARNING).
+    Log level is controlled by DAYANAK_LOG_LEVEL (default: WARNING).
         Output goes to stderr only — never pollutes stdout JSON contracts.
     
         Returns the configured logger.
@@ -1641,12 +1641,12 @@ Validate draft body doesn't contain fabricated citations.
 
 ### `def get_embedding_provider(provider: str | None) -> EmbeddingProvider | None`
 
-Factory: provider arg > EMSAL_EMBEDDING_PROVIDER env > default.
+Factory: provider arg > DAYANAK_EMBEDDING_PROVIDER env > default.
 
     Priority:
         1. Explicit ``provider`` argument
-        2. ``EMSAL_EMBEDDING_PROVIDER`` environment variable
-        3. ``EMSAL_EMBEDDING_PROVIDER`` config
+        2. ``DAYANAK_EMBEDDING_PROVIDER`` environment variable
+        3. ``DAYANAK_EMBEDDING_PROVIDER`` config
         4. Default: ``local-hash-v1`` (always available, zero deps)
     
         If ``strict=True``, returns None when the requested provider is
@@ -3357,7 +3357,7 @@ Return all placeholder strings found in a template.
 
 Return the active tool profile name.
 
-    Reads ``EMSAL_TOOL_PROFILE`` environment variable.
+    Reads ``DAYANAK_TOOL_PROFILE`` environment variable.
         ``"core"`` (default) → only the 14-tool surface (M-98).
         ``"full"`` → all tools (today's 119-tool surface).
 

@@ -2,7 +2,7 @@
 
 These tests assert properties that must ALWAYS be true regardless of input,
 module version, or code path.  They serve as regression guards for the
-core safety guarantees of emsal-mcp.
+core safety guarantees of dayanak.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class TestMetadataOnlyNeverDraftUsable:
 
     def test_document_model_metadata_only(self):
         """Document model: METADATA_ONLY → draft_usable is False."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="test",
@@ -38,7 +38,7 @@ class TestMetadataOnlyNeverDraftUsable:
 
     def test_document_model_pdf_link_only(self):
         """Document model: PDF_LINK_ONLY → draft_usable is False."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="test",
@@ -50,7 +50,7 @@ class TestMetadataOnlyNeverDraftUsable:
 
     def test_document_model_unavailable(self):
         """Document model: UNAVAILABLE → draft_usable is False."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="test",
@@ -62,8 +62,8 @@ class TestMetadataOnlyNeverDraftUsable:
 
     def test_citation_check_metadata_only(self):
         """safety.citation_check: metadata_only → quoteUsable=False, draftUsable=False."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.safety import citation_check
+        from dayanak.models import ContentStatus, Document
+        from dayanak.safety import citation_check
 
         doc = Document(
             source="test",
@@ -77,8 +77,8 @@ class TestMetadataOnlyNeverDraftUsable:
 
     def test_petition_classification_metadata_only(self):
         """petition._classify_authority: metadata_only → never petition_ready."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.petition import _classify_authority
+        from dayanak.models import ContentStatus, Document
+        from dayanak.petition import _classify_authority
 
         doc = Document(
             source="test",
@@ -93,8 +93,8 @@ class TestMetadataOnlyNeverDraftUsable:
 
     def test_petition_classification_unavailable(self):
         """petition._classify_authority: unavailable → always excluded."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.petition import _classify_authority
+        from dayanak.models import ContentStatus, Document
+        from dayanak.petition import _classify_authority
 
         doc = Document(
             source="test",
@@ -107,8 +107,8 @@ class TestMetadataOnlyNeverDraftUsable:
 
     def test_controlled_draft_excludes_metadata_only(self):
         """document.controlled_draft: metadata_only docs not in safe list."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.document import controlled_draft
+        from dayanak.models import ContentStatus, Document
+        from dayanak.document import controlled_draft
 
         meta_doc = Document(
             source="test",
@@ -130,7 +130,7 @@ class TestCitationNeverFabricates:
 
     def test_format_legal_citation_missing_fields(self):
         """format_legal_citation with partial source → warnings about missing fields."""
-        from emsal_mcp.citation import format_legal_citation
+        from dayanak.citation import format_legal_citation
 
         result = format_legal_citation(source={"title": "Test"}, style="petition")
         assert "warnings" in result
@@ -145,7 +145,7 @@ class TestCitationNeverFabricates:
 
     def test_format_legal_citation_complete_source(self):
         """format_legal_citation with full source → no fabrication warnings."""
-        from emsal_mcp.citation import format_legal_citation
+        from dayanak.citation import format_legal_citation
 
         result = format_legal_citation(
             source={
@@ -166,7 +166,7 @@ class TestCitationNeverFabricates:
 
     def test_format_legislation_citation_missing_fields(self):
         """format_legislation_citation with empty doc → warnings."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         result = format_legislation_citation(document={}, style="full")
         assert "warnings" in result
@@ -174,14 +174,14 @@ class TestCitationNeverFabricates:
 
     def test_extract_citation_candidates_empty_text(self):
         """extract_citation_candidates with empty text → no results, no errors."""
-        from emsal_mcp.citation import extract_citation_candidates
+        from dayanak.citation import extract_citation_candidates
 
         candidates = extract_citation_candidates("")
         assert candidates == []
 
     def test_extract_citation_candidates_no_fabrication(self):
         """extract_citation_candidates: missing fields produce warnings."""
-        from emsal_mcp.citation import extract_citation_candidates
+        from dayanak.citation import extract_citation_candidates
 
         candidates = extract_citation_candidates(
             "Yargıtay 3. Hukuk Dairesi kararı"
@@ -203,7 +203,7 @@ class TestGracefulDegradation:
 
     def test_verify_legal_citation_no_input(self):
         """verify_legal_citation() with no input → error dict, not exception."""
-        from emsal_mcp.citation import verify_legal_citation
+        from dayanak.citation import verify_legal_citation
 
         result = verify_legal_citation()
         assert isinstance(result, dict)
@@ -212,7 +212,7 @@ class TestGracefulDegradation:
 
     def test_verify_legal_citation_bad_file(self):
         """verify_legal_citation with nonexistent file → error dict."""
-        from emsal_mcp.citation import verify_legal_citation
+        from dayanak.citation import verify_legal_citation
 
         result = verify_legal_citation(file_path="/nonexistent/path.txt")
         assert isinstance(result, dict)
@@ -221,7 +221,7 @@ class TestGracefulDegradation:
 
     def test_format_legal_citation_none_source(self):
         """format_legal_citation(None) → dict with warnings."""
-        from emsal_mcp.citation import format_legal_citation
+        from dayanak.citation import format_legal_citation
 
         result = format_legal_citation(source=None, style="petition")
         assert isinstance(result, dict)
@@ -229,7 +229,7 @@ class TestGracefulDegradation:
 
     def test_format_legislation_citation_invalid_input(self):
         """format_legislation_citation(None) → error dict."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         result = format_legislation_citation(None, style="full")  # type: ignore[arg-type]
         assert isinstance(result, dict)
@@ -237,7 +237,7 @@ class TestGracefulDegradation:
 
     def test_get_legislation_document_bad_source(self):
         """get_legislation_document with nonexistent source → error dict."""
-        from emsal_mcp.legislation import get_legislation_document
+        from dayanak.legislation import get_legislation_document
 
         result = get_legislation_document(
             "test-12345", source="nonexistent", sources_override={},
@@ -248,7 +248,7 @@ class TestGracefulDegradation:
 
     def test_search_legislation_no_results(self):
         """search_legislation with empty override → no exception."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         result = search_legislation("test", sources_override={})
         assert isinstance(result, dict)
@@ -256,7 +256,7 @@ class TestGracefulDegradation:
 
     def test_prepare_petition_outline_bad_dir(self):
         """prepare_petition_outline with bad dir → error dict."""
-        from emsal_mcp.petition import prepare_petition_outline
+        from dayanak.petition import prepare_petition_outline
 
         result = prepare_petition_outline(Path("/nonexistent"))
         assert isinstance(result, dict)
@@ -265,7 +265,7 @@ class TestGracefulDegradation:
 
     def test_prepare_controlled_petition_draft_bad_dir(self):
         """prepare_controlled_petition_draft with bad dir → error dict."""
-        from emsal_mcp.petition import prepare_controlled_petition_draft
+        from dayanak.petition import prepare_controlled_petition_draft
 
         result = prepare_controlled_petition_draft(Path("/nonexistent"))
         assert isinstance(result, dict)
@@ -273,7 +273,7 @@ class TestGracefulDegradation:
 
     def test_prepare_docx_export_no_inputs(self):
         """prepare_docx_export() with no inputs → error dict."""
-        from emsal_mcp.exporter import prepare_docx_export
+        from dayanak.exporter import prepare_docx_export
 
         result = prepare_docx_export()
         assert isinstance(result, dict)
@@ -281,7 +281,7 @@ class TestGracefulDegradation:
 
     def test_prepare_docx_export_missing_draft(self):
         """prepare_docx_export with missing file → error dict."""
-        from emsal_mcp.exporter import prepare_docx_export
+        from dayanak.exporter import prepare_docx_export
 
         result = prepare_docx_export(draft_path="/nonexistent.md")
         assert isinstance(result, dict)
@@ -289,7 +289,7 @@ class TestGracefulDegradation:
 
     def test_chamber_overview_empty_db(self):
         """get_chamber_overview with empty DB → no exception."""
-        from emsal_mcp.chamber import get_chamber_overview
+        from dayanak.chamber import get_chamber_overview
 
         result = get_chamber_overview()
         assert isinstance(result, dict)
@@ -297,7 +297,7 @@ class TestGracefulDegradation:
 
     def test_semantic_search_empty_db(self):
         """semantic_search with empty DB → no exception."""
-        from emsal_mcp.semantic import semantic_search
+        from dayanak.semantic import semantic_search
 
         result = semantic_search("test query")
         assert isinstance(result, dict)
@@ -313,8 +313,8 @@ class TestPublicAPIContracts:
 
     def test_citation_check_returns_ok(self):
         """safety.citation_check returns CitationCheck with ok field."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.safety import citation_check
+        from dayanak.models import ContentStatus, Document
+        from dayanak.safety import citation_check
 
         doc = Document(
             source="test", document_id="x", title="Test",
@@ -327,22 +327,22 @@ class TestPublicAPIContracts:
 
     def test_format_legal_citation_returns_warnings(self):
         """citation.format_legal_citation returns warnings key."""
-        from emsal_mcp.citation import format_legal_citation
+        from dayanak.citation import format_legal_citation
 
         result = format_legal_citation(source={"title": "Test"}, style="petition")
         assert "warnings" in result
 
     def test_verify_legal_citation_returns_ok(self):
         """citation.verify_legal_citation returns ok key."""
-        from emsal_mcp.citation import verify_legal_citation
+        from dayanak.citation import verify_legal_citation
 
         result = verify_legal_citation("Test text", no_live=True)
         assert "ok" in result
 
     def test_petition_pack_returns_ok(self):
         """petition.prepare_drafting_input_pack returns ok key."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.petition import prepare_drafting_input_pack
+        from dayanak.models import ContentStatus, Document
+        from dayanak.petition import prepare_drafting_input_pack
 
         doc = Document(
             source="test", document_id="x", title="Test",
@@ -360,8 +360,8 @@ class TestPublicAPIContracts:
 
     def test_inspect_petition_pack_returns_ok(self):
         """petition.inspect_petition_pack returns ok key."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.petition import prepare_drafting_input_pack, inspect_petition_pack
+        from dayanak.models import ContentStatus, Document
+        from dayanak.petition import prepare_drafting_input_pack, inspect_petition_pack
 
         doc = Document(
             source="test", document_id="x", title="Test",
@@ -379,14 +379,14 @@ class TestPublicAPIContracts:
 
     def test_prepare_export_bundle_returns_ok(self):
         """exporter.prepare_export_package_bundle returns ok key."""
-        from emsal_mcp.exporter import prepare_export_package_bundle
+        from dayanak.exporter import prepare_export_package_bundle
 
         result = prepare_export_package_bundle(Path("/nonexistent"))
         assert "ok" in result
 
     def test_search_legislation_returns_ok(self):
         """legislation.search_legislation returns ok key."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         result = search_legislation("test", sources_override={})
         assert "ok" in result
@@ -394,7 +394,7 @@ class TestPublicAPIContracts:
 
     def test_format_legislation_citation_returns_warnings(self):
         """legislation.format_legislation_citation returns warnings key."""
-        from emsal_mcp.legislation import format_legislation_citation
+        from dayanak.legislation import format_legislation_citation
 
         result = format_legislation_citation(
             document={"title": "Test"}, style="full",
@@ -403,7 +403,7 @@ class TestPublicAPIContracts:
 
     def test_semantic_search_returns_ok(self):
         """semantic.semantic_search returns ok key."""
-        from emsal_mcp.semantic import semantic_search
+        from dayanak.semantic import semantic_search
 
         result = semantic_search("test")
         assert "ok" in result
@@ -411,7 +411,7 @@ class TestPublicAPIContracts:
 
     def test_hybrid_search_returns_ok(self):
         """semantic.hybrid_search returns ok key."""
-        from emsal_mcp.semantic import hybrid_search
+        from dayanak.semantic import hybrid_search
 
         result = hybrid_search("test")
         assert "ok" in result
@@ -419,14 +419,14 @@ class TestPublicAPIContracts:
 
     def test_build_semantic_index_returns_ok(self):
         """semantic.build_semantic_index returns ok key."""
-        from emsal_mcp.semantic import build_semantic_index
+        from dayanak.semantic import build_semantic_index
 
         result = build_semantic_index()
         assert "ok" in result
 
     def test_chamber_overview_returns_ok(self):
         """chamber.get_chamber_overview returns ok key."""
-        from emsal_mcp.chamber import get_chamber_overview
+        from dayanak.chamber import get_chamber_overview
 
         result = get_chamber_overview()
         assert "ok" in result
@@ -442,8 +442,8 @@ class TestSourcesOverridePreservesSafety:
 
     def test_sources_override_no_citation_bypass(self):
         """sources_override: citation_check still enforces safety."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.safety import citation_check
+        from dayanak.models import ContentStatus, Document
+        from dayanak.safety import citation_check
 
         # Create a metadata-only document — should be citation-unsafe
         doc = Document(
@@ -459,7 +459,7 @@ class TestSourcesOverridePreservesSafety:
 
     def test_search_legislation_override_preserves_safety(self):
         """search_legislation with override: results still respect content_status."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
 
         result = search_legislation("test", sources_override={})
         # Even with override, ok may be False but warnings should exist
@@ -467,8 +467,8 @@ class TestSourcesOverridePreservesSafety:
 
     def test_petition_pack_override_preserves_safety(self):
         """Petition pack: sources_override doesn't skip citation_check."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.safety import citation_check
+        from dayanak.models import ContentStatus, Document
+        from dayanak.safety import citation_check
 
         # Any document, regardless of source, must go through citation_check
         doc = Document(
@@ -490,8 +490,8 @@ class TestPlaceholderPreservation:
 
     def test_skeleton_preserves_placeholders(self):
         """_generate_draft_skeleton preserves all {{...}} patterns."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.petition import PLACEHOLDER_PATTERN, _generate_draft_skeleton
+        from dayanak.models import ContentStatus, Document
+        from dayanak.petition import PLACEHOLDER_PATTERN, _generate_draft_skeleton
 
         doc = Document(
             source="test", document_id="x", title="Test",
@@ -511,8 +511,8 @@ class TestPlaceholderPreservation:
 
     def test_controlled_draft_preserves_placeholders(self):
         """prepare_controlled_petition_draft preserves placeholders in draft.md."""
-        from emsal_mcp.models import ContentStatus, Document
-        from emsal_mcp.petition import (
+        from dayanak.models import ContentStatus, Document
+        from dayanak.petition import (
             PLACEHOLDER_PATTERN,
             prepare_controlled_petition_draft,
             prepare_drafting_input_pack,
@@ -544,7 +544,7 @@ class TestPlaceholderPreservation:
 
     def test_petition_instructions_contain_no_invention(self):
         """Petition instructions contain no-invention rule."""
-        from emsal_mcp.petition import (
+        from dayanak.petition import (
             NO_INVENTION_PATTERNS,
             _generate_petition_instructions,
         )
@@ -560,10 +560,10 @@ class TestPlaceholderPreservation:
 
     def test_disclaimer_header_present(self):
         """Draft includes disclaimer header."""
-        from emsal_mcp.petition import DISCLAIMER_HEADER
+        from dayanak.petition import DISCLAIMER_HEADER
 
         assert "DİKKAT" in DISCLAIMER_HEADER
-        assert "emsal-mcp" in DISCLAIMER_HEADER
+        assert "dayanak" in DISCLAIMER_HEADER
 
 
 # ---------------------------------------------------------------------------
@@ -575,7 +575,7 @@ class TestBuildErrorShape:
 
     def test_build_error_basic(self):
         """build_error with minimal args → ok, errorCode, message."""
-        from emsal_mcp.models import build_error
+        from dayanak.models import build_error
 
         result = build_error("TEST_CODE", "Test message")
         assert result["ok"] is False
@@ -584,7 +584,7 @@ class TestBuildErrorShape:
 
     def test_build_error_with_extra(self):
         """build_error with extra kwargs → extra fields attached."""
-        from emsal_mcp.models import build_error
+        from dayanak.models import build_error
 
         result = build_error(
             "TEST_CODE", "msg",
@@ -603,7 +603,7 @@ class TestBuildErrorShape:
 
     def test_build_error_no_optional_fields(self):
         """build_error without optional fields → no extra keys."""
-        from emsal_mcp.models import build_error
+        from dayanak.models import build_error
 
         result = build_error("CODE", "msg")
         assert "source" not in result
@@ -621,7 +621,7 @@ class TestToToolPayload:
 
     def test_single_text_field_markdown_exists(self):
         """When markdown exists, it becomes the single text field; full_text removed."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="bedesten",
@@ -638,7 +638,7 @@ class TestToToolPayload:
 
     def test_full_text_promoted_when_markdown_none(self):
         """When markdown is None, full_text is promoted to markdown key."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="bedesten",
@@ -654,7 +654,7 @@ class TestToToolPayload:
 
     def test_both_missing_yields_none_markdown(self):
         """When both markdown and full_text are None/empty, markdown is None."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="bedesten",
@@ -670,7 +670,7 @@ class TestToToolPayload:
 
     def test_raw_stripped_by_default(self):
         """raw key must be absent from default payload."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="bedesten",
@@ -685,7 +685,7 @@ class TestToToolPayload:
 
     def test_raw_included_when_include_raw_true(self):
         """raw key is present when include_raw=True."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="bedesten",
@@ -701,7 +701,7 @@ class TestToToolPayload:
 
     def test_metadata_content_stripped(self):
         """metadata.content (base64 HTML) must be removed from metadata dict."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="bedesten",
@@ -725,7 +725,7 @@ class TestToToolPayload:
 
     def test_metadata_empty_or_missing_handled(self):
         """Empty metadata or missing metadata → no crash."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         # Test with empty metadata dict
         doc = Document(
@@ -753,7 +753,7 @@ class TestToToolPayload:
 
     def test_quote_usable_and_draft_usable_preserved(self):
         """to_tool_payload preserves quote_usable/draft_usable properties."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
 
         doc = Document(
             source="bedesten",
@@ -770,7 +770,7 @@ class TestToToolPayload:
 
     def test_payload_size_smaller_than_full_dump(self):
         """Deduplicated payload should be significantly smaller than full model_dump."""
-        from emsal_mcp.models import ContentStatus, Document
+        from dayanak.models import ContentStatus, Document
         import json
 
         big_base64 = "VGhpcyBpcyBhIHZlcnkgbG9uZyBiYXNlNjQgc3RyaW5nIHRoYXQgd291bGQgbm9ybWFsbHkgY29udGFpbiBIVE1MIGNvbnRlbnQK" * 100
@@ -804,7 +804,7 @@ class TestSplitMarkdownForPagination:
 
     def test_short_text_returns_single_page(self):
         """Text under max_chars returns 1/1 with full text."""
-        from emsal_mcp.server_utils import split_markdown_for_pagination
+        from dayanak.server_utils import split_markdown_for_pagination
 
         text = "Kisa bir karar metni.\n\nIkinci paragraf."
         result = split_markdown_for_pagination(text)
@@ -815,7 +815,7 @@ class TestSplitMarkdownForPagination:
 
     def test_empty_text_returns_single_page(self):
         """Empty or None text returns 1/1."""
-        from emsal_mcp.server_utils import split_markdown_for_pagination
+        from dayanak.server_utils import split_markdown_for_pagination
 
         for t in ("", "   ", None):  # type: ignore[assignment]
             result = split_markdown_for_pagination(t or "")  # type: ignore[arg-type]
@@ -824,7 +824,7 @@ class TestSplitMarkdownForPagination:
 
     def test_100k_artificial_text_splits_into_3_pages(self):
         """~100k chars of text → multiple pages at paragraph boundaries."""
-        from emsal_mcp.server_utils import split_markdown_for_pagination
+        from dayanak.server_utils import split_markdown_for_pagination
 
         # Each paragraph: "Par {n}: " + "x"*50 ≈ 57-60 chars (varies by digit count).
         # With \n\n separators, ~40k per page → 3 pages for ~110k chars.
@@ -853,7 +853,7 @@ class TestSplitMarkdownForPagination:
 
     def test_no_paragraph_cut_mid_way(self):
         """Verify that no page starts or ends mid-paragraph."""
-        from emsal_mcp.server_utils import split_markdown_for_pagination
+        from dayanak.server_utils import split_markdown_for_pagination
 
         # Create a text where paragraphs are clearly delimited
         paragraphs = [f"## Bolum {i}\n\nBu bolumun icerigi. " * 20 for i in range(500)]
@@ -871,7 +871,7 @@ class TestSplitMarkdownForPagination:
 
     def test_giant_paragraph_fallback_to_sentences(self):
         """Single paragraph over max_chars falls back to sentence splitting."""
-        from emsal_mcp.server_utils import split_markdown_for_pagination
+        from dayanak.server_utils import split_markdown_for_pagination
 
         # One single 60k paragraph
         sentence = "Bu cok uzun bir cumledir ve test amaciyla tekrar ediliyor. "
@@ -888,7 +888,7 @@ class TestSplitMarkdownForPagination:
 
     def test_page_number_clamped(self):
         """Out-of-bounds page_number is clamped to valid range."""
-        from emsal_mcp.server_utils import split_markdown_for_pagination
+        from dayanak.server_utils import split_markdown_for_pagination
 
         text = "x" * 200  # short text, only 1 page
         result = split_markdown_for_pagination(text, page_number=5)

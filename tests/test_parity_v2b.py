@@ -6,9 +6,9 @@ Fixture'lar 2026-07-15 tarihli canlı yanıtlardan alınmıştır
 from __future__ import annotations
 
 
-from emsal_mcp.models import ContentStatus
-from emsal_mcp.sources.aihm import AihmClient
-from emsal_mcp.sources.simple_public import AymClient
+from dayanak.models import ContentStatus
+from dayanak.sources.aihm import AihmClient
+from dayanak.sources.simple_public import AymClient
 
 
 # ── AYM KBB fixtures ─────────────────────────────────────────────────
@@ -128,7 +128,7 @@ def test_hudoc_search_page_parses_fixture(monkeypatch):
 
     import asyncio
 
-    monkeypatch.setattr("emsal_mcp.sources.aihm.client", lambda: FakeClient())
+    monkeypatch.setattr("dayanak.sources.aihm.client", lambda: FakeClient())
     sp = asyncio.run(AihmClient().search_page("", limit=10, dava_adi="Kavala"))
     assert sp.total == 31
     assert len(sp.results) == 1
@@ -170,7 +170,7 @@ def _client_cm(get=None, post=None):
 
 class TestGibSearchPage:
     def test_total_and_page_mapping(self):
-        from emsal_mcp.sources.simple_public import GibClient
+        from dayanak.sources.simple_public import GibClient
         fixture = {
             "resultContainer": {
                 "content": [{
@@ -184,7 +184,7 @@ class TestGibSearchPage:
             }
         }
         cm, inner = _client_cm(post=_resp(json_data=fixture))
-        with patch("emsal_mcp.sources.simple_public.client", return_value=cm):
+        with patch("dayanak.sources.simple_public.client", return_value=cm):
             sp = asyncio.run(GibClient().search_page("KDV", limit=3, page=2))
         assert sp.total == 7736
         assert sp.total_pages == 2579
@@ -205,9 +205,9 @@ BTK_CARD_HTML = """
 
 class TestBtkSearchPage:
     def _run(self, query=""):
-        from emsal_mcp.sources.simple_public import BtkClient
+        from dayanak.sources.simple_public import BtkClient
         cm, _ = _client_cm(get=_resp(text=BTK_CARD_HTML))
-        with patch("emsal_mcp.sources.simple_public.client", return_value=cm):
+        with patch("dayanak.sources.simple_public.client", return_value=cm):
             return asyncio.run(BtkClient().search_page(query, limit=10))
 
     def test_card_parse(self):
@@ -227,7 +227,7 @@ class TestBtkSearchPage:
 
 class TestRekabetSearchPage:
     def test_total_parse(self):
-        from emsal_mcp.sources.simple_public import RekabetClient
+        from dayanak.sources.simple_public import RekabetClient
         html = """
         <div>Toplam : 10283</div>
         <table class="equalDivide"><tr><td>
@@ -235,7 +235,7 @@ class TestRekabetSearchPage:
         </td></tr></table>
         """
         cm, _ = _client_cm(get=_resp(text=html))
-        with patch("emsal_mcp.sources.simple_public.client", return_value=cm):
+        with patch("dayanak.sources.simple_public.client", return_value=cm):
             sp = asyncio.run(RekabetClient().search_page("hakim durum", limit=5))
         assert sp.total == 10283
         assert sp.total_pages == 2057
@@ -244,12 +244,12 @@ class TestRekabetSearchPage:
 
 def test_btk_pdf_extractor_import_path():
     # Regresyon: `.pdf_extractor` (yanlış, sources altı) yerine
-    # `emsal_mcp.pdf_extractor` import edilmeli — 8b denetiminde yakalanan hata.
+    # `dayanak.pdf_extractor` import edilmeli — 8b denetiminde yakalanan hata.
     import inspect
-    from emsal_mcp.sources import simple_public
+    from dayanak.sources import simple_public
     src = inspect.getsource(simple_public)
     assert "from .pdf_extractor import" not in src
-    assert "from emsal_mcp.pdf_extractor import" in src
+    assert "from dayanak.pdf_extractor import" in src
 
 
 # ── AIHM dil varsayilani / dusus / tarih eslemesi ────────────────────
@@ -301,7 +301,7 @@ def _fake_hudoc(monkeypatch, counts):
                     return R(n)
             return R(0)
 
-    monkeypatch.setattr("emsal_mcp.sources.aihm.client", lambda: C())
+    monkeypatch.setattr("dayanak.sources.aihm.client", lambda: C())
     return seen
 
 
@@ -374,7 +374,7 @@ def test_aihm_default_notes_newer_original_language(monkeypatch):
                 return R(65, "2022-07-11T00:00:00", "KAVALA v. TURKEY")
             return R(7, "2026-08-25T00:00:00", "KAVALA v. TURKIYE (No. 2)")
 
-    monkeypatch.setattr("emsal_mcp.sources.aihm.client", lambda: C())
+    monkeypatch.setattr("dayanak.sources.aihm.client", lambda: C())
     sp = asyncio.run(AihmClient().search_page("Kavala"))
     assert sp.total == 65
     assert len(sp.warnings) == 1
@@ -405,6 +405,6 @@ def test_aihm_default_probe_failure_is_silent(monkeypatch):
                 raise RuntimeError("boom")
             return R()
 
-    monkeypatch.setattr("emsal_mcp.sources.aihm.client", lambda: C())
+    monkeypatch.setattr("dayanak.sources.aihm.client", lambda: C())
     sp = asyncio.run(AihmClient().search_page("x"))
     assert sp.total == 3 and sp.warnings == []

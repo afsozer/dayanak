@@ -1,4 +1,4 @@
-# Emsal crawl + panel icin Windows Zamanlanmis Gorev kurulumu.
+# Dayanak crawl + panel icin Windows Zamanlanmis Gorev kurulumu.
 #
 #   .\scripts\kur-otomatik-baslatma.ps1           -> kurar (varsa gunceller)
 #   .\scripts\kur-otomatik-baslatma.ps1 -Durum    -> gorevlerin durumunu yazar
@@ -30,8 +30,8 @@ $panelTask  = 'EmsalPanel'
 function Kisayol-Yollari {
     # Masaustu OneDrive'a yonlendirilmis olabilir; kayittan gercek yolu al.
     @(
-        (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Emsal Paneli.url'),
-        (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Emsal Paneli.url')
+        (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Dayanak Paneli.url'),
+        (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Dayanak Paneli.url')
     )
 }
 
@@ -104,7 +104,7 @@ $crawlTetik.Delay = 'PT1M'   # ag/Tailscale ayaga kalksin diye 1 dk gecikme
 
 Register-ScheduledTask -TaskName $crawlTask -Action $crawlEylem -Trigger $crawlTetik `
     -Settings $ayar -Principal $asIslemci -Force `
-    -Description 'Emsal korpus crawl master (rate limit 12, kaldigi sayfadan devam eder)' | Out-Null
+    -Description 'Dayanak korpus crawl master (rate limit 12, kaldigi sayfadan devam eder)' | Out-Null
 Write-Host "Kuruldu: $crawlTask (oturum acilisi + 1 dk)"
 
 # ---- panel gorevi -----------------------------------------------------------
@@ -116,7 +116,7 @@ $panelTetik.Delay = 'PT20S'
 
 Register-ScheduledTask -TaskName $panelTask -Action $panelEylem -Trigger $panelTetik `
     -Settings $ayar -Principal $asIslemci -Force `
-    -Description 'Emsal kutuphane paneli — http://127.0.0.1:8799' | Out-Null
+    -Description 'Dayanak kutuphane paneli — http://127.0.0.1:8799' | Out-Null
 Write-Host "Kuruldu: $panelTask (http://127.0.0.1:8799)"
 
 # ---- masaustu + baslat menusu kisayollari -----------------------------------

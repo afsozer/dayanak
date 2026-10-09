@@ -15,16 +15,16 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from emsal_mcp.models import SourceSmokeResult, SourceStatus
-from emsal_mcp.sources.base import (
+from dayanak.models import SourceSmokeResult, SourceStatus
+from dayanak.sources.base import (
     _load_schema_sigs,
     _save_schema_sigs,
     _schema_sig_path,
     _SCHEMA_SIG_FILENAME,
 )
-from emsal_mcp.sources.bedesten import BedestenClient
-from emsal_mcp.sources.mevzuat import MevzuatClient
-from emsal_mcp.sources.registry import smoke_all_sync
+from dayanak.sources.bedesten import BedestenClient
+from dayanak.sources.mevzuat import MevzuatClient
+from dayanak.sources.registry import smoke_all_sync
 
 
 # ── Schema signature computation ────────────────────────────────────────
@@ -53,7 +53,7 @@ class TestSchemaSignature:
 
     def test_returns_none_when_no_keys(self):
         """Adapter with no schema declaration returns None."""
-        from emsal_mcp.sources.simple_public import AymClient
+        from dayanak.sources.simple_public import AymClient
         ci = AymClient()
         assert ci._schema_signature() is None
 
@@ -71,7 +71,7 @@ class TestSchemaSigPersistence:
 
     def test_load_returns_empty_when_no_file(self, tmp_path):
         """Missing file returns empty dict."""
-        with patch("emsal_mcp.sources.base._schema_sig_path", return_value=tmp_path / "nonexistent.json"):
+        with patch("dayanak.sources.base._schema_sig_path", return_value=tmp_path / "nonexistent.json"):
             result = _load_schema_sigs()
             assert result == {}
 
@@ -79,7 +79,7 @@ class TestSchemaSigPersistence:
         """Save then load should return same data."""
         sig_file = tmp_path / "test_sigs.json"
         sigs = {"bedesten": "abc123", "mevzuat": "def456"}
-        with patch("emsal_mcp.sources.base._schema_sig_path", return_value=sig_file):
+        with patch("dayanak.sources.base._schema_sig_path", return_value=sig_file):
             _save_schema_sigs(sigs)
             assert sig_file.exists()
             loaded = _load_schema_sigs()
@@ -89,20 +89,20 @@ class TestSchemaSigPersistence:
         """Corrupt JSON file returns empty dict."""
         sig_file = tmp_path / "corrupt.json"
         sig_file.write_text("not json {{{")
-        with patch("emsal_mcp.sources.base._schema_sig_path", return_value=sig_file):
+        with patch("dayanak.sources.base._schema_sig_path", return_value=sig_file):
             result = _load_schema_sigs()
             assert result == {}
 
-    def test_sig_path_is_in_emsal_mcp_dir(self):
-        """Path should be under ~/.emsal_mcp/."""
+    def test_sig_path_is_in_dayanak_dir(self):
+        """Path should be under ~/.dayanak/."""
         p = _schema_sig_path()
         assert _SCHEMA_SIG_FILENAME in str(p)
-        assert ".emsal_mcp" in str(p)
+        assert ".dayanak" in str(p)
 
     def test_save_creates_parent_directory(self, tmp_path):
         """Saving should create parent dir if missing."""
         sig_file = tmp_path / "nested" / "dir" / "sigs.json"
-        with patch("emsal_mcp.sources.base._schema_sig_path", return_value=sig_file):
+        with patch("dayanak.sources.base._schema_sig_path", return_value=sig_file):
             _save_schema_sigs({"test": "hash1"})
             assert sig_file.exists()
             loaded = _load_schema_sigs()
@@ -137,7 +137,7 @@ class TestSmokeSchemaHealth:
 
     def test_aym_smoke_no_schema_health(self):
         """HTML-based adapter: no schema keys declared → schema_health None."""
-        from emsal_mcp.sources.simple_public import AymClient
+        from dayanak.sources.simple_public import AymClient
         ci = AymClient()
         result = asyncio.run(ci.smoke(online=False))
         # AYM has no schema declared — schema_health should be None
@@ -160,7 +160,7 @@ class TestCrossRunSignatureDrift:
     def test_first_run_saves_signature(self, tmp_path):
         """First run saves the signature; no warning expected."""
         sig_file = tmp_path / "sig_test.json"
-        with patch("emsal_mcp.sources.base._schema_sig_path", return_value=sig_file):
+        with patch("dayanak.sources.base._schema_sig_path", return_value=sig_file):
             ci = BedestenClient()
             result = asyncio.run(ci.smoke(online=False))
             # First run: previous_signature should be None
@@ -172,7 +172,7 @@ class TestCrossRunSignatureDrift:
     def test_second_run_detects_no_change(self, tmp_path):
         """Second run with same keys: no drift detected, no warning."""
         sig_file = tmp_path / "sig_test.json"
-        with patch("emsal_mcp.sources.base._schema_sig_path", return_value=sig_file):
+        with patch("dayanak.sources.base._schema_sig_path", return_value=sig_file):
             # First run
             ci1 = BedestenClient()
             asyncio.run(ci1.smoke(online=False))
@@ -187,7 +187,7 @@ class TestCrossRunSignatureDrift:
     def test_schema_change_between_runs_detected(self, tmp_path):
         """If signature changes between runs, smoke should warn."""
         sig_file = tmp_path / "sig_test.json"
-        with patch("emsal_mcp.sources.base._schema_sig_path", return_value=sig_file):
+        with patch("dayanak.sources.base._schema_sig_path", return_value=sig_file):
             # First run
             ci1 = BedestenClient()
             asyncio.run(ci1.smoke(online=False))

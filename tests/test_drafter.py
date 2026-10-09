@@ -5,8 +5,8 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-from emsal_mcp.models import ContentStatus, Document, InputPack
-from emsal_mcp.drafter import assemble_draft, validate_draft_body
+from dayanak.models import ContentStatus, Document, InputPack
+from dayanak.drafter import assemble_draft, validate_draft_body
 
 
 def _make_doc(source="test", doc_id="001", esas_no="2023/123", karar_no="2024/456"):
@@ -220,7 +220,7 @@ class TestDraftModelIntegration:
     """Integration tests with Draft model."""
 
     def test_draft_has_citation_patterns_method(self):
-        from emsal_mcp.models import Draft as DraftModel
+        from dayanak.models import Draft as DraftModel
         draft = DraftModel(
             kind="dilekce",
             body_markdown="Yargıtay 2023/456 Esas No 2023 kararı.",
@@ -230,7 +230,7 @@ class TestDraftModelIntegration:
         assert len(patterns) > 0
 
     def test_draft_clean_body_no_patterns(self):
-        from emsal_mcp.models import Draft as DraftModel
+        from dayanak.models import Draft as DraftModel
         draft = DraftModel(
             kind="dilekce",
             body_markdown="Temiz metin.",

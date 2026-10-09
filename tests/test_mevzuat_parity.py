@@ -25,14 +25,14 @@ def _mock_resp(json_data):
 
 
 def _run_mevzuat_search(query="kişisel veri", **kw):
-    from emsal_mcp.sources.mevzuat import MevzuatClient
+    from dayanak.sources.mevzuat import MevzuatClient
     captured: list[dict] = []
 
     async def _capture(*a, **k):
         captured.append(k.get("json", {}))
         return _mock_resp({"data": {"mevzuatList": [{"documentId": "m1", "mevzuatAdi": "KVKK", "mevzuatNo": "6698"}]}})
 
-    with patch("emsal_mcp.sources.base.client") as mc:
+    with patch("dayanak.sources.base.client") as mc:
         cm = AsyncMock()
         cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_capture)))
         cm.__aexit__ = AsyncMock(return_value=False)
@@ -75,7 +75,7 @@ class TestMevzuatTurList:
 
 class TestAbbreviationRouting:
     def test_tck_routes_to_5237(self):
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
         captured: list[dict] = []
 
         class FakeClient:
@@ -89,7 +89,7 @@ class TestAbbreviationRouting:
         assert any("5237" in w for w in result["warnings"])
 
     def test_kvkk_routes_to_6698(self):
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
         captured: list[dict] = []
 
         class FakeClient:
@@ -101,7 +101,7 @@ class TestAbbreviationRouting:
         assert captured[0]["filters"].get("mevzuat_no") == "6698"
 
     def test_plain_query_not_rerouted(self):
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
         captured: list[dict] = []
 
         class FakeClient:
@@ -116,7 +116,7 @@ class TestAbbreviationRouting:
         """When mevzuat_no is given, the body phrase is dropped so Bedesten
         doesn't apply it as a filter that suppresses the number match.
         Discovered during end-to-end parity verification."""
-        from emsal_mcp.legislation import search_legislation
+        from dayanak.legislation import search_legislation
         captured: list[dict] = []
 
         class FakeClient:
@@ -140,7 +140,7 @@ class TestSearchPage:
 
     @staticmethod
     def _run(total, n=3, **kw):
-        from emsal_mcp.sources.mevzuat import MevzuatClient
+        from dayanak.sources.mevzuat import MevzuatClient
 
         payload = {"data": {
             "mevzuatList": [
@@ -155,7 +155,7 @@ class TestSearchPage:
         async def _post(*a, **k):
             return _mock_resp(payload)
 
-        with patch("emsal_mcp.sources.base.client") as mc:
+        with patch("dayanak.sources.base.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_post)))
             cm.__aexit__ = AsyncMock(return_value=False)
@@ -178,14 +178,14 @@ class TestSearchPage:
 
     def test_search_still_returns_a_plain_list(self):
         """The list contract is unchanged; search_page is additive."""
-        from emsal_mcp.sources.mevzuat import MevzuatClient
+        from dayanak.sources.mevzuat import MevzuatClient
 
         async def _post(*a, **k):
             return _mock_resp({"data": {"mevzuatList": [
                 {"documentId": "m1", "mevzuatAdi": "KVKK", "mevzuatNo": "6698"},
             ], "total": 7}})
 
-        with patch("emsal_mcp.sources.base.client") as mc:
+        with patch("dayanak.sources.base.client") as mc:
             cm = AsyncMock()
             cm.__aenter__ = AsyncMock(return_value=MagicMock(post=AsyncMock(side_effect=_post)))
             cm.__aexit__ = AsyncMock(return_value=False)
