@@ -71,7 +71,7 @@ korpusun diskteki yeri (`D:\emsal-data`).
 - Mac klasörü `~/Developer/dayanak`; venv yeniden kuruldu (pyarrow + faiss dahil), 2217 test geçti.
 - sozer-pc `D:\Emsal-mcp` 8f2ccac'a alındı (bundle), venv'de editable `dayanak` 2.0.0, eski
   `emsal-mcp` dağıtımı ve `src\emsal_mcp` kalıntısı silindi. `yerel-ayar.cmd` DAYANAK_* adlarına
-  çevrildi (yedek `yerel-ayar.cmd.bak-emsal`, ilk gecelik crawl geçince silinebilir);
+  çevrildi (10 Eki 00:25'te elle tetiklenen `EmsalCrawlDaily` yeni adlarla geçti: 104 karar `D:\emsal-data`'ya, log `crawl_logs`'a; yedek silindi);
   `D:\emsal-data\rg_backfill.cmd` da çevrildi. `EmsalMcpHttp` `python -m dayanak.server` ile
   çalışıyor, log `%LOCALAPPDATA%\dayanak\mcp_http.log`. Mac'ten HTTP ile ölçüldü: sunucu adı
   `dayanak`, 11.111.902 karar, arama sonuç veriyor.
@@ -83,6 +83,6 @@ korpusun diskteki yeri (`D:\emsal-data`).
   cizgi-film, sohbet-reels.
 - Kasa: `~/Kasa/Projeler/dayanak` → `docs`, Syncthing `kasa-dayanak` (sozer-pc'ye geldiği ölçüldü).
 - belgelik (public) `eb82bac`: varsayılan komut `dayanak`, eski bayrak/değişken/modül yedek; CI yeşil,
-  4857 canlı ingest denemesi geçti. Özel `belgelik-arsiv` (hakimlik-app) aynı eski kodu taşıyor,
-  çalışan sunucu bu betikleri kullanmıyor.
+  4857 canlı ingest denemesi geçti. Özel `belgelik-arsiv` (hakimlik-app) `853181d` ile aynı değişikliği aldı, CI yeşil;
+  sozer-pc'deki klonu (`c1b0fa6`) geride, çalışan sunucu bu betikleri kullanmıyor.
 - Bekleyen: site yayını (yan oturumda), mcprush'ın `dayanak`'ı Registry'den içe aktarması ve claim.
