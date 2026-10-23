@@ -1,6 +1,6 @@
 [project]
 name = "dayanak"
-version = "2.0.0"
+version = "2.0.1"
 description = "Citation-safe MCP hukuk araştırma ve belge hazırlık sistemi"
 readme = "README.md"
 license = "AGPL-3.0-only"

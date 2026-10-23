@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "Bu yazılımı kullanırsanız lütfen aşağıdaki künyeyle atıf yapın. If you use this software, please cite it as below."
+type: software
+title: "Dayanak"
+abstract: >-
+  Citation-safe MCP server for Turkish legal research and document drafting.
+  It gives AI assistants access to Turkish case law (Yargıtay, Danıştay,
+  Constitutional Court and others) and legislation without fabricated
+  citations: decisions, dates, docket numbers and statutory articles are only
+  quoted from verified full texts, and missing sources are reported as such.
+authors:
+  - family-names: "Sözer"
+    given-names: "Alpaslan Fatih"
+version: "2.0.1"
+date-released: "2026-10-23"
+license: AGPL-3.0-only
+repository-code: "https://github.com/afsozer/dayanak"
+keywords:
+  - mcp
+  - model-context-protocol
+  - turkish-law
+  - legal-research
+  - citation-verification
+  - case-law
+  - yargitay
+  - danistay
+  - mevzuat

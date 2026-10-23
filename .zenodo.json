@@ -1,0 +1,29 @@
+{
+  "title": "Dayanak: citation-safe MCP server for Turkish legal research",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Sözer, Alpaslan Fatih"
+    }
+  ],
+  "description": "<p>Dayanak is a Model Context Protocol (MCP) server that gives AI assistants access to Turkish case law (Yargıtay, Danıştay, Constitutional Court and others) and legislation without fabricated citations. Decisions, dates, docket numbers and statutory articles are quoted only from verified full texts; when a source cannot be found, the output says so. It includes citation auditing, full-text and semantic search over a large local decision corpus, and drafting tools for court filings.</p><p>Dayanak, yapay zeka asistanlarının Türk içtihadına ve mevzuatına uydurma atıf üretmeden erişmesini sağlayan bir MCP sunucusudur. Karar, tarih, esas ve karar numarası ya da kanun maddesi yalnız doğrulanmış tam metinden aktarılır; kaynak bulunamazsa çıktı bunu açıkça söyler.</p>",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "turkish-law",
+    "legal-research",
+    "citation-verification",
+    "case-law",
+    "yargitay",
+    "danistay",
+    "mevzuat"
+  ],
+  "language": "eng",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/afsozer/dayanak",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}

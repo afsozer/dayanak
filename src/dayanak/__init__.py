@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 
 # Proje 2.0.0'da emsal-mcp'den Dayanak'a yeniden adlandirildi.  Mevcut

@@ -5,6 +5,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-23
+
+### Added
+
+- Atıf künyesi: `CITATION.cff` (GitHub "Cite this repository") ve `.zenodo.json`
+  (Zenodo arşivi ve DOI). Kod ve araç sözleşmeleri değişmedi.
+
+### Changed
+
+- Geçiş belgeleri güncellendi (sozer-pc, istemciler, crawl ve belgelik-arsiv
+  Dayanak adlarıyla).
+
 ## [2.0.0] - 2026-10-09
 
 ### Changed
