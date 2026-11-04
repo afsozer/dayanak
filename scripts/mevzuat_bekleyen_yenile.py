@@ -101,7 +101,9 @@ async def run(ids: list[str], liste: bool, sleep: float) -> int:
             continue
         if lc._hash(metin) == (row[11] or ""):
             sayac["ayni"] += 1
-            _log(f"  AYNI {mid} {ad[:50]}: kaynak henüz işlememiş")
+            neden = ("kaynak henüz işlememiş" if mid in gruplu
+                     else "metin kaynakla aynı, yazılmadı")
+            _log(f"  AYNI {mid} {ad[:50]}: {neden}")
             await asyncio.sleep(sleep)
             continue
         lu.arsivle(db, mid)

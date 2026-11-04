@@ -314,6 +314,52 @@ def test_parse_paren_yeniden_duzenleme():
     assert k["tur"] == "yeniden_duzenleme" and k["tarih"] == "2025-02-19"
 
 
+@pytest.mark.parametrize("chunk,tur,no,md", [
+    # 2659 m.26: 7589 haritasında "korpusta izi yok" görünmesinin sebebi.
+    ("(Başlığı ile Birlikte Yeniden Düzenleme:16/7/2026-7589/7 md.)",
+     "yeniden_duzenleme", "7589", "7"),
+    ("(Başlığı ile Birlikte Değişik:24/11/2021-7343/9 md.)", "degisik", "7343", "9"),
+    ("(Başlığı İle Birlikte Değişik: 15/11/2018-7151/15 md.)", "degisik", "7151", "15"),
+    ("(Başlığıyla birlikte değişik: 6/12/2019-7196/54 md.)", "degisik", "7196", "54"),
+    ("(Başlığıyla beraber değişik: 2/3/2005-5311/5 md.)", "degisik", "5311", "5"),
+])
+def test_parse_paren_basligi_ile_birlikte(chunk, tur, no, md):
+    k = _tek(chunk)
+    assert (k["tur"], k["kapsam"]) == (tur, "madde")
+    assert (k["degistiren_no"], k["degistiren_madde"]) == (no, md)
+
+
+@pytest.mark.parametrize("chunk,kapsam,tur,no", [
+    ("(Son fıkra mülga : 25/10/1984 - 3065/61 md.)", "fıkra", "mulga", "3065"),
+    ("(İkinci cümle mülga:9/4/2003-4842/37 md.)", "cümle", "mulga", "4842"),
+    ("(Üç, dört ve beşinci fıkralar Mülga: 22/7/1998 - 4369/82 md.)", "fıkra", "mulga", "4369"),
+])
+def test_parse_paren_kapsam_oneki(chunk, kapsam, tur, no):
+    k = _tek(chunk)
+    assert (k["kapsam"], k["tur"], k["degistiren_no"]) == (kapsam, tur, no)
+
+
+def test_parse_paren_onekli_coklu():
+    ks = lc.parse_paren(
+        "(Değişik: 1/2/2000-4500/3 md.; Son fıkra mülga: 5/6/2010-6000/8 md.)")
+    assert [(k["tur"], k["kapsam"], k["degistiren_no"]) for k in ks] == [
+        ("degisik", "madde", "4500"), ("mulga", "fıkra", "6000")]
+
+
+def test_onekli_not_madde_parse_degisiklik():
+    govde = ("MADDE 26 - (Mülga: 2/7/2018 – KHK-703/61 md.) (Başlığı ile Birlikte Yeniden "
+             "Düzenleme:16/7/2026-7589/7\nmd.)\nAdli tıp ihtisas kurulu ...")
+    ks = lc.parse_degisiklik(govde, {})
+    assert {k["degistiren_no"] for k in ks} == {"KHK-703", "7589"}
+
+
+def test_onek_sanilmamali():
+    # Etiketsiz açıklama notları değişiklik kaydı üretmez.
+    assert lc.parse_paren("(adli ve idari para cezaları ile mülga 7/3/1954 tarihli "
+                          "ve 6326 sayılı Petrol Kanununa istinaden)") == []
+    assert lc.parse_paren("(Ek fıkra: 2/3/2005 – 5311/5 md.)")[0]["kapsam"] == "fıkra"
+
+
 def test_parse_paren_cumle_kapsami():
     k = _tek("(Ek cümle: 17/7/2003-4949/33 md.)")
     assert k["kapsam"] == "cümle" and k["tur"] == "ek"

@@ -53,6 +53,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Belgenin son maddesi sondaki dipnot listesini gövdesine aldığında listedeki
   dipnotlar o maddeye ikinci kez değişiklik kaydı olarak bağlanıyordu. Bir
   dipnot artık yalnız ilk geçtiği maddeye bağlanır.
+- Etiketten önce önek taşıyan değişiklik notları ("(Başlığı ile Birlikte
+  Değişik: ...)", "(Başlığıyla birlikte ...)", "(Son fıkra mülga: ...)",
+  "(İkinci cümle mülga: ...)") hiç ayrıştırılmıyordu; 4.11.2026 ölçümünde
+  2.207 madde değişiklik tablosuna girmemişti. Bu yüzden
+  `mevzuat_degisiklik_haritasi("7589")` 2659 sayılı Kanunun 26. maddesini
+  değiştiren 7. maddeyi "korpusta izi yok" diye gösteriyordu. "Başlığı ile
+  birlikte" önekli not madde kapsamında, sıra önekli not (fıkra, cümle,
+  bent) o kapsamda kaydedilir.
+- `mevzuat_bekleyen_yenile.py --mevzuat-id` ile elle çekilen ve metni
+  değişmemiş belgede log artık "kaynak henüz işlememiş" yerine "metin
+  kaynakla aynı" diyor.
 
 ## [2.0.1] - 2026-10-23
 

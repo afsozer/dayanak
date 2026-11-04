@@ -207,8 +207,20 @@ def ensure_schema(db: sqlite3.Connection) -> bool:
 _NOTE_PAREN_RE = re.compile(
     r"\((?:[^()]|\([^()]*\))*\)",
 )
+# Etiketten önce gelebilen önek. Ölçüldü (4 Kas 2026): 2.207 maddede not
+# etiketle değil önekle başlıyordu ve değişiklik tablosuna hiç girmiyordu;
+# 1.673'ü "Başlığı ile Birlikte Değişik", ~250'si "Başlığıyla birlikte/beraber",
+# kalanı "Son fıkra mülga", "İkinci cümle mülga" gibi kapsam önekleri
+# (ör. 2659 m.26: "(Başlığı ile Birlikte Yeniden Düzenleme:16/7/2026-7589/7 md.)").
+_NOTE_ONEK = (
+    r"(?:Ba[şs]l[ıi][ğg][ıi]\s*(?:[İIi]le|yla|yle)\s+(?:birlikte|beraber)\s*"
+    r"|Ba[şs]l[ıi][ğg][ıi]\s+[İIi]le\s+"
+    r"|(?:[A-Za-zÇĞİÖŞÜçğıöşü]+\s*,?\s*(?:ve\s+)?){1,4}?"
+    r"(?:f[ıi]kra(?:lar)?|c[üu]mle(?:ler)?|bent(?:ler)?|bendi|paragraf(?:lar)?)\s+)"
+)
 _NOTE_HEAD_RE = re.compile(
-    r"^\(\s*(?:De[ğg]i[şs]ik|De[ğg]i[şs]tirilerek|M[üu]lga|Ek|[İIi]ptal"
+    r"^\(\s*" + _NOTE_ONEK + r"?"
+    r"(?:De[ğg]i[şs]ik|De[ğg]i[şs]tirilerek|M[üu]lga|Ek|[İIi]ptal"
     r"|Aynen\s+kabul|Yeniden\s+d[üu]zenle|Y[üu]r[üu]rl[üu]kten)",
     re.IGNORECASE,
 )
@@ -569,6 +581,7 @@ def _degisiklik_notu(body: str) -> str:
 # ("E.:2022/6; K.:2024/225").
 _LABEL_RE = re.compile(
     r"(?:(?<=\()|(?<=;)|(?<=\(\s))\s*"
+    r"(?P<onek>" + _NOTE_ONEK + r")?"
     r"(?P<label>(?:De[ğg]i[şs]tirilerek\s+kabul|De[ğg]i[şs]ik|M[üu]lga|Ek"
     r"|[İIi]ptal|Aynen\s+kabul|Yeniden\s+[Dd][üu]zenleme"
     r"|Y[üu]r[üu]rl[üu]kten\s+kald[ıi]r[ıi]lm[ıi][şs])"
@@ -712,7 +725,13 @@ def parse_paren(chunk: str) -> list[dict[str, Any]]:
         son = marks[i + 1].start() if i + 1 < len(marks) else len(chunk)
         item = chunk[m.end():son].rstrip(") ;")
         label = m.group("label")
-        out.append(_kayit_from_item(_kapsam_of(label), _tur_of(label), item, chunk))
+        onek = m.group("onek") or ""
+        if re.search(r"birlikte|beraber|ba[şs]l[ıi][ğg][ıi]\s+[İIi]le", onek, re.IGNORECASE):
+            # "Başlığı ile birlikte değişik": maddenin tamamı (başlığıyla) değişti.
+            kapsam = "madde"
+        else:
+            kapsam = _kapsam_of(onek + label)
+        out.append(_kayit_from_item(kapsam, _tur_of(label), item, chunk))
     return out
 
 
