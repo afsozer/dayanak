@@ -5,6 +5,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- Ertelenmiş yürürlük takibi. mevzuat.gov.tr ileri tarihte yürürlüğe girecek
+  değişikliği o gün gelene kadar konsolide metne işlemiyor, maddeye yalnız
+  "Mevzuat Bilgi Sistemine işlenecek" dipnotu düşüyor; haftalık
+  `--only-changed` koşusu yürürlük günü yapılan bu güncellemeyi Bedesten
+  `kayitTarihi` sinyali gelmediği için kaçırabiliyordu (TMK 444 ve HMK 149,
+  31.10.2026). `mevzuat_madde_getir` artık yürürlüğü gelmiş ama metne
+  işlenmemiş değişikliği en üstte `metin_eski` + `uyari` alanlarıyla, ileride
+  yürürlüğe girecek olanı `yururluk_uyarilari` ile bildiriyor.
+- `scripts/mevzuat_bekleyen_yenile.py` ve `scripts/mevzuat_bekleyen.cmd`:
+  yürürlüğü gelmiş bekleyen maddelerin belgelerini sinyale bakmadan yeniden
+  çeker (günlük görev `EmsalMevzuatBekleyen`, 06:15); `--mevzuat-id` ile tek
+  belge zorla çekilebilir. `health_check.scheduled_jobs` içinde
+  `mevzuat_bekleyen` olarak görünür.
+
+### Fixed
+
+- Belgenin son maddesi sondaki dipnot listesini gövdesine aldığında listedeki
+  dipnotlar o maddeye ikinci kez değişiklik kaydı olarak bağlanıyordu. Bir
+  dipnot artık yalnız ilk geçtiği maddeye bağlanır.
+
 ## [2.0.1] - 2026-10-23
 
 ### Added

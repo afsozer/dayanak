@@ -885,6 +885,11 @@ def split_articles(text: str) -> list[dict[str, Any]]:
     runs: list[list[str]] = []
     hiyerarsi = _Hiyerarsi()
     onceki = 0
+    # Belgenin son maddesi, sondaki dipnot listesini ("[30]\n<gövde>\n[31]...")
+    # de gövdesine alıyor; listedeki işaretler o maddeye ikinci kez bağlanıyordu
+    # (4.11.2026: TMK'nın son maddesi 440 ve 444'ün dipnotlarını taşıyordu).
+    # Bir dipnot numarası belgede tek bir yere aittir: ilk geçtiği madde.
+    atanmis_dipnot: set[int] = set()
     for i, art in enumerate(parsed):
         pos = spans[i] if i < len(spans) else 0
         if pos:
@@ -902,6 +907,13 @@ def split_articles(text: str) -> list[dict[str, Any]]:
         gecici = bool(_GECICI_NO_RE.match(art["number"]))
         baslik, ust = hiyerarsi.madde(run, gecici)
         runs.append(run)
+        degisiklikler = [
+            d for d in parse_degisiklik(art["text"], dipnotlar)
+            if d.get("dipnot_no") is None or d["dipnot_no"] not in atanmis_dipnot
+        ]
+        atanmis_dipnot.update(
+            d["dipnot_no"] for d in degisiklikler if d.get("dipnot_no") is not None
+        )
         out.append({
             "madde_no": art["number"],
             "sira": i + 1,
@@ -909,7 +921,7 @@ def split_articles(text: str) -> list[dict[str, Any]]:
             "ust_baslik": ust,
             "metin": art["raw_text"],
             "degisiklik_notu": _degisiklik_notu(art["text"]),
-            "degisiklikler": parse_degisiklik(art["text"], dipnotlar),
+            "degisiklikler": degisiklikler,
         })
     for i in range(len(out) - 1):
         # Kesilecek başlıklar HAM koşudan gelir; ``ust_baslik`` artık belge boyu
@@ -1568,6 +1580,158 @@ def madde_degisiklikleri(
     ]
 
 
+# ── Ertelenmiş yürürlük ─────────────────────────────────────────────────────
+#
+# mevzuat.gov.tr, ileri bir tarihte yürürlüğe girecek değişikliği konsolide
+# metne o gün gelene kadar işlemez; maddeye yalnız bir dipnot düşer:
+# "7589 sayılı Kanunun 12 nci maddesiyle yayımı tarihinden itibaren üç ay
+# sonra (31/10/2026) yürürlüğe girmek üzere bu fıkra değiştirilmiştir. Söz
+# konusu düzenleme, yürürlüğe girdiği tarihte Mevzuat Bilgi Sistemine
+# işlenecek ...". Tarih geçtikten sonra korpustaki metin, kaynak işleyip biz
+# yeniden çekene kadar ESKİDİR. Ölçüm (4.11.2026): TMK 444 ve HMK 149
+# 31.10.2026'dan beri yürürlükteydi, mevzuat.gov.tr işlemişti, haftalık
+# koşu ise "güncel=0" bildirdi (Bedesten kayitTarihi sinyali gelmedi).
+# Korpusta 13 kayıt, iki kalıp: "... ay sonra (31/10/2026) yürürlüğe girmek"
+# ve "... 1/1/2027 tarihinde yürürlüğe girmek".
+_BEKLEYEN_TARIH_RE = re.compile(
+    r"(?:\(\s*(?P<g1>\d{1,2})\s*/\s*(?P<a1>\d{1,2})\s*/\s*(?P<y1>\d{4})\s*\)"
+    r"|(?P<g2>\d{1,2})\s*/\s*(?P<a2>\d{1,2})\s*/\s*(?P<y2>\d{4})\s+tarihinde)"
+    r"\s*y[üu]r[üu]rl[üu][ğg]e\s+girmek",
+    re.IGNORECASE,
+)
+_ISLENECEK_RE = re.compile(r"Mevzuat\s+Bilgi\s+Sistemine\s+i[şs]lenecek", re.IGNORECASE)
+
+
+def bekleyen_yururluk_tarihi(ham: str | None) -> str | None:
+    """Dipnot, konsolide metne henüz işlenmemiş ertelenmiş bir değişikliği
+    anlatıyorsa o değişikliğin yürürlük tarihini (ISO) döndür, değilse None.
+
+    İki koşul birlikte aranır: "Mevzuat Bilgi Sistemine işlenecek" ibaresi
+    (değişiklik metne girmemiş) ve bir yürürlük tarihi. Kaynak değişikliği
+    işlediğinde bu dipnot kalkar ya da ibare değişir; o zaman None döner.
+    """
+    if not ham or not _ISLENECEK_RE.search(ham):
+        return None
+    m = _BEKLEYEN_TARIH_RE.search(ham)
+    if not m:
+        return None
+    if m.group("y1"):
+        g, a, y = m.group("g1"), m.group("a1"), m.group("y1")
+    else:
+        g, a, y = m.group("g2"), m.group("a2"), m.group("y2")
+    try:
+        return date(int(y), int(a), int(g)).isoformat()
+    except ValueError:
+        return None
+
+
+def _rg_gun_url(rg_tarihi: str | None) -> str:
+    """O günün Resmi Gazete fihristi (kalem numarası bilinmediği için gün)."""
+    try:
+        d = date.fromisoformat(str(rg_tarihi or ""))
+    except ValueError:
+        return ""
+    return f"https://www.resmigazete.gov.tr/eskiler/{d:%Y}/{d:%m}/{d:%Y%m%d}.htm"
+
+
+def _tr_tarih(iso: str) -> str:
+    d = date.fromisoformat(iso)
+    return f"{d.day:02d}.{d.month:02d}.{d.year}"
+
+
+def yururluk_uyarilari(
+    degisiklikler: list[dict[str, Any]], bugun: date | None = None
+) -> list[dict[str, Any]]:
+    """Değişiklik kayıtlarından ertelenmiş yürürlük uyarıları üret.
+
+    ``durum``:
+    * ``yururlukte_islenmedi``: yürürlük tarihi geldi ama korpustaki metin
+      değişikliği içermiyor, metin ESKİ.
+    * ``ileride_yururluge_girecek``: metin bugün için doğru, ileride değişecek.
+    """
+    bugun = bugun or date.today()
+    out: list[dict[str, Any]] = []
+    gorulen: set[tuple[str, str, str]] = set()
+    for d in degisiklikler:
+        tarih = bekleyen_yururluk_tarihi(d.get("ham"))
+        if not tarih:
+            continue
+        no, md = str(d.get("degistiren_no") or ""), str(d.get("degistiren_madde") or "")
+        anahtar = (tarih, no, md)
+        if anahtar in gorulen:
+            continue
+        gorulen.add(anahtar)
+        ref = f"{no}/{md} md." if no and md else (f"{no} sayılı düzenleme" if no else "dipnottaki düzenleme")
+        rg_t, rg_s = str(d.get("rg_tarihi") or ""), str(d.get("rg_sayisi") or "")
+        rg = (
+            f"{_tr_tarih(rg_t)} tarihli ve {rg_s} sayılı Resmi Gazete"
+            if rg_t and rg_s else "dipnotta anılan Resmi Gazete"
+        )
+        yururlukte = date.fromisoformat(tarih) <= bugun
+        if yururlukte:
+            durum = "yururlukte_islenmedi"
+            mesaj = (
+                f"Bu maddeyi değiştiren {ref} {_tr_tarih(tarih)} tarihinde yürürlüğe "
+                f"girdi, ama korpustaki metne henüz işlenmedi: aşağıdaki metin "
+                f"değişiklikten ÖNCEKİ halidir. Güncel metin için {rg}."
+            )
+        else:
+            durum = "ileride_yururluge_girecek"
+            mesaj = (
+                f"Bu maddeyi {_tr_tarih(tarih)} tarihinde değiştirecek bir düzenleme "
+                f"var ({ref}); aşağıdaki metin bugün yürürlükte olan halidir. "
+                f"Yeni metin için {rg}."
+            )
+        kayit: dict[str, Any] = {
+            "durum": durum,
+            "yururluk_tarihi": tarih,
+            "degistiren_no": no,
+            "degistiren_madde": md,
+            "kapsam": d.get("kapsam", ""),
+            "rg_tarihi": rg_t,
+            "rg_sayisi": rg_s,
+            "mesaj": mesaj,
+        }
+        url = _rg_gun_url(rg_t)
+        if url:
+            kayit["rg_url"] = url
+        out.append(kayit)
+    return out
+
+
+def bekleyen_yururlukler(
+    db: sqlite3.Connection, bugun: date | None = None, yalniz_gelmis: bool = True
+) -> list[dict[str, Any]]:
+    """Korpusta ertelenmiş yürürlük dipnotu taşıyan maddeler.
+
+    ``yalniz_gelmis`` True ise yalnız yürürlük tarihi bugün ya da daha önce
+    olanlar (metni eskimiş, yeniden çekilmesi gerekenler) döner.
+    """
+    bugun = bugun or date.today()
+    rows = db.execute(
+        """SELECT g.mevzuat_id, d.tur, d.mevzuat_no, d.ad, m.madde_no, g.sira,
+                  g.degistiren_no, g.degistiren_madde, g.ham
+           FROM mevzuat_degisiklik g
+           JOIN mevzuat_dokuman d ON d.mevzuat_id = g.mevzuat_id
+           LEFT JOIN mevzuat_madde m ON m.mevzuat_id = g.mevzuat_id AND m.sira = g.sira
+           WHERE g.ham LIKE '%Bilgi Sistemine%'
+           ORDER BY g.mevzuat_id, g.sira"""
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        tarih = bekleyen_yururluk_tarihi(r[8])
+        if not tarih:
+            continue
+        if yalniz_gelmis and date.fromisoformat(tarih) > bugun:
+            continue
+        out.append({
+            "mevzuat_id": r[0], "tur": r[1], "mevzuat_no": r[2], "ad": r[3],
+            "madde_no": r[4], "sira": r[5], "degistiren_no": r[6],
+            "degistiren_madde": r[7], "yururluk_tarihi": tarih,
+        })
+    return out
+
+
 def _surum_uyarisi(db: sqlite3.Connection, mevzuat_id: str) -> dict[str, Any]:
     """Belge bir sürüm serisinin ESKİ üyesiyse güncel sürüme yönlendir.
 
@@ -1661,6 +1825,19 @@ def get_madde(
                 "degisiklikler": madde_degisiklikleri(db, r[0], r[6]),
             }
             cevap.update(_surum_uyarisi(db, r[0]))
+            uyarilar = yururluk_uyarilari(cevap["degisiklikler"])
+            if uyarilar:
+                cevap["yururluk_uyarilari"] = uyarilar
+                eski = [u for u in uyarilar if u["durum"] == "yururlukte_islenmedi"]
+                if eski:
+                    # Uyarı metinden ÖNCE görünsün: okuyan model "metin"i
+                    # alıp geçmesin diye en üste konur.
+                    cevap = {
+                        "ok": True,
+                        "metin_eski": True,
+                        "uyari": " ".join(u["mesaj"] for u in eski),
+                        **{k: v for k, v in cevap.items() if k != "ok"},
+                    }
             return cevap
     return {
         "ok": False,

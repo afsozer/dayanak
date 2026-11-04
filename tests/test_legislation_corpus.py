@@ -862,3 +862,79 @@ def test_gruplari_yenile_kuru_kosum_yazmaz(db):
     assert db.execute(
         "SELECT COUNT(*) FROM mevzuat_dokuman WHERE guncel = 1"
     ).fetchone()[0] == 1
+
+
+# ── Ertelenmiş yürürlük (4.11.2026) ─────────────────────────────────────────
+
+BEKLEYEN_DOC = (
+    "MADDE 1 - Eski hüküm. [1]\n"
+    "MADDE 2 - Başka hüküm. [2]\n"
+    "MADDE 3 - Değişmemiş hüküm.\n"
+    "[1]\n"
+    "16/7/2026 tarihli ve 7589 sayılı Kanunun 12 nci maddesiyle yayımı tarihinden\r\n"
+    "itibaren üç ay sonra (31/10/2026) yürürlüğe girmek üzere bu fıkra değiştirilmiştir.\r\n"
+    "Söz konusu düzenleme, yürürlüğe girdiği tarihte Mevzuat Bilgi Sistemine işlenecek\r\n"
+    "olup mezkur düzenlemeyi görmek için 31/7/2026 tarihli ve 33326 sayılı Resmi\r\n"
+    "Gazete'ye bakınız.\n"
+    "[2]\n"
+    "2/4/2026 tarihli ve 7577 sayılı Kanunun 2 nci maddesiyle 1/1/2099 tarihinde\r\n"
+    "yürürlüğe girmek üzere bu fıkraya ibare eklenmiştir. Söz konusu düzenleme,\r\n"
+    "yürürlüğe girdiği tarihte Mevzuat Bilgi Sistemine işlenecek olup mezkur\r\n"
+    "düzenlemeyi görmek için 3/4/2026 tarihli ve 33200 sayılı Resmi Gazete'ye bakınız.\n"
+)
+
+
+def test_bekleyen_yururluk_tarihi_iki_kalip():
+    fn = lc.parse_footnotes(BEKLEYEN_DOC)
+    assert lc.bekleyen_yururluk_tarihi(fn[1]) == "2026-10-31"
+    assert lc.bekleyen_yururluk_tarihi(fn[2]) == "2099-01-01"
+
+
+def test_bekleyen_yururluk_tarihi_islenmis_ya_da_alakasiz_dipnot():
+    # Kaynak işledikten sonraki dipnotta "işlenecek" ibaresi yok.
+    assert lc.bekleyen_yururluk_tarihi(
+        "16/7/2026 tarihli ve 7589 sayılı Kanunun 12 nci maddesiyle yayımı "
+        "tarihinden itibaren üç ay sonra (31/10/2026) yürürlüğe girmek üzere bu "
+        "fıkra değiştirilmiştir.") is None
+    assert lc.bekleyen_yururluk_tarihi(lc.parse_footnotes(FOOTNOTE_DOC)[1]) is None
+    assert lc.bekleyen_yururluk_tarihi(None) is None
+
+
+def test_yururluk_uyarilari_durumlari():
+    from datetime import date
+
+    fn = lc.parse_footnotes(BEKLEYEN_DOC)
+    kayitlar = [lc.parse_dipnot(1, fn[1]), lc.parse_dipnot(2, fn[2])]
+    uy = lc.yururluk_uyarilari(kayitlar, bugun=date(2026, 11, 4))
+    assert [u["durum"] for u in uy] == ["yururlukte_islenmedi", "ileride_yururluge_girecek"]
+    assert uy[0]["degistiren_no"] == "7589" and uy[0]["degistiren_madde"] == "12"
+    assert uy[0]["rg_sayisi"] == "33326"
+    assert uy[0]["rg_url"].endswith("/2026/07/20260731.htm")
+    assert "31.10.2026" in uy[0]["mesaj"] and "ÖNCEKİ" in uy[0]["mesaj"]
+    # Yürürlük gününden önce aynı dipnot "ileride" sayılır.
+    once = lc.yururluk_uyarilari(kayitlar[:1], bugun=date(2026, 10, 30))
+    assert once[0]["durum"] == "ileride_yururluge_girecek"
+
+
+def test_get_madde_eski_metni_isaretler(db):
+    _write(db, mevzuat_id="1.5.8888", mevzuat_no="8888", metin=BEKLEYEN_DOC)
+    eski = lc.get_madde(db, "8888", "1")
+    assert eski["ok"] is True and eski["metin_eski"] is True
+    assert list(eski)[:3] == ["ok", "metin_eski", "uyari"]
+    assert "7589/12 md." in eski["uyari"]
+    ileride = lc.get_madde(db, "8888", "2")
+    assert "metin_eski" not in ileride and "uyari" not in ileride
+    assert ileride["yururluk_uyarilari"][0]["durum"] == "ileride_yururluge_girecek"
+    temiz = lc.get_madde(db, "8888", "3")
+    assert "yururluk_uyarilari" not in temiz
+
+
+def test_bekleyen_yururlukler_yalniz_gelmisler(db):
+    from datetime import date
+
+    _write(db, mevzuat_id="1.5.8888", mevzuat_no="8888", metin=BEKLEYEN_DOC)
+    gelmis = lc.bekleyen_yururlukler(db, bugun=date(2026, 11, 4))
+    assert [(b["mevzuat_id"], b["madde_no"], b["yururluk_tarihi"]) for b in gelmis] == [
+        ("1.5.8888", "1", "2026-10-31")]
+    hepsi = lc.bekleyen_yururlukler(db, bugun=date(2026, 11, 4), yalniz_gelmis=False)
+    assert len(hepsi) == 2
