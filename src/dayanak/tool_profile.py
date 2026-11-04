@@ -1,7 +1,7 @@
 """FAZ M — Tool profile infrastructure (M-97).
 
 Defines tool categories, profile membership, and filtering logic so that
-``server.py`` can register only the 11-tool core surface by default (or all
+``server.py`` can register only the 12-tool core surface by default (or all
 tools with ``DAYANAK_TOOL_PROFILE=full``).
 
 This module is pure data — no business logic, no I/O.  ``tests/test_tool_surface``
@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-# ── Core profile (11 araç) ───────────────────────────────────────────────
+# ── Core profile (12 araç) ───────────────────────────────────────────────
 # 2026-09-06: citation_check, prepare_petition, read_legal_file, list_sources
 # ve legal_research_guide extended'a alindi (core docstring butcesi doldu).
 # These are the EXACT tool names that appear in the core profile.
@@ -27,6 +27,7 @@ CORE_TOOLS: list[str] = [
     "get_legislation",
     "mevzuat_korpus_ara",
     "mevzuat_madde_getir",
+    "mevzuat_degisiklik_haritasi",
     "research_topic",
     "export_document",
     "load_extended_tools",
@@ -112,7 +113,7 @@ CATEGORY_TOOLS: dict[str, list[str]] = {
 }
 
 # ── Extended-only tools (single-source from server.py) ──────────────────
-# Every tool that is NOT part of the core 11.  Built from CATEGORY_TOOLS.
+# Every tool that is NOT part of the core 12.  Built from CATEGORY_TOOLS.
 
 EXTENDED_TOOLS: set[str] = set()
 for _cat_tools in CATEGORY_TOOLS.values():
@@ -222,7 +223,7 @@ def get_active_profile() -> str:
     """Return the active tool profile name.
 
     Reads ``DAYANAK_TOOL_PROFILE`` environment variable.
-    ``"core"`` (default) → only the 11-tool surface.
+    ``"core"`` (default) → only the 12-tool surface.
     ``"full"`` → all tools (today's 119-tool surface).
     """
     return os.environ.get("DAYANAK_TOOL_PROFILE", "core")
@@ -231,7 +232,7 @@ def get_active_profile() -> str:
 def is_tool_active(tool_name: str) -> bool:
     """Return True if *tool_name* should be registered under the active profile.
 
-    In ``full`` profile every tool passes.  In ``core`` profile only the 11
+    In ``full`` profile every tool passes.  In ``core`` profile only the 12
     core tools pass.
     """
     profile = get_active_profile()

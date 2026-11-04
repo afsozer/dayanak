@@ -1,6 +1,6 @@
 # docs/MCP_CONTRACTS.md — MCP Tool Contracts
 
-> **dayanak v1.0.0** — 11 core MCP tools (default) · 47 tools in full profile.
+> **dayanak v1.0.0** — 12 core MCP tools (default) · 48 tools in full profile.
 > Input parameters use Python type hints; output shapes are documented per tool.
 > Source of truth for profiles/categories: `src/dayanak/tool_profile.py`.
 
@@ -11,17 +11,17 @@ The server exposes two tool profiles to control which MCP tools are registered:
 | Profile | Tools | Description |
 |---------|-------|-------------|
 <!-- drift:core-tools-start -->
-| `core` | 11 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`, `research_topic`, `export_document`, `load_extended_tools`, `health_check`. |
+| `core` | 12 | Default. `search_decisions`, `get_document`, `search_local_corpus`, `search_legislation`, `get_legislation`, `mevzuat_korpus_ara`, `mevzuat_madde_getir`, `mevzuat_degisiklik_haritasi`, `research_topic`, `export_document`, `load_extended_tools`, `health_check`. |
 <!-- drift:core-tools-end -->
 
 > 2026-09-06: `citation_check` ve `prepare_petition` (`drafting`), `read_legal_file` (`files`), `list_sources` ve `legal_research_guide` (`meta`) core profilden çıkarıldı — core docstring bütçesi (20 000 karakter) dolmuştu. `load_extended_tools` ile geri gelirler.
-| `full` | 47 | Core + all extended categories. |
+| `full` | 48 | Core + all extended categories. |
 
 Select via the `DAYANAK_TOOL_PROFILE` environment variable:
 
 ```
-DAYANAK_TOOL_PROFILE=core   # default — 11 tools
-DAYANAK_TOOL_PROFILE=full   # all 47 tools
+DAYANAK_TOOL_PROFILE=core   # default — 12 tools
+DAYANAK_TOOL_PROFILE=full   # all 48 tools
 ```
 
 ### `load_extended_tools`
@@ -68,6 +68,24 @@ Dynamically loads extended tool categories into the running server (core profile
 > döndürüyordu ve bu "atıf almamış" diye okunuyordu. Modül ve CLI duruyor
 > (`dayanak graph ...`); korpus büyürse yeniden değerlendirilir.
 > Eşleme: `dayanak.tool_profile.REMOVED_TOOLS`.
+
+### `mevzuat_degisiklik_haritasi`
+
+Input: `kanun_no: str` (değiştiren kanunun numarası, ör. `"7589"`).
+
+Output (`ok: true`): `kanun` (kanunun kendi belgesi: `mevzuat_id`, `mevzuat_adi`,
+`kaynak` `mevzuatgov` ya da `resmigazete`, RG künyesi) ya da `null`; `resmi_gazete`
+(RG başlık dizinindeki kalem: `item_id`, `tarih`, `sayi`, `url`) ya da `null`;
+`ozet` (`etkilenen_mevzuat`, `etkilenen_madde`, `islendi`, `yururlukte_islenmedi`,
+`ileride_yururluge_girecek`); `etkilenen[]` (hedef mevzuat başına `maddeler[]`:
+`madde_no`, `durum`, `islemler`, `degistiren_maddeler`, varsa `yururluk_tarihi`);
+`kanunun_kendi_hukumleri[]` (`madde_no`, `tur` `gecici` / `metin` / `yururluk_yurutme`,
+`ozet`); `korpusta_izi_olmayan_maddeler[]`; `uyarilar[]`.
+
+Kaynak: temel kanunlardaki değişiklik kayıtları (`mevzuat_degisiklik.degistiren_no`),
+kanunun kendi belgesi ve RG başlık dizini. Hiçbiri yoksa `ok: false`, `NOT_FOUND`.
+`korpusta_izi_olmayan_maddeler` hedefi korpusta olmayan ya da notu ayrıştırılamayan
+maddelerdir, "değişiklik yok" anlamına gelmez.
 
 ### Emekliye ayrılan araçlar (M-110)
 

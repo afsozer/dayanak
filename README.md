@@ -1,6 +1,6 @@
 # Dayanak
 
-> **v2.0.1** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 80 test files · 48 source modules
+> **v2.0.1** — 12 core + 36 extended MCP tools (48 total) · 152 CLI commands · 80 test files · 48 source modules
 >
 > [![CI](https://github.com/afsozer/dayanak/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/dayanak/actions/workflows/ci.yml)
 > [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23594091.svg)](https://doi.org/10.5281/zenodo.23594091)
@@ -79,7 +79,7 @@ Claude Desktop ya da başka bir MCP istemcisi için yapılandırma:
 }
 ```
 
-Varsayılan araç profili 11 temel araçtır; tamamı için `DAYANAK_TOOL_PROFILE=full`
+Varsayılan araç profili 12 temel araçtır; tamamı için `DAYANAK_TOOL_PROFILE=full`
 ortam değişkenini verin. Çekilen belgeler `~/.dayanak/cache.sqlite3` dosyasında
 önbelleğe alınır (`DAYANAK_CACHE_PATH` ile değişir).
 
@@ -151,11 +151,11 @@ okur; boş bırakılan her yol `~/.dayanak` altından türetilir.
 
 ## MCP araçları
 
-Varsayılan profil `core` — 11 araç kayıtlı gelir. Geri kalanı çalışan sunucuya
+Varsayılan profil `core` — 12 araç kayıtlı gelir. Geri kalanı çalışan sunucuya
 `load_extended_tools` ile kategori kategori eklenir. Sözleşmeler:
 [`docs/MCP_CONTRACTS.md`](docs/MCP_CONTRACTS.md).
 
-**Core (11):**
+**Core (12):**
 
 | Araç | Ne yapar |
 |---|---|
@@ -166,6 +166,7 @@ Varsayılan profil `core` — 11 araç kayıtlı gelir. Geri kalanı çalışan 
 | `get_legislation` | Mevzuat metni / madde getirme |
 | `mevzuat_korpus_ara` | Yerel mevzuat korpusunda madde bazlı arama |
 | `mevzuat_madde_getir` | Yerel korpustan tek madde |
+| `mevzuat_degisiklik_haritasi` | Bir değişiklik kanununun hangi maddeleri değiştirdiği ve işlenme durumu |
 | `research_topic` | Konu araştırması paketi (bundle + kalite panosu) |
 | `export_document` | Belge dışa aktarma |
 | `load_extended_tools` | Extended kategorileri çalışırken yükleme |

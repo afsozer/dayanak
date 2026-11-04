@@ -931,6 +931,130 @@ def split_articles(text: str) -> list[dict[str, Any]]:
     return out
 
 
+# ── Resmi Gazete ilk yayım metni (değişiklik kanunları) ─────────────────────
+#
+# mevzuat.gov.tr birçok değişiklik kanununu hiç listelemiyor (4.11.2026
+# ölçümü: RG'deki uluslararası onay dışı numaralı kanunların 570'i korpusta
+# yoktu; 7571, 7574, 7577, 7593 ...). Bunlar Resmi Gazete'deki ilk yayım
+# metninden alınır. Bu metinde başka kanunlara eklenen ya da onların yerine
+# konan maddeler tırnak içinde aynen geçer ("“MADDE 134- ..."); madde
+# ayrıştırıcısı bunların bir kısmını kanunun kendi maddesi sanıyordu
+# (7589'da "7, 26, 8"; 7571'de 134, 135, 223, 128/A ve 5809'a eklenen
+# "Geçici 8"). İki kural alıntıyı önceki maddeye katar:
+# * kanunun kendi maddeleri 1, 2, 3 diye artar, kendi geçici maddeleri 1'den
+#   başlar; sıra dışı kalan madde alıntıdır;
+# * önceki madde "aşağıdaki ... eklenmiştir / değiştirilmiştir" diye
+#   bitiyorsa sonraki madde alıntıdır (numara tesadüfen sıraya uysa bile).
+_ALINTI_GIRIS_RE = re.compile(
+    r"a[şs]a[ğg][ıi]daki[^.;]{0,200}?(?:eklenmi[şs]|de[ğg]i[şs]tirilmi[şs])tir[.:]?$",
+    re.IGNORECASE,
+)
+_GECICI_SAYI_RE = re.compile(r"^Ge[çc]ici\s+(\d+)$", re.IGNORECASE)
+# RG'de madde başı ayracı yıllara göre değişiyor ve ``_ARTICLE_RE`` yalnız
+# "-", U+2013 ve U+2014'ü tanıyor. 4.11.2026 geri doldurmasında görülenler:
+# 2005 öncesi "MADDE 1." + U+2014 (nokta yüzünden 102 onay kanunu maddesiz
+# kaldı), 2010-2017 arası U+2212 (eksi işareti) ve U+2012 (rakam tiresi; 14
+# kanun, bütçe kanunları ve 6524 dahil). Ortak regex'e dokunmadan yalnız RG
+# metninde ayraç düz "-"ye çevrilir.
+_RG_MADDE_BAS_RE = re.compile(
+    r"^((?:(?:EK\s+)?GE[ÇC][İI]C[İI]\s+|EK\s+)?MADDE\s+\d+(?:\s*/\s*[A-Z])?)"
+    r"\s*\.?\s*[-‐-―−]",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def split_degisiklik_kanunu(text: str) -> list[dict[str, Any]]:
+    """Resmi Gazete'deki bir kanun metnini kanunun KENDİ maddelerine böl.
+
+    ``split_articles`` çıktısındaki alıntı maddeler (başka kanuna eklenen ya
+    da değiştirilen metinler) bir önceki maddenin gövdesine katılır; sıra
+    numaraları yeniden verilir.
+    """
+    ham = split_articles(_RG_MADDE_BAS_RE.sub(r"\1 -", text))
+    numaralar = [str(m["madde_no"]).strip() for m in ham]
+    out: list[dict[str, Any]] = []
+    beklenen, beklenen_gecici = 1, 1
+    for i, m in enumerate(ham):
+        no = numaralar[i]
+        gec = _GECICI_SAYI_RE.match(no)
+        if no.isdigit():
+            sirada = int(no) == beklenen
+        elif gec:
+            sirada = int(gec.group(1)) == beklenen_gecici
+        else:
+            sirada = False
+        alinti_girisi = bool(out) and bool(
+            _ALINTI_GIRIS_RE.search(re.sub(r"\s+", " ", out[-1]["metin"]).rstrip()[-300:])
+        )
+        if not out:
+            ust = True
+        elif not sirada:
+            ust = False
+        else:
+            # Sıradaki numara kanunun kendi maddesidir. Tek istisna: önceki
+            # madde alıntıyı haber veriyor VE aynı numara ileride yeniden
+            # geçiyor; o zaman bu, numarası tesadüfen sıraya uyan alıntıdır.
+            # (Alıntı girişine tek başına güvenmek yetmiyor: alıntı kısa bir
+            # satırsa ayrıştırıcı onu sonraki maddenin başlığı sanıp kesiyor
+            # ve madde "eklenmiştir." diye bitiyor; 7571'de 17. maddeden
+            # sonrası böyle yutuldu.)
+            ust = not (alinti_girisi and no in numaralar[i + 1:])
+        if ust:
+            if no.isdigit():
+                beklenen = int(no) + 1
+            elif gec:
+                beklenen_gecici = int(gec.group(1)) + 1
+            out.append({**m, "degisiklikler": list(m["degisiklikler"])})
+            continue
+        onceki = out[-1]
+        onceki["metin"] = onceki["metin"].rstrip() + "\n" + m["metin"]
+        onceki["degisiklikler"].extend(m["degisiklikler"])
+        onceki["degisiklik_notu"] = " | ".join(
+            n for n in (onceki["degisiklik_notu"], m["degisiklik_notu"]) if n
+        )
+    for i, m in enumerate(out, 1):
+        m["sira"] = i
+    return out
+
+
+def maddelere_bol(metin: str, kaynak: str = "") -> list[dict[str, Any]]:
+    """Belgenin kaynağına uygun bölücüyü seç.
+
+    Resmi Gazete'den gelen kanun metinleri ``split_degisiklik_kanunu`` ile,
+    geri kalan her şey (konsolide metin) ``split_articles`` ile bölünür.
+    Yeniden ayrıştıran her yol (``upsert_document``, değişiklik doldurma,
+    ``--resplit``) bu fonksiyonu kullanmalı, yoksa sıra numaraları kayar.
+    """
+    if kaynak == "resmigazete":
+        return split_degisiklik_kanunu(metin)
+    return split_articles(metin)
+
+
+def belge_sil(db: sqlite3.Connection, mevzuat_id: str) -> bool:
+    """Bir belgeyi maddeleri, değişiklik kayıtları ve vektör satırlarıyla sil.
+
+    FTS tablosu ``mevzuat_madde`` tetikleyicisiyle eşitlenir. Semantik indeks
+    silinen maddeyi aramada zaten atlar; vektör satırları burada temizlenir.
+    """
+    vektor = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mevzuat_madde_vektor'"
+    ).fetchone()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        n = db.execute(
+            "DELETE FROM mevzuat_dokuman WHERE mevzuat_id = ?", (mevzuat_id,)
+        ).rowcount
+        db.execute("DELETE FROM mevzuat_madde WHERE mevzuat_id = ?", (mevzuat_id,))
+        db.execute("DELETE FROM mevzuat_degisiklik WHERE mevzuat_id = ?", (mevzuat_id,))
+        if vektor:
+            db.execute("DELETE FROM mevzuat_madde_vektor WHERE mevzuat_id = ?", (mevzuat_id,))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return n > 0
+
+
 # ── Yazma ───────────────────────────────────────────────────────────────────
 
 def _hash(text: str) -> str:
@@ -991,7 +1115,7 @@ def upsert_document(
             ).fetchone()[0]
             return {"status": "skipped", "madde_sayisi": n}
 
-    maddeler = split_articles(metin)
+    maddeler = maddelere_bol(metin, kaynak)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
         db.execute("BEGIN IMMEDIATE")
@@ -1773,37 +1897,89 @@ def _surum_uyarisi(db: sqlite3.Connection, mevzuat_id: str) -> dict[str, Any]:
     return out
 
 
+# Aynı numara farklı türlerde tekrar ediyor (4.11.2026: 161 numara; 7589 hem
+# kanun hem bir üniversite yönetmeliği). Eskiden iki belgenin maddeleri tek
+# listede karışıyordu; artık tek belge seçilir, öncelik bu sıradadır ve
+# konsolide metin (mevzuat.gov.tr) Resmi Gazete ilk yayımının önündedir.
+_TUR_ONCELIK_SQL = (
+    "CASE tur WHEN 'KANUN' THEN 0 WHEN 'KHK' THEN 1 WHEN 'CBK' THEN 2 "
+    "WHEN 'TUZUK' THEN 3 ELSE 4 END"
+)
+
+_RG_METIN_NOTU = (
+    "Bu metin Resmi Gazete'deki ilk yayımdır, konsolide değildir: kanunun "
+    "sonradan değişen hükümleri işlenmemiştir. Kanunun başka kanunlarda "
+    "değiştirdiği maddelerin güncel hali için o kanunlara bakın "
+    "(mevzuat_degisiklik_haritasi)."
+)
+
+
+def aday_belgeler(
+    db: sqlite3.Connection, mevzuat_no: str, tur: str | None = None
+) -> list[dict[str, Any]]:
+    """Bu numarayı taşıyan belgeler, öncelik sırasıyla."""
+    sql = (
+        "SELECT mevzuat_id, tur, ad, kaynak, kaynak_url, rg_tarihi, rg_sayisi"
+        " FROM mevzuat_dokuman WHERE mevzuat_no = ?"
+    )
+    params: list[Any] = [str(mevzuat_no).strip()]
+    if tur:
+        sql += " AND upper(tur) = ?"
+        params.append(str(tur).strip().upper())
+    sql += f" ORDER BY {_TUR_ONCELIK_SQL}, (kaynak = 'resmigazete'), mevzuat_id"
+    alanlar = ("mevzuat_id", "tur", "mevzuat_adi", "kaynak", "kaynak_url",
+               "rg_tarihi", "rg_sayisi")
+    return [dict(zip(alanlar, r)) for r in db.execute(sql, params).fetchall()]
+
+
 def get_madde(
     db: sqlite3.Connection,
     mevzuat_no: str,
     madde_no: str,
+    tur: str | None = None,
 ) -> dict[str, Any]:
     """Tek bir maddenin tam metni.
 
     ``madde_no`` "12", "12/A", "Geçici 1", "geçici 1" hepsi aynı maddeye
-    çözülür — karşılaştırma ``legislation._norm_article_no`` ile yapılır, yani
-    araç yüzeyindeki numaralandırmayla birebir aynı.
+    çözülür; karşılaştırma ``legislation._norm_article_no`` ile yapılır, yani
+    araç yüzeyindeki numaralandırmayla birebir aynı. Numara birden çok
+    belgede geçiyorsa ``tur`` verilmedikçe öncelikli belge (kanun) seçilir,
+    diğerleri ``ayni_numarali_diger`` alanında listelenir.
     """
     ensure_schema(db)
+    belgeler = aday_belgeler(db, mevzuat_no, tur)
+    if not belgeler:
+        ek = f" ({str(tur).upper()} türünde)" if tur else ""
+        return {
+            "ok": False,
+            "errorCode": "NOT_FOUND",
+            "message": (
+                f"{mevzuat_no} sayılı mevzuat{ek} yerel korpusta yok. Korpus yalnızca "
+                "çekilmiş mevzuatı içerir; çekmek için scripts/mevzuat_pull.py, "
+                "canlı sorgu için search_legislation/get_legislation kullanın."
+            ),
+        }
+    secilen, diger = belgeler[0], belgeler[1:]
     rows = db.execute(
         """SELECT d.mevzuat_id, d.mevzuat_no, d.tur, d.ad, d.kaynak_url,
                   m.madde_no, m.sira, m.baslik, m.metin, m.degisiklik_notu,
                   m.ust_baslik
            FROM mevzuat_madde m
            JOIN mevzuat_dokuman d ON d.mevzuat_id = m.mevzuat_id
-           WHERE d.mevzuat_no = ?
+           WHERE d.mevzuat_id = ?
            ORDER BY m.sira""",
-        (str(mevzuat_no).strip(),),
+        (secilen["mevzuat_id"],),
     ).fetchall()
+    diger_ozet = [
+        {"mevzuat_id": b["mevzuat_id"], "tur": b["tur"], "mevzuat_adi": b["mevzuat_adi"]}
+        for b in diger
+    ]
     if not rows:
         return {
             "ok": False,
             "errorCode": "NOT_FOUND",
-            "message": (
-                f"{mevzuat_no} sayılı mevzuat yerel korpusta yok. Korpus yalnızca "
-                "çekilmiş mevzuatı içerir; çekmek için scripts/mevzuat_pull.py, "
-                "canlı sorgu için search_legislation/get_legislation kullanın."
-            ),
+            "message": f"{mevzuat_no} sayılı mevzuatın ({secilen['mevzuat_id']}) maddesi yok.",
+            "ayni_numarali_diger": diger_ozet,
         }
 
     target = _norm_article_no(str(madde_no))
@@ -1825,6 +2001,15 @@ def get_madde(
                 "degisiklikler": madde_degisiklikleri(db, r[0], r[6]),
             }
             cevap.update(_surum_uyarisi(db, r[0]))
+            if secilen["kaynak"] == "resmigazete":
+                cevap["metin_turu"] = "resmi_gazete_ilk_yayim"
+                cevap["metin_notu"] = _RG_METIN_NOTU
+            if diger_ozet:
+                cevap["ayni_numarali_diger"] = diger_ozet
+                cevap["ayni_numarali_not"] = (
+                    "Bu numara başka mevzuatta da var; onu görmek için tur "
+                    "parametresini verin (ör. tur='YONETMELIK')."
+                )
             uyarilar = yururluk_uyarilari(cevap["degisiklikler"])
             if uyarilar:
                 cevap["yururluk_uyarilari"] = uyarilar
@@ -1848,6 +2033,171 @@ def get_madde(
         ),
         "mevzuat_adi": rows[0][3],
         "mevcut_madde_sayisi": len(rows),
+        **({"ayni_numarali_diger": diger_ozet} if diger_ozet else {}),
+    }
+
+
+# ── Değişiklik kanunu haritası ──────────────────────────────────────────────
+
+_YERINE_ISLENMIS_RE = re.compile(r"ilgili\s+olup,?\s+yerine\s+i[şs]lenmi[şs]tir", re.IGNORECASE)
+_YURURLUK_YURUTME_RE = re.compile(
+    r"y[üu]r[üu]rl[üu][ğg]e\s+girer|h[üu]k[üu]mlerini\s+.{0,40}y[üu]r[üu]t[üu]r",
+    re.IGNORECASE,
+)
+
+
+def _ozet(metin: str, n: int = 220) -> str:
+    duz = re.sub(r"\s+", " ", metin or "").strip()
+    return duz if len(duz) <= n else duz[: n - 3].rstrip() + "..."
+
+
+def _madde_durumu(hamlar: list[str], bugun: date) -> tuple[str, str | None]:
+    tarihler = [t for t in (bekleyen_yururluk_tarihi(h) for h in hamlar) if t]
+    if not tarihler:
+        return "islendi", None
+    gelmis = [t for t in tarihler if date.fromisoformat(t) <= bugun]
+    if gelmis:
+        return "yururlukte_islenmedi", min(gelmis)
+    return "ileride_yururluge_girecek", min(tarihler)
+
+
+def degisiklik_haritasi(
+    db: sqlite3.Connection,
+    kanun_no: str,
+    rg_db: sqlite3.Connection | None = None,
+    bugun: date | None = None,
+) -> dict[str, Any]:
+    """Bir değişiklik kanununun hangi mevzuatın hangi maddelerini değiştirdiği.
+
+    Kaynaklar: (1) temel kanunlardaki değişiklik kayıtları
+    (``mevzuat_degisiklik.degistiren_no``, "(Değişik: 16/7/2026-7589/13 md.)"
+    ve dipnotlardan), (2) kanunun kendi belgesi (geçici maddeleri, kendi
+    hükümleri), (3) varsa Resmi Gazete dizinindeki künyesi.
+    """
+    ensure_schema(db)
+    bugun = bugun or date.today()
+    no = str(kanun_no).strip()
+    rows = db.execute(
+        """SELECT g.mevzuat_id, d.tur, d.mevzuat_no, d.ad, m.madde_no, g.sira,
+                  g.kapsam, g.tur, g.degistiren_madde, g.ham
+           FROM mevzuat_degisiklik g
+           JOIN mevzuat_dokuman d ON d.mevzuat_id = g.mevzuat_id
+           LEFT JOIN mevzuat_madde m ON m.mevzuat_id = g.mevzuat_id AND m.sira = g.sira
+           WHERE g.degistiren_no = ?
+           ORDER BY d.mevzuat_no, g.sira""",
+        (no,),
+    ).fetchall()
+
+    hedefler: dict[str, dict[str, Any]] = {}
+    maddeler: dict[tuple[str, int], dict[str, Any]] = {}
+    degistiren: set[str] = set()
+    for mid, tur, mno, ad, madde_no, sira, kapsam, gtur, dmadde, ham in rows:
+        hedef = hedefler.setdefault(mid, {
+            "mevzuat_id": mid, "tur": tur, "mevzuat_no": mno,
+            "mevzuat_adi": ad, "maddeler": [],
+        })
+        anahtar = (mid, sira)
+        if anahtar not in maddeler:
+            maddeler[anahtar] = {"madde_no": madde_no, "islemler": [],
+                                 "degistiren_maddeler": [], "_ham": []}
+            hedef["maddeler"].append(maddeler[anahtar])
+        kayit = maddeler[anahtar]
+        islem = " ".join(x for x in (gtur, kapsam) if x)
+        if islem and islem not in kayit["islemler"]:
+            kayit["islemler"].append(islem)
+        if dmadde:
+            degistiren.add(str(dmadde))
+            if dmadde not in kayit["degistiren_maddeler"]:
+                kayit["degistiren_maddeler"].append(dmadde)
+        kayit["_ham"].append(ham or "")
+    sayac = {"islendi": 0, "yururlukte_islenmedi": 0, "ileride_yururluge_girecek": 0}
+    for kayit in maddeler.values():
+        durum, tarih = _madde_durumu(kayit.pop("_ham"), bugun)
+        kayit["durum"] = durum
+        if tarih:
+            kayit["yururluk_tarihi"] = tarih
+        sayac[durum] += 1
+
+    # Kanunun kendi belgesi: konsolide (mevzuat.gov.tr) varsa o, yoksa RG metni.
+    kanun_belgesi = next(iter(aday_belgeler(db, no, "KANUN")), None)
+    kendi: list[dict[str, Any]] = []
+    izsiz: list[dict[str, Any]] = []
+    if kanun_belgesi:
+        km = db.execute(
+            "SELECT madde_no, metin FROM mevzuat_madde WHERE mevzuat_id = ? ORDER BY sira",
+            (kanun_belgesi["mevzuat_id"],),
+        ).fetchall()
+        for madde_no, metin in km:
+            mn = str(madde_no)
+            gecici = bool(re.match(r"Ge[çc]ici\b", mn, re.IGNORECASE))
+            yerine = bool(_YERINE_ISLENMIS_RE.search(metin or ""))
+            yururluk = bool(_YURURLUK_YURUTME_RE.search(metin or ""))
+            if gecici or (not yerine and mn not in degistiren):
+                kendi.append({
+                    "madde_no": mn,
+                    "tur": "gecici" if gecici else ("yururluk_yurutme" if yururluk else "metin"),
+                    "ozet": _ozet(metin),
+                })
+            if mn.isdigit() and mn not in degistiren and not yururluk and not gecici:
+                izsiz.append({"madde_no": mn, "ozet": _ozet(metin, 160)})
+
+    rg: dict[str, Any] | None = None
+    if rg_db is not None:
+        try:
+            r = rg_db.execute(
+                "SELECT item_id, tarih, sayi_no, baslik, url FROM rg_ogeler"
+                " WHERE numara = ? AND upper(kategori) IN ('KANUN', 'KANUNLAR')"
+                " ORDER BY tarih LIMIT 1",
+                (no,),
+            ).fetchone()
+        except sqlite3.Error:
+            r = None
+        if r:
+            rg = {"item_id": r[0], "tarih": r[1], "sayi": r[2], "baslik": r[3], "url": r[4]}
+
+    if not rows and not kanun_belgesi and not rg:
+        return {
+            "ok": False,
+            "errorCode": "NOT_FOUND",
+            "message": (
+                f"{no} sayılı kanuna ait değişiklik kaydı, kanun metni ya da "
+                "Resmi Gazete künyesi yerel korpusta yok."
+            ),
+        }
+
+    uyarilar = []
+    if izsiz:
+        uyarilar.append(
+            "korpusta_izi_olmayan_maddeler: bu maddelerin hedefindeki mevzuat korpusta "
+            "yok ya da değişiklik notu ayrıştırılamadı. 'Değişiklik yok' DEMEK DEĞİLDİR; "
+            "madde metnine bakın."
+        )
+    if sayac["yururlukte_islenmedi"]:
+        uyarilar.append(
+            "Bazı maddelerde yürürlüğe girmiş değişiklik metne işlenmemiş: o maddelerin "
+            "korpustaki metni eskidir (mevzuat_madde_getir uyari alanı)."
+        )
+    if kanun_belgesi and kanun_belgesi["kaynak"] == "resmigazete":
+        uyarilar.append(_RG_METIN_NOTU)
+
+    return {
+        "ok": True,
+        "kanun_no": no,
+        "kanun": (
+            {k: kanun_belgesi[k] for k in ("mevzuat_id", "mevzuat_adi", "kaynak",
+                                           "rg_tarihi", "rg_sayisi", "kaynak_url")}
+            if kanun_belgesi else None
+        ),
+        "resmi_gazete": rg,
+        "ozet": {
+            "etkilenen_mevzuat": len(hedefler),
+            "etkilenen_madde": len(maddeler),
+            **sayac,
+        },
+        "etkilenen": list(hedefler.values()),
+        "kanunun_kendi_hukumleri": kendi,
+        "korpusta_izi_olmayan_maddeler": izsiz,
+        "uyarilar": uyarilar,
     }
 
 

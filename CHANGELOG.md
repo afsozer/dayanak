@@ -7,6 +7,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Çekirdek araç `mevzuat_degisiklik_haritasi(kanun_no)`: bir değişiklik
+  kanununun hangi mevzuatın hangi maddelerini değiştirdiğini temel
+  kanunlardaki değişiklik kayıtlarından (`degistiren_no`) çıkarır; her madde
+  için işlenme durumu (`islendi` / `yururlukte_islenmedi` /
+  `ileride_yururluge_girecek`), kanunun kendi geçici maddeleri ve yürürlük
+  hükümleri, hedefi korpusta bulunmayan maddeler ve Resmi Gazete künyesi.
+  Çekirdek profil 11'den 12 araca çıktı (tam profil 48).
+- Resmi Gazete kanun metinleri. mevzuat.gov.tr birçok değişiklik kanununu
+  hiç listelemiyor (4.11.2026: RG dizinindeki numaralı kanunların 1.668'i
+  korpusta yoktu; 7571, 7574, 7577, 7593 ...). `scripts/rg_kanun_cek.py`
+  bunları RG'deki ilk yayım metninden `rg.<kalem>` kimliğiyle
+  (`kaynak='resmigazete'`, `tur='KANUN'`) korpusa alır; mevzuat.gov.tr bir
+  kanunu sonradan listelerse RG kopyası silinir. Günlük `EmsalRgDizin`
+  görevi dizin güncellemesinden sonra yeni kanunları da çeker.
+  `--yeniden-bol` kayıtlı metinleri ağa çıkmadan yeniden böler.
+- `split_degisiklik_kanunu`: RG metnindeki tırnak içi alıntı maddeleri
+  (başka kanuna eklenen ya da değiştirilen maddeler) kanunun kendi maddesi
+  saymaz; 2005 öncesi "MADDE 1." ve ardından uzun tire biçimini de tanır. Yeniden ayrıştıran
+  her yol `maddelere_bol` ile kaynağa uygun bölücüyü seçer.
+- `mevzuat_madde_getir(..., tur="")`: aynı numara birden çok türde varsa
+  (161 numara) artık tek belge seçilir, öncelik KANUN > KHK > CBK > TÜZÜK >
+  diğer, konsolide metin RG ilk yayımının önünde; diğerleri
+  `ayni_numarali_diger` alanında. RG ilk yayım metninde `metin_turu` ve
+  `metin_notu` döner.
+
 - Ertelenmiş yürürlük takibi. mevzuat.gov.tr ileri tarihte yürürlüğe girecek
   değişikliği o gün gelene kadar konsolide metne işlemiyor, maddeye yalnız
   "Mevzuat Bilgi Sistemine işlenecek" dipnotu düşüyor; haftalık
@@ -23,6 +48,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- `mevzuat_madde_getir` aynı numaralı iki belgenin (ör. 7589 sayılı Kanun
+  ile aynı numaralı bir yönetmelik) maddelerini tek listede karıştırıyordu.
 - Belgenin son maddesi sondaki dipnot listesini gövdesine aldığında listedeki
   dipnotlar o maddeye ikinci kez değişiklik kaydı olarak bağlanıyordu. Bir
   dipnot artık yalnız ilk geçtiği maddeye bağlanır.

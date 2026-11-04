@@ -34,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from dayanak.legislation_corpus import split_articles
+from dayanak.legislation_corpus import maddelere_bol
 
 
 def main() -> None:
@@ -67,12 +67,12 @@ def main() -> None:
     islenen = atlanan = degisen = bosalan = dolan = 0
     for i, (mid,) in enumerate(belgeler, 1):
         row = db.execute(
-            "SELECT metin FROM mevzuat_dokuman WHERE mevzuat_id = ?", (mid,)
+            "SELECT metin, kaynak FROM mevzuat_dokuman WHERE mevzuat_id = ?", (mid,)
         ).fetchone()
         if not row or not row[0]:
             atlanan += 1
             continue
-        maddeler = split_articles(row[0])
+        maddeler = maddelere_bol(row[0], row[1] or "")
         mevcut = db.execute(
             "SELECT sira, ust_baslik FROM mevzuat_madde WHERE mevzuat_id = ? ORDER BY sira",
             (mid,),

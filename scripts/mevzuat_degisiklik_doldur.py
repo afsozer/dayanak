@@ -10,7 +10,7 @@ Kullanım:
 Yalnızca ``mevzuat_madde`` ve ``mevzuat_degisiklik`` tablolarına yazar;
 ``mevzuat_dokuman`` ve ``documents_v2`` okunur bile değişmez. Metin
 değişmediği için yeniden çekim gerekmez: kaydedilmiş konsolide metin
-``legislation_corpus.split_articles`` ile yeniden ayrıştırılır.
+``legislation_corpus.maddelere_bol`` ile yeniden ayrıştırılır.
 
 Canlı MCP sunucusu aynı SQLite dosyasını okuduğundan yazma BELGE BAŞINA tek
 ve kısa bir transaction'dır; iki belge arasında ``--uyku`` kadar beklenir.
@@ -33,7 +33,7 @@ from dayanak.legislation_corpus import (  # noqa: E402
     _DEGISIKLIK_INSERT,
     _degisiklik_row,
     ensure_schema,
-    split_articles,
+    maddelere_bol,
 )
 
 
@@ -55,11 +55,12 @@ def _belgeler(
 def belge_isle(db: sqlite3.Connection, mevzuat_id: str) -> tuple[int, int]:
     """Tek belgeyi yeniden ayrıştırıp yaz. Dönüş: (madde, degisiklik) sayısı."""
     row = db.execute(
-        "SELECT metin FROM mevzuat_dokuman WHERE mevzuat_id = ?", (mevzuat_id,)
+        "SELECT metin, kaynak FROM mevzuat_dokuman WHERE mevzuat_id = ?", (mevzuat_id,)
     ).fetchone()
     if not row or not row[0]:
         return (0, 0)
-    maddeler = split_articles(row[0])
+    # Kaynağa göre bölücü: RG metni için alıntı maddeler katlanır.
+    maddeler = maddelere_bol(row[0], row[1] or "")
     if not maddeler:
         return (0, 0)
     degisiklikler = [
@@ -106,9 +107,9 @@ def main() -> int:
     for i, (mevzuat_id, no, ad) in enumerate(belgeler, 1):
         if args.kuru:
             row = db.execute(
-                "SELECT metin FROM mevzuat_dokuman WHERE mevzuat_id = ?", (mevzuat_id,)
+                "SELECT metin, kaynak FROM mevzuat_dokuman WHERE mevzuat_id = ?", (mevzuat_id,)
             ).fetchone()
-            maddeler = split_articles(row[0]) if row and row[0] else []
+            maddeler = maddelere_bol(row[0], row[1] or "") if row and row[0] else []
             m, d = len(maddeler), sum(len(x["degisiklikler"]) for x in maddeler)
         else:
             m, d = belge_isle(db, mevzuat_id)

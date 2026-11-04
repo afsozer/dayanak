@@ -938,3 +938,126 @@ def test_bekleyen_yururlukler_yalniz_gelmisler(db):
         ("1.5.8888", "1", "2026-10-31")]
     hepsi = lc.bekleyen_yururlukler(db, bugun=date(2026, 11, 4), yalniz_gelmis=False)
     assert len(hepsi) == 2
+
+
+# ── Resmi Gazete kanun metni ve değişiklik haritası (4.11.2026) ─────────────
+
+RG_KANUN = (
+    "KANUN\n"
+    "DENEME DEĞİŞİKLİK KANUNU\n"
+    "Kanun No. 9990\n"
+    "Kabul Tarihi: 1/7/2026\n"
+    "MADDE 1- 1/1/2000 tarihli ve 1111 sayılı Kanunun 5 inci maddesi aşağıdaki\n"
+    "şekilde değiştirilmiştir.\n"
+    "MADDE 5- (1) Yeni beşinci madde.\n"
+    "MADDE 2- 1111 sayılı Kanuna aşağıdaki madde eklenmiştir.\n"
+    "Ek kenar başlığı\n"
+    "MADDE 3- (1) Eklenen madde, numarası tesadüfen sıraya uyuyor.\n"
+    "MADDE 3- 2222 sayılı Kanuna aşağıdaki geçici madde eklenmiştir.\n"
+    "GEÇİCİ MADDE 8- (1) Başka kanuna eklenen geçiş hükmü.\n"
+    "GEÇİCİ MADDE 1- (1) Kanunun kendi geçiş hükmü.\n"
+    "MADDE 4- (1) Bu Kanun yayımı tarihinde yürürlüğe girer.\n"
+    "MADDE 5- (1) Bu Kanun hükümlerini Cumhurbaşkanı yürütür.\n"
+)
+
+
+def test_split_degisiklik_kanunu_alintilari_katlar():
+    maddeler = lc.split_degisiklik_kanunu(RG_KANUN)
+    assert [m["madde_no"] for m in maddeler] == ["1", "2", "3", "Geçici 1", "4", "5"]
+    assert [m["sira"] for m in maddeler] == [1, 2, 3, 4, 5, 6]
+    assert "Eklenen madde" in maddeler[1]["metin"]
+    assert "Başka kanuna eklenen" in maddeler[2]["metin"]
+    assert maddeler[5]["metin"].startswith("MADDE 5") and "yürütür" in maddeler[5]["metin"]
+
+
+def test_maddelere_bol_kaynaga_gore_secer():
+    assert len(lc.maddelere_bol(RG_KANUN, "resmigazete")) == 6
+    assert len(lc.maddelere_bol(RG_KANUN, "mevzuatgov")) > 6
+
+
+def test_get_madde_ayni_numarada_kanunu_secer(db):
+    _write(db, mevzuat_id="8.5.9999", tur="YONETMELIK", ad="DENEME YÖNETMELİĞİ",
+           metin="MADDE 1 - (1) Yönetmelik hükmü.\nMADDE 2 - (1) İkinci.\n")
+    _write(db)  # 1.5.9999 KANUN
+    kanun = lc.get_madde(db, "9999", "1")
+    assert kanun["mevzuat_id"] == "1.5.9999"
+    assert kanun["ayni_numarali_diger"][0]["mevzuat_id"] == "8.5.9999"
+    yon = lc.get_madde(db, "9999", "1", tur="yonetmelik")
+    assert yon["mevzuat_id"] == "8.5.9999" and "Yönetmelik hükmü" in yon["metin"]
+    yok = lc.get_madde(db, "9999", "1", tur="TEBLIGLER")
+    assert yok["ok"] is False
+
+
+def test_get_madde_rg_metnini_isaretler(db):
+    _write(db, mevzuat_id="rg.20260701-1", mevzuat_no="9990", kaynak="resmigazete",
+           metin=RG_KANUN, ad="Deneme Değişiklik Kanunu")
+    out = lc.get_madde(db, "9990", "Geçici 1")
+    assert out["metin_turu"] == "resmi_gazete_ilk_yayim"
+    assert "konsolide değildir" in out["metin_notu"]
+    assert "kendi geçiş hükmü" in out["metin"]
+
+
+def test_belge_sil_maddeleri_ve_fts_yi_temizler(db):
+    _write(db)
+    assert lc.belge_sil(db, "1.5.9999") is True
+    assert db.execute("SELECT COUNT(*) FROM mevzuat_madde").fetchone()[0] == 0
+    assert lc.search_madde(db, "zamanaşımı")["results"] == []
+    assert lc.belge_sil(db, "1.5.9999") is False
+
+
+HEDEF_KANUN = (
+    "MADDE 1 - (Değişik: 16/7/2026-9990/1 md.) (1) Değişmiş hüküm.\n"
+    "MADDE 2 - Bekleyen hüküm. [1]\n"
+    "MADDE 3 - Dokunulmamış hüküm.\n"
+    "[1]\n"
+    "16/7/2026 tarihli ve 9990 sayılı Kanunun 3 üncü maddesiyle 1/1/2099 tarihinde\r\n"
+    "yürürlüğe girmek üzere bu fıkra değiştirilmiştir. Söz konusu düzenleme,\r\n"
+    "yürürlüğe girdiği tarihte Mevzuat Bilgi Sistemine işlenecek olup mezkur\r\n"
+    "düzenlemeyi görmek için 31/7/2026 tarihli ve 33326 sayılı Resmi Gazete'ye bakınız.\n"
+)
+
+DEGISIKLIK_KANUNU_KONSOLIDE = (
+    "MADDE 1 - (1/1/2000 tarihli ve 1111 sayılı Deneme Kanunu ile\n"
+    "ilgili olup, yerine işlenmiştir.)\n"
+    "MADDE 2 - (2/2/2000 tarihli ve 2222 sayılı Korpusta Olmayan Kanun ile ilgili olup,\n"
+    "yerine işlenmiştir.)\n"
+    "MADDE 3 - (1/1/2000 tarihli ve 1111 sayılı Deneme Kanunu ile\n"
+    "ilgili olup, yerine işlenmiştir.)\n"
+    "GEÇİCİ MADDE 1 - (1) Kanunun kendi geçiş hükmü.\n"
+    "MADDE 4 - (1) Bu Kanun yayımı tarihinde yürürlüğe girer.\n"
+    "MADDE 5 - (1) Bu Kanun hükümlerini Cumhurbaşkanı yürütür.\n"
+)
+
+
+def test_degisiklik_haritasi(db):
+    from datetime import date
+
+    _write(db, mevzuat_id="1.5.1111", mevzuat_no="1111", metin=HEDEF_KANUN, ad="DENEME KANUNU")
+    _write(db, mevzuat_id="1.5.9990", mevzuat_no="9990", metin=DEGISIKLIK_KANUNU_KONSOLIDE,
+           ad="DENEME DEĞİŞİKLİK KANUNU")
+    h = lc.degisiklik_haritasi(db, "9990", bugun=date(2026, 11, 4))
+    assert h["ok"] is True and h["kanun"]["mevzuat_id"] == "1.5.9990"
+    assert h["ozet"]["etkilenen_mevzuat"] == 1 and h["ozet"]["etkilenen_madde"] == 2
+    maddeler = {m["madde_no"]: m for m in h["etkilenen"][0]["maddeler"]}
+    assert maddeler["1"]["durum"] == "islendi" and maddeler["1"]["degistiren_maddeler"] == ["1"]
+    assert maddeler["2"]["durum"] == "ileride_yururluge_girecek"
+    assert maddeler["2"]["yururluk_tarihi"] == "2099-01-01"
+    kendi = {k["madde_no"]: k["tur"] for k in h["kanunun_kendi_hukumleri"]}
+    assert kendi == {"Geçici 1": "gecici", "4": "yururluk_yurutme", "5": "yururluk_yurutme"}
+    assert [m["madde_no"] for m in h["korpusta_izi_olmayan_maddeler"]] == ["2"]
+    assert h["uyarilar"]
+
+
+def test_degisiklik_haritasi_bulunamadi(db):
+    assert lc.degisiklik_haritasi(db, "1234")["errorCode"] == "NOT_FOUND"
+
+
+def test_split_degisiklik_kanunu_eski_nokta_bicimi():
+    """2005 öncesi RG kanunları: "MADDE 1. \u2014" biçimi."""
+    t = ("Kanun No. 5295\nMADDE 1. \u2014\nAnlaşma onaylanmıştır.\nMADDE 2. \u2014\n"
+         "Bu Kanun yayımı tarihinde yürürlüğe girer.\nMADDE 3. \u2014\n"
+         "Bu Kanun hükümlerini Bakanlar Kurulu yürütür.\n")
+    assert [m["madde_no"] for m in lc.split_degisiklik_kanunu(t)] == ["1", "2", "3"]
+    # 2010-2017: eksi işareti ve rakam tiresi, numara alt satırda olabilir.
+    t2 = "MADDE\r\n    1 \u2212\n(1) Bir.\nMADDE 2\n\u2012\n(1) İki.\n"
+    assert [m["madde_no"] for m in lc.split_degisiklik_kanunu(t2)] == ["1", "2"]

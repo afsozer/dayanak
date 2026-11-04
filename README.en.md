@@ -1,6 +1,6 @@
 # Dayanak
 
-> **v2.0.1** — 11 core + 36 extended MCP tools (47 total) · 152 CLI commands · 80 test files · 48 source modules
+> **v2.0.1** — 12 core + 36 extended MCP tools (48 total) · 152 CLI commands · 80 test files · 48 source modules
 >
 > [![CI](https://github.com/afsozer/dayanak/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/dayanak/actions/workflows/ci.yml)
 > [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23594091.svg)](https://doi.org/10.5281/zenodo.23594091)
@@ -85,7 +85,7 @@ Configuration for Claude Desktop or another MCP client:
 }
 ```
 
-The default tool profile exposes 11 core tools; set `DAYANAK_TOOL_PROFILE=full` for all
+The default tool profile exposes 12 core tools; set `DAYANAK_TOOL_PROFILE=full` for all
 of them. Fetched documents are cached in `~/.dayanak/cache.sqlite3` (change it with
 `DAYANAK_CACHE_PATH`).
 
@@ -157,11 +157,11 @@ file; every path left empty is derived from `~/.dayanak`.
 
 ## MCP tools
 
-The default profile is `core`, which registers 11 tools. The rest are added to
+The default profile is `core`, which registers 12 tools. The rest are added to
 the running server category by category with `load_extended_tools`. Contracts:
 [`docs/MCP_CONTRACTS.md`](docs/MCP_CONTRACTS.md).
 
-**Core (11):**
+**Core (12):**
 
 | Tool | What it does |
 |---|---|
@@ -172,6 +172,7 @@ the running server category by category with `load_extended_tools`. Contracts:
 | `get_legislation` | Fetch legislation text / an article |
 | `mevzuat_korpus_ara` | Article-level search in the local legislation corpus |
 | `mevzuat_madde_getir` | A single article from the local corpus |
+| `mevzuat_degisiklik_haritasi` | Which articles an amending law changed, and whether each is applied |
 | `research_topic` | Topic research package (bundle + quality dashboard) |
 | `export_document` | Document export |
 | `load_extended_tools` | Load extended categories at runtime |

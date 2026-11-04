@@ -1,7 +1,7 @@
 """M-97: Tool surface profile tests.
 
 Verifies:
-- Core profile exposes exactly 11 tools (2026-09-06: drafting/files/meta
+- Core profile exposes exactly 12 tools (2026-09-06: drafting/files/meta
   kategorileri extended'a tasindi).
 - Full profile tool count >= previous snapshot (regression guard).
 - DAYANAK_TOOL_PROFILE env var controls registration.
@@ -105,6 +105,7 @@ CORE_TOOLS = [
     "get_legislation",
     "mevzuat_korpus_ara",
     "mevzuat_madde_getir",
+    "mevzuat_degisiklik_haritasi",
     "research_topic",
     "export_document",
     "load_extended_tools",
@@ -113,12 +114,12 @@ CORE_TOOLS = [
 
 
 class TestCoreProfile:
-    """Core profile: exactly 11 tools."""
+    """Core profile: exactly 12 tools."""
 
     def test_core_profile_exact_count(self) -> None:
         tools = _capture_tools("core")
-        assert len(tools) == 11, (
-            f"Expected 11 core tools, got {len(tools)}: {sorted(tools.keys())}"
+        assert len(tools) == 12, (
+            f"Expected 12 core tools, got {len(tools)}: {sorted(tools.keys())}"
         )
 
     def test_core_profile_matches_snapshot(self) -> None:
@@ -209,9 +210,9 @@ class TestCoreProfile:
 
 
 class TestFullProfile:
-    """Full profile: exactly 47 tools (M-111 + mevzuat korpusu araçları)."""
+    """Full profile: exactly 48 tools (M-111 + mevzuat korpusu araçları + değişiklik haritası)."""
 
-    FULL_TOOL_COUNT_SNAPSHOT = 47
+    FULL_TOOL_COUNT_SNAPSHOT = 48
 
     def test_full_profile_count_matches_snapshot(self) -> None:
         # Exact, not >=.  A `>=` bound let the surface drift from 82 to 83
@@ -304,4 +305,4 @@ class TestProfileEnvVar:
 
     def test_invalid_profile_falls_back_to_core(self) -> None:
         tools = _capture_tools("garbage")
-        assert len(tools) == 11, f"Invalid profile should fallback to 11 core, got {len(tools)}"
+        assert len(tools) == 12, f"Invalid profile should fallback to 12 core, got {len(tools)}"

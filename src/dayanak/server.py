@@ -155,7 +155,7 @@ def main() -> None:
 
     # _TOOL_PROFILES[name] = "core" | "extended"
     _TOOL_PROFILES: dict[str, str] = {
-        # ── Core (11 tools) ─────────────────────────────────────────────
+        # ── Core (12 tools) ─────────────────────────────────────────────
         "search_decisions":           "core",
         "get_document":               "core",
         "research_topic":             "core",  # M-98: renamed from research_topic_tool
@@ -165,6 +165,7 @@ def main() -> None:
         "get_legislation":            "core",
         "mevzuat_korpus_ara":         "core",
         "mevzuat_madde_getir":        "core",
+        "mevzuat_degisiklik_haritasi": "core",
         "export_document":            "core",
         "load_extended_tools":        "core",
         "health_check":               "core",
@@ -242,6 +243,7 @@ def main() -> None:
         "get_legislation":              "legislation",
         "mevzuat_korpus_ara":           "legislation",
         "mevzuat_madde_getir":          "legislation",
+        "mevzuat_degisiklik_haritasi":  "legislation",
         "mevzuat_degisiklik_raporu":    "legislation",
         "research_topic":               "research",
         "export_document":              "export",
@@ -1567,20 +1569,45 @@ def main() -> None:
             c.close()
 
     @_tool
-    def mevzuat_madde_getir(mevzuat_no: str, madde_no: str) -> dict:
+    def mevzuat_madde_getir(mevzuat_no: str, madde_no: str, tur: str = "") -> dict:
         """Yerel korpustan tek maddenin TAM metni (çevrimdışı).
 
         madde_no "390", "12/A", "Geçici 1" kabul eder. Korpusta yoksa
         NOT_FOUND döner — uydurma, canlı get_legislation çağır.
+        Aynı numara başka türde de varsa KANUN seçilir; tur="YONETMELIK" vb.
+        ile diğeri. metin_eski=true ise metin günceli değil: uyari'yı oku.
         """
         mevzuat_no, madde_no = str(mevzuat_no).strip(), str(madde_no).strip()  # istemciler sayi gonderebiliyor
         from .legislation_corpus import get_madde
 
         c = Cache()
         try:
-            return get_madde(c.db, mevzuat_no, madde_no)
+            return get_madde(c.db, mevzuat_no, madde_no, tur=str(tur or "").strip() or None)
         finally:
             c.close()
+
+    @_tool
+    def mevzuat_degisiklik_haritasi(kanun_no: str) -> dict:
+        """Bir değişiklik kanununun (ör. 7589, "12. yargı paketi") hangi
+        mevzuatın hangi maddelerini değiştirdiği, yerel korpustan.
+
+        Her madde için durum: islendi / yururlukte_islenmedi (korpus metni
+        eski) / ileride_yururluge_girecek. Kanunun kendi geçici maddeleri ayrı
+        döner; tam metin: mevzuat_madde_getir(kanun_no, "Geçici 1").
+        korpusta_izi_olmayan_maddeler "değişiklik yok" DEMEK DEĞİLDİR.
+        """
+        from . import rg_index
+        from .legislation_corpus import degisiklik_haritasi
+
+        no = str(kanun_no).strip()
+        c = Cache()
+        rg = rg_index.open_readonly()
+        try:
+            return degisiklik_haritasi(c.db, no, rg_db=rg)
+        finally:
+            c.close()
+            if rg is not None:
+                rg.close()
 
 
 
@@ -2479,7 +2506,7 @@ def main() -> None:
             ),
             "extended_tools": (
                 "=== GENİŞLETİLMİŞ ARAÇ KATEGORİLERİ ===\n\n"
-                "Core profilde 11 araç bulunur. Aşağıdaki kategoriler load_extended_tools\n"
+                "Core profilde 12 araç bulunur. Aşağıdaki kategoriler load_extended_tools\n"
                 "ile dinamik olarak yüklenebilir:\n\n"
                 "  drafting       — citation_check, prepare_petition\n"
                 "  files          — read_legal_file (UDF/PDF okuma)\n"
@@ -2514,7 +2541,7 @@ def main() -> None:
     def load_extended_tools(categories: list[str]) -> dict:
         """Load extra tool categories into the running MCP server (no restart).
 
-        Core profile registers 11 tools. Everything else waits here; load a
+        Core profile registers 12 tools. Everything else waits here; load a
         category when the task needs it.
 
         Categories:
