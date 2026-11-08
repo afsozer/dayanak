@@ -557,6 +557,52 @@ def test_sonraki_maddenin_basligi_onceki_govdeye_yapismaz():
     assert arts[1]["baslik"] == "Sonraki başlık"
 
 
+
+def test_sonraki_maddenin_basligindaki_dipnot_o_maddeye_baglanir():
+    """2659 m.26-27: "İkinci görev aylığı:\\n[10]\\nMadde 27" — başlığa konmuş
+    dipnot önceki maddenin ham gövdesinde kalıyor, m.26'ya bağlanıyordu."""
+    metin = (
+        "Atama ve görev süresi:\n"
+        "Madde 26– (Başlığı ile Birlikte Yeniden Düzenleme:16/7/2026-7589/7\r\nmd.)\n"
+        "Görev süresi dört yıldır.\n"
+        "BEŞİNCİ BÖLÜM\nÖzlük Hakları\nİkinci görev aylığı:\n[1]\n"
+        "Madde 27–\nAdlî Tıp Kurumuna atanacak olanların aylıkları kesilmez.\n"
+        "Fark tazminatı:\n[2]\n"
+        "Madde 28–\nFark tazminatı ödenir.\n"
+        "[1]\n2/7/2018 tarihli 703 sayılı KHK’nin 61 inci maddesiyle, bu maddede "
+        "yer alan “26 ncı maddede belirtilen görevlere” ibaresi “Adlî Tıp Kurumuna” "
+        "şeklinde değiştirilmiştir.\n"
+        "[2]\n2/7/2018 tarihli 703 sayılı KHK’nin 62 nci maddesiyle değiştirilmiştir.\n"
+    )
+    arts = {a["madde_no"]: a for a in lc.split_articles(metin)}
+    m26, m27, m28 = arts["26"], arts["27"], arts["28"]
+    assert m26["metin"].rstrip().endswith("dört yıldır.")
+    assert [d["degistiren_no"] for d in m26["degisiklikler"]] == ["7589"]
+    assert [(d["dipnot_no"], d["degistiren_madde"]) for d in m27["degisiklikler"]] == [(1, "61")]
+    assert "[1]" in m27["degisiklik_notu"] and "[1]" not in m26["degisiklik_notu"]
+    assert [(d["dipnot_no"], d["degistiren_madde"]) for d in m28["degisiklikler"]] == [(2, "62")]
+    assert m27["baslik"] == "İkinci görev aylığı:"
+    assert m27["ust_baslik"].startswith("BEŞİNCİ BÖLÜM")
+
+
+def test_son_paragraf_olan_degisiklik_notu_baslik_sayilmaz():
+    """İİK Geçici 20 tipi: maddenin son paragrafı olan iptal notu sonraki
+    maddenin başlığı sanılıp gövdeden kesiliyordu."""
+    metin = (
+        "MADDE 31 -\n(1) Birinci fıkra.\n"
+        "(Mülga ikinci cümle: 10/6/1994-4001/15 md.) (…)\n"
+        "(İptal ikinci fıkra: Anayasa Mahkemesinin 31/3/1987 tarihli ve E: 86/20, "
+        "K.: 87/9 sayılı kararı ile)\n"
+        "Kamu görevlileri ile ilgili davalarda yetki:\n"
+        "MADDE 32 -\n(1) Yetkili mahkeme.\n"
+    )
+    a31, a32 = lc.split_articles(metin)
+    assert a31["metin"].rstrip().endswith("sayılı kararı ile)")
+    assert {d["tur"] for d in a31["degisiklikler"]} == {"mulga", "iptal"}
+    assert a32["degisiklikler"] == []
+    assert a32["baslik"] == "Kamu görevlileri ile ilgili davalarda yetki:"
+    assert a32["ust_baslik"] == ""
+
 # ── Faz 2a: şema ve okuma yüzeyi ────────────────────────────────────────────
 
 def test_ensure_schema_degisiklik_tablosunu_ve_ust_baslik_sutununu_ekler(tmp_path):

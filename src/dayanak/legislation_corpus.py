@@ -271,6 +271,12 @@ _ENUM_RE = re.compile(r"^(?:[A-Za-zÇĞİÖŞÜçğıöşü]|[IVXivx]{1,4}|\d+)\
 def _is_heading(block: str) -> bool:
     if not block or len(block) > _HEADING_MAX or _HEADING_SKIP_RE.match(block):
         return False
+    # Maddenin son paragrafı olan değişiklik notu ("(İptal ikinci fıkra:
+    # Anayasa Mahkemesinin ... Kararı ile)") nokta ile bitmediği için sonraki
+    # maddenin başlığı sanılıyor, önceki maddenin gövdesinden kesiliyordu
+    # (4.11.2026 ölçümü: 1.579 madde; ör. İİK Geçici 20, İYUK 32).
+    if block.startswith("(") and _is_note(block):
+        return False
     # ".)" / ".”" gibi kapanışlarla biten bloklar da cümledir: 492 m.14'te
     # "(… karar verilir.)" paragrafı üst başlık sanılıyordu.
     block = block.rstrip(")]}»”’\"' ")
@@ -926,27 +932,39 @@ def split_articles(text: str) -> list[dict[str, Any]]:
         gecici = bool(_GECICI_NO_RE.match(art["number"]))
         baslik, ust = hiyerarsi.madde(run, gecici)
         runs.append(run)
-        degisiklikler = [
-            d for d in parse_degisiklik(art["text"], dipnotlar)
-            if d.get("dipnot_no") is None or d["dipnot_no"] not in atanmis_dipnot
-        ]
-        atanmis_dipnot.update(
-            d["dipnot_no"] for d in degisiklikler if d.get("dipnot_no") is not None
-        )
         out.append({
             "madde_no": art["number"],
             "sira": i + 1,
             "baslik": baslik,
             "ust_baslik": ust,
             "metin": art["raw_text"],
-            "degisiklik_notu": _degisiklik_notu(art["text"]),
-            "degisiklikler": degisiklikler,
         })
-    for i in range(len(out) - 1):
-        # Kesilecek başlıklar HAM koşudan gelir; ``ust_baslik`` artık belge boyu
-        # yığından üretiliyor ve gövdenin sonunda birebir geçmiyor.
-        kesilecek = " > ".join(runs[i + 1])
-        out[i]["metin"] = _strip_trailing_heading(out[i]["metin"], kesilecek)
+    # Değişiklik kayıtları başlık KESİLDİKTEN sonra çıkarılır. Sonraki maddenin
+    # başlığına konmuş dipnot ya da not ("İkinci görev aylığı:\n[10]\nMadde 27")
+    # önceki maddenin ham gövdesinde kalıyordu; 2659'da [10] m.26'ya bağlanıyor,
+    # m.27 hiç almıyordu. Kesilen kuyruk artık sonraki maddeye devredilir.
+    devreden = ""
+    for i, madde in enumerate(out):
+        ham = madde["metin"]
+        if i + 1 < len(out):
+            # Kesilecek başlıklar HAM koşudan gelir; ``ust_baslik`` artık belge
+            # boyu yığından üretiliyor ve gövdenin sonunda birebir geçmiyor.
+            kesik = _strip_trailing_heading(ham, " > ".join(runs[i + 1]))
+        else:
+            kesik = ham
+        kuyruk = ham[len(kesik):] if ham.startswith(kesik) else ""
+        govde = f"{devreden}\n{kesik}" if devreden.strip() else kesik
+        degisiklikler = [
+            d for d in parse_degisiklik(govde, dipnotlar)
+            if d.get("dipnot_no") is None or d["dipnot_no"] not in atanmis_dipnot
+        ]
+        atanmis_dipnot.update(
+            d["dipnot_no"] for d in degisiklikler if d.get("dipnot_no") is not None
+        )
+        madde["metin"] = kesik
+        madde["degisiklik_notu"] = _degisiklik_notu(govde)
+        madde["degisiklikler"] = degisiklikler
+        devreden = kuyruk
     return out
 
 
