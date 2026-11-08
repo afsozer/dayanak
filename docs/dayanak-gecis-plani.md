@@ -56,7 +56,7 @@ korpusun diskteki yeri (`D:\emsal-data`).
       (araç adları `mcp__dayanak__*` olur), URL aynı kalır
 - [x] Mac klasörü `~/Developer/emsal-mcp` → `~/Developer/dayanak` (venv yeniden kurulur,
       Claude proje hafıza dizini taşınır, kasaya `Projeler/dayanak` bağlanır)
-- [ ] hafıza notları ve CV/LinkedIn'deki proje adı
+- [x] hafıza notları (29 Eki 2026) ve CV (16 Eki); LinkedIn ayrıca kontrol edilmedi
 
 ## Durum (10 Eki 2026)
 
