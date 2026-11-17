@@ -19,3 +19,7 @@ set DAYANAK_YEDEK_HEDEF=kullanici@yedek-makine
 set DAYANAK_YEDEK_UZAK_DIR=D:\emsal-yedek
 REM run-vec-backup.cmd hedef dizini (bos: <DAYANAK_YEDEK_UZAK_DIR>-vec)
 set DAYANAK_VEC_YEDEK_UZAK_DIR=
+
+REM Yeniden siralayici servisi (scripts\rerank_servis.cmd, gorev EmsalRerank).
+REM Bos birakilirsa Dayanak yeniden siralama yapmaz.
+set DAYANAK_RERANK_URL=http://127.0.0.1:8791

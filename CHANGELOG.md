@@ -7,6 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- Yeniden sıralayıcı: `semantic_query` verildiğinde RRF'nin ilk 20 sonucu
+  bge-reranker-v2-m3 ile yeniden sıralanır (karar başına sorguyla en çok
+  sözcük paylaşan 3 parça). Model ayrı bir GPU servisinde çalışır
+  (`scripts/rerank_servis.py`, başlatıcı `scripts/rerank_servis.cmd`);
+  Dayanak ona `DAYANAK_RERANK_URL` ile bağlanır. 155 sorguluk kıyasta tam
+  korpusta nDCG@10 0,840'tan 0,905'e çıktı; eklenen süre p90 ~1,3 sn.
+  Servis kapalı, yavaş ya da hatalıysa sonuçlar RRF sırasıyla ve uyarıyla
+  döner, servis 60 sn denenmez. Daire/tarih filtresiyle dense devreye
+  girmediğinde yeniden sıralama da yapılmaz.
 - `search_local_corpus(semantic_query=...)`: aranan hukuki önermenin tam
   cümlesi. Verildiğinde anahtar kelimeler (`query`, BM25) ile cümle (dense
   gömme) sıra bazında birleştirilir (RRF). 155 gerçek sorguluk kıyasta

@@ -1,6 +1,6 @@
 # Dayanak
 
-> **v2.0.1** — 12 core + 36 extended MCP tools (48 total) · 152 CLI commands · 80 test files · 48 source modules
+> **v2.0.1** — 12 core + 36 extended MCP tools (48 total) · 152 CLI commands · 80 test files · 49 source modules
 >
 > [![CI](https://github.com/afsozer/dayanak/actions/workflows/ci.yml/badge.svg)](https://github.com/afsozer/dayanak/actions/workflows/ci.yml)
 > [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23594091.svg)](https://doi.org/10.5281/zenodo.23594091)

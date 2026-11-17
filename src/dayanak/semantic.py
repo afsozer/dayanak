@@ -1124,11 +1124,18 @@ def hybrid_search_rrf(
     Returns:
         Dict with ok, results (with rrf_score), method="rrf".
     """
+    from . import reranker
     from .embeddings import get_embedding_provider
 
     own_cache = cache is None
     c = cache or Cache()
     try:
+        # Yeniden sıralayıcı (ayrı GPU servisi) yalnız cümle verildiğinde ve ölçülen
+        # havuzla çalışır: RRF ilk 20, BM25 ve dense 40'ar aday (17 Kas 2026: 0,840 -> 0,905).
+        rerank_on = bool(dense_query) and bool(reranker.ayarlar()[0])
+        user_limit = limit
+        limit = max(limit, 20) if rerank_on else limit
+
         # 1. BM25 (FTS5).  Dense RRF'ye girmeyecekse iki kat derinlik gereksiz:
         # search_local her satırın tam metnini okur (11 M kararda 40 satır
         # medyan 0,9 s, p90 3,3 s; 17 Kas 2026).
@@ -1168,6 +1175,18 @@ def hybrid_search_rrf(
         if dense is None:
             dense_provider = None
 
+        warnings: list[str] = []
+        reranked = False
+        # Ölçülen yol: dense (cümle) RRF'ye girmiş olmalı ve yalnız ilk 20 sıralanır;
+        # kalanlar RRF sırasıyla arkaya eklenir (servis süresi ilk 20'yle sınırlı kalsın).
+        if rerank_on and dense is not None:
+            sirali, uyari = reranker.yeniden_sirala(c.db, dense_query or "", query, merged[:20])
+            if sirali is not None:
+                merged, reranked = sirali + merged[20:], True
+            elif uyari:
+                warnings.append(uyari)
+        merged = merged[:user_limit]
+
         for item in merged:  # yalnız dense'in bulduğu kararda künye yok
             if "esas_no" not in item:
                 _add_kunye(c.db, item)
@@ -1181,7 +1200,8 @@ def hybrid_search_rrf(
             "rrf_k": _RRF_K,
             "dense_included": dense is not None,
             "dense_provider": dense_provider,
-            "warnings": [],
+            "reranked": reranked,
+            "warnings": warnings,
             "recommended_next_steps": [],
             "version": "0.14.0",
         }

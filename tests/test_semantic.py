@@ -3140,3 +3140,158 @@ class TestRrfDenseWiring:
             assert "D0" in [r["document_id"] for r in result["results"]]
         finally:
             cache.close()
+
+
+class TestRerankService:
+    """Yeniden sıralayıcı servisi istemcisi: yalnız cümleyle, havuz 20, arızada RRF sırası."""
+
+    def _hazirla(self, tmp_path: Path, monkeypatch, ad: str) -> Cache:
+        cache = Cache(tmp_path / ad)
+        _populate_docs(cache, [
+            {**SAMPLE_DOCS[0], "document_id": f"K{i}", "title": f"Kira kararı {i}",
+             "full_text": f"Kira bedelinin tespiti davası {i}. " * 20}
+            for i in range(4)
+        ])
+        build_semantic_index(cache=cache, force_rebuild=True)
+        monkeypatch.setenv("DAYANAK_RERANK_URL", "http://127.0.0.1:9")
+        import dayanak.reranker as rr
+        import dayanak.semantic as sem
+
+        # yeniden sıralama yalnız dense RRF'ye girmişken çalışır; test DB'sinde toplu indeks yok
+        monkeypatch.setattr(sem, "_bulk_dense_provider", lambda c: "sahte")
+        monkeypatch.setattr(sem, "embedding_search", lambda **k: {"ok": True, "results": []})
+        monkeypatch.setattr(rr, "_son_hata", 0.0)
+        return cache
+
+    def test_tersine_cevirir_ve_keser(self, tmp_path: Path, monkeypatch) -> None:
+        import json as _json
+
+        import dayanak.reranker as rr
+
+        cache = self._hazirla(tmp_path, monkeypatch, "rr_ok.sqlite3")
+        gelen: list[dict] = []
+
+        class Yanit:
+            def __init__(self, n: int) -> None:
+                self.n = n
+
+            def read(self) -> bytes:
+                return _json.dumps({"scores": [float(i) for i in range(self.n)]}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a) -> None:
+                pass
+
+        def sahte(req, timeout):  # noqa: ANN001
+            body = _json.loads(req.data)
+            gelen.append(body)
+            return Yanit(len(body["passages"]))
+
+        monkeypatch.setattr(rr.urllib.request, "urlopen", sahte)
+        try:
+            duz = hybrid_search_rrf("kira", limit=50, cache=cache)
+            assert len(duz["results"]) >= 2
+            sonuc = hybrid_search_rrf("kira", limit=2, cache=cache, dense_query="Hukuki uyuşmazlık.")
+            assert sonuc["reranked"] is True
+            assert gelen and gelen[0]["query"] == "Hukuki uyuşmazlık."
+            assert len(sonuc["results"]) == 2
+            # artan puan: listenin sonundaki karar en üste çıkar
+            assert sonuc["results"][0]["document_id"] == duz["results"][-1]["document_id"]
+        finally:
+            cache.close()
+
+    def test_havuz_20_ile_sinirli(self, tmp_path: Path, monkeypatch) -> None:
+        """limit 20'den büyükken servise yalnız ilk 20 gider, kalanlar RRF sırasıyla eklenir."""
+        import json as _json
+
+        import dayanak.reranker as rr
+        import dayanak.semantic as sem
+
+        cache = self._hazirla(tmp_path, monkeypatch, "rr_havuz.sqlite3")
+        sahte_sonuc = [{"document_id": f"D{i}", "source": "bedesten", "rrf_score": 1.0 / (i + 1)} for i in range(50)]
+        monkeypatch.setattr(sem, "_rrf_fusion", lambda *a, **k: list(sahte_sonuc))
+        gelen: list[int] = []
+
+        class Yanit:
+            def __init__(self, n: int) -> None:
+                self.n = n
+
+            def read(self) -> bytes:
+                return _json.dumps({"scores": [float(i) for i in range(self.n)]}).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a) -> None:
+                pass
+
+        def sahte(req, timeout):  # noqa: ANN001
+            n = len(_json.loads(req.data)["passages"])
+            gelen.append(n)
+            return Yanit(n)
+
+        monkeypatch.setattr(rr.urllib.request, "urlopen", sahte)
+        try:
+            sonuc = hybrid_search_rrf("kira", limit=50, cache=cache, dense_query="Kira bedeli.")
+            ids = [r["document_id"] for r in sonuc["results"]]
+            assert sonuc["reranked"] is True and len(ids) == 50
+            assert gelen == [20]  # metni olmayan karar başına tek boş pasaj
+            assert ids[:20] == [f"D{i}" for i in range(19, -1, -1)]
+            assert ids[20:] == [f"D{i}" for i in range(20, 50)]
+        finally:
+            cache.close()
+
+    def test_hatadan_sonra_bekler(self, tmp_path: Path, monkeypatch) -> None:
+        import dayanak.reranker as rr
+
+        cache = self._hazirla(tmp_path, monkeypatch, "rr_bekle.sqlite3")
+        cagri: list[int] = []
+
+        def bozuk(*a, **k):  # noqa: ANN002, ANN003
+            cagri.append(1)
+            raise OSError("servis yok")
+
+        monkeypatch.setattr(rr.urllib.request, "urlopen", bozuk)
+        monkeypatch.setattr(rr, "_son_hata", 0.0)
+        try:
+            s1 = rr.yeniden_sirala(cache.db, "Kira.", "kira", [{"document_id": "K0", "source": "bedesten"}])
+            s2 = rr.yeniden_sirala(cache.db, "Kira.", "kira", [{"document_id": "K0", "source": "bedesten"}])
+            assert s1[0] is None and s2[0] is None and len(cagri) == 1
+            assert "bir süre denenmiyor" in (s2[1] or "")
+        finally:
+            monkeypatch.setattr(rr, "_son_hata", 0.0)
+            cache.close()
+
+    def test_cumle_yoksa_cagirmaz(self, tmp_path: Path, monkeypatch) -> None:
+        import dayanak.reranker as rr
+
+        cache = self._hazirla(tmp_path, monkeypatch, "rr_yok.sqlite3")
+        monkeypatch.setattr(rr.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
+        try:
+            sonuc = hybrid_search_rrf("sözleşme", limit=5, cache=cache)
+            assert sonuc["reranked"] is False
+        finally:
+            cache.close()
+
+    def test_servis_kapaliysa_rrf_sirasi(self, tmp_path: Path, monkeypatch) -> None:
+        import dayanak.reranker as rr
+
+        cache = self._hazirla(tmp_path, monkeypatch, "rr_kapali.sqlite3")
+        monkeypatch.setenv("DAYANAK_RERANK_TIMEOUT", "0.5")
+        monkeypatch.setattr(rr, "_son_hata", 0.0)
+        try:
+            sonuc = hybrid_search_rrf("sözleşme", limit=5, cache=cache, dense_query="Sözleşme ihlali.")
+            assert sonuc["reranked"] is False
+            assert any("Yeniden sıralayıcı" in w for w in sonuc["warnings"])
+            assert len(sonuc["results"]) > 0
+        finally:
+            cache.close()
+
+    def test_parca_secimi(self) -> None:
+        from dayanak.reranker import _katla, parcalar
+
+        metin = ("Kira bedeli tespiti emsal kira. " * 60) + ("\n\n" + "Tahliye taahhüdü geçersizdir. " * 60)
+        secilen = parcalar(metin, _katla("tahliye taahhüdü"), 1)
+        assert len(secilen) == 1 and "Tahliye" in secilen[0]
