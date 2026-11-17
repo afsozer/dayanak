@@ -1134,7 +1134,7 @@ def semantic_hybrid(
     """FTS5 BM25 + TF-IDF cosine hybrid search (RRF opsiyonuyla)."""
     if rrf:
         from .semantic import hybrid_search_rrf
-        result = hybrid_search_rrf(query=query, limit=limit, include_dense=dense)
+        result = hybrid_search_rrf(query=query, limit=limit, include_dense=dense or None)
     else:
         from .semantic import hybrid_search as _hybrid_search
         result = _hybrid_search(query=query, limit=limit, hybrid_weight=weight, dense_weight=w_dense, rerank=rerank)

@@ -950,23 +950,9 @@ def _fts5_search(
     c = cache or Cache()
     try:
         raw = c.search_local(query=query, limit=limit, **(filters or {}))
-        # Convert search_local format to standard result dict
-        return [
-            {
-                "document_id": r.get("document_id", ""),
-                "source": r.get("source", ""),
-                "title": r.get("title", ""),
-                "court": r.get("court"),
-                "chamber": r.get("chamber"),
-                "decision_date": r.get("decision_date"),
-                "score": 0.0,  # RRF fuses on rank, not score
-                "content_status": r.get("content_status", ""),
-                "quote_usable": r.get("quote_usable", False),
-                "draft_usable": r.get("draft_usable", False),
-                "snippet": r.get("snippet", ""),
-            }
-            for r in raw
-        ]
+        # search_local satırı olduğu gibi kalır (künye: esas_no, karar_no,
+        # source_url); RRF sıraya bakar, skor kullanılmaz.
+        return [{**r, "score": 0.0} for r in raw]
     finally:
         if own_cache:
             c.close()
@@ -1070,12 +1056,51 @@ def _rrf_fusion(
     return merged
 
 
+#: Dense yolun sonuçlarında yalnız bu alanlar var; başka filtre (daire, tarih,
+#: esas no...) dense sonuçlarını ya hiç süzmez ya da hepsini düşürür.
+_DENSE_FILTERS = {"source", "content_status"}
+
+
+def _dense_can_filter(filters: dict[str, Any] | None) -> bool:
+    return not {k for k, v in (filters or {}).items() if v is not None} - _DENSE_FILTERS
+
+
+def _add_kunye(db: sqlite3.Connection, item: dict[str, Any]) -> None:
+    """Sonuca künye alanlarını ekle (birincil anahtarla tek satır okuma)."""
+    try:
+        row = db.execute(
+            "SELECT court, chamber, decision_date, esas_no, karar_no, source_url, "
+            "quote_usable, draft_usable FROM documents_v2 WHERE document_id=? AND source=?",
+            (item.get("document_id"), item.get("source")),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return
+    if row:
+        for k in row.keys():
+            v = bool(row[k]) if k.endswith("_usable") else row[k]
+            item.setdefault(k, v)
+
+
+def _bulk_dense_provider(cache: Cache) -> str | None:
+    """Toplu dense indeksi olan sağlayıcı; yoksa None."""
+    try:
+        from .bulk_index import bulk_index_exists
+        from .embeddings import get_embedding_provider
+        prov = get_embedding_provider(None)
+        if prov is not None and bulk_index_exists(Path(cache.path), prov.id):
+            return str(prov.id)
+    except Exception:
+        pass
+    return None
+
+
 def hybrid_search_rrf(
     query: str,
     limit: int = 10,
     cache: Cache | None = None,
     filters: dict[str, Any] | None = None,
-    include_dense: bool = False,
+    include_dense: bool | None = None,
+    dense_query: str | None = None,
 ) -> dict[str, Any]:
     """Hybrid search using Reciprocal Rank Fusion (RRF) instead of weighted linear fusion.
 
@@ -1088,7 +1113,13 @@ def hybrid_search_rrf(
         limit: Max results.
         cache: Optional Cache.
         filters: Optional metadata filters.
-        include_dense: Whether to include dense embeddings in fusion.
+        include_dense: True = dense her zaman RRF'ye girer, False = hiç.
+            None (varsayılan): toplu dense indeks varsa ve filtreler dense
+            yolun uygulayabildiği türdense (bkz. ``_DENSE_FILTERS``) dense,
+            ``dense_query`` verildiğinde RRF'ye girer; verilmediğinde yalnız
+            BM25'in dolduramadığı sayfayı tamamlar.
+        dense_query: Dense tarafa giden metin: aranan hukuki önermenin tam
+            cümlesi.  BM25 her zaman ``query`` (anahtar kelimeler) ile arar.
 
     Returns:
         Dict with ok, results (with rrf_score), method="rrf".
@@ -1098,24 +1129,48 @@ def hybrid_search_rrf(
     own_cache = cache is None
     c = cache or Cache()
     try:
-        # 1. BM25 (FTS5)
-        bm25 = _fts5_search(query, limit=limit * 2, cache=c, filters=filters)
+        # 1. BM25 (FTS5).  Dense RRF'ye girmeyecekse iki kat derinlik gereksiz:
+        # search_local her satırın tam metnini okur (11 M kararda 40 satır
+        # medyan 0,9 s, p90 3,3 s; 17 Kas 2026).
+        fuse = bool(dense_query) or include_dense is True
+        bm25 = _fts5_search(query, limit=limit * 2 if fuse else limit, cache=c, filters=filters)
 
         # 2. TF-IDF cosine
         tfidf = _tfidf_search(query, limit=limit * 2, cache=c, filters=filters)
 
-        # 3. Dense (optional)
-        dense: list[dict[str, Any]] | None = None
+        # 3. Dense.  Ölçüm (17 Kas 2026, 155 gerçek sorgu, 11 M karar, nDCG@10):
+        # dense'e cümle giderse RRF BM25'e +0,086; aynı anahtar kelimelerle
+        # RRF'nin kazancı yok (+0,009), ama BM25'in dolduramadığı sayfayı dense
+        # ile tamamlamak +0,030 ve hiçbir sorguyu kötüleştirmiyor.
         dense_provider = None
-        if include_dense:
+        if include_dense is None:
+            dense_provider = _bulk_dense_provider(c) if _dense_can_filter(filters) else None
+        elif include_dense:
             prov = get_embedding_provider()
-            if prov is not None:
-                dr = embedding_search(query=query, limit=limit * 2, cache=c, filters=filters)
-                if dr.get("ok"):
-                    dense = dr.get("results", [])
-                    dense_provider = prov.id
+            dense_provider = prov.id if prov is not None else None
 
+        def _dense(text: str) -> list[dict[str, Any]] | None:
+            dr = embedding_search(
+                query=text, limit=limit * 2, provider=dense_provider, cache=c, filters=filters,
+            )
+            return dr.get("results", []) if dr.get("ok") else None
+
+        dense = _dense(dense_query or query) if dense_provider and fuse else None
         merged = _rrf_fusion(bm25, tfidf, dense, limit)
+        if dense_provider and not fuse and len(merged) < limit:
+            dense = _dense(query)
+            seen = {(m["document_id"], m["source"]) for m in merged}
+            for d in dense or []:
+                if len(merged) >= limit:
+                    break
+                if (d["document_id"], d["source"]) not in seen:
+                    merged.append({**d, "rrf_score": 0.0})
+        if dense is None:
+            dense_provider = None
+
+        for item in merged:  # yalnız dense'in bulduğu kararda künye yok
+            if "esas_no" not in item:
+                _add_kunye(c.db, item)
 
         return {
             "ok": True,
@@ -1124,7 +1179,7 @@ def hybrid_search_rrf(
             "total_matches": len(merged),
             "method": "rrf",
             "rrf_k": _RRF_K,
-            "dense_included": include_dense,
+            "dense_included": dense is not None,
             "dense_provider": dense_provider,
             "warnings": [],
             "recommended_next_steps": [],

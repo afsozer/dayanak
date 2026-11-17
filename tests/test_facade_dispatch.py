@@ -306,3 +306,21 @@ def test_list_sources_legislation_types() -> None:
     result = tools()["list_sources"](detail="legislation_types")
     assert result["ok"] is True
     assert len(result["types"]) > 0
+
+
+# ── varsayılan mod: BM25 + dense RRF (17 Kas 2026 kıyas ölçümü) ─────────────
+
+
+def test_search_local_corpus_defaults_to_rrf(monkeypatch) -> None:
+    _spy(monkeypatch, "dayanak.semantic", "hybrid_search_rrf", "rrf")
+    result = tools()["search_local_corpus"](
+        query="kıdem", semantic_query="Kıdem tazminatı zamanaşımı on yıldır.",
+    )
+    assert result["called"] == "rrf"
+    assert result["kwargs"]["dense_query"] == "Kıdem tazminatı zamanaşımı on yıldır."
+
+
+def test_search_local_corpus_date_sort_stays_lexical(monkeypatch) -> None:
+    _spy(monkeypatch, "dayanak.semantic", "hybrid_search_rrf", "rrf")
+    result = tools()["search_local_corpus"](query="kıdem", sort="decision_date_desc")
+    assert result["method"] == "bm25_fts5"

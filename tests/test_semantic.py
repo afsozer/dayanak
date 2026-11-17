@@ -3054,3 +3054,89 @@ class TestBestDenseProvider:
             assert best_dense_provider(cache=cache) is None
         finally:
             cache.close()
+
+
+class TestRrfDenseWiring:
+    """BM25 + dense RRF: filtre kuralı, künye ve başlık parçası."""
+
+    def test_dense_can_filter(self) -> None:
+        from dayanak.semantic import _dense_can_filter
+
+        assert _dense_can_filter(None)
+        assert _dense_can_filter({"source": "bedesten", "chamber": None})
+        assert not _dense_can_filter({"chamber": "9. Hukuk Dairesi"})
+        assert not _dense_can_filter({"esas_no": "2020/1"})
+
+    def test_no_bulk_index_means_no_dense(self, tmp_path: Path) -> None:
+        cache = Cache(tmp_path / "rrf_auto.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        try:
+            result = hybrid_search_rrf("sözleşme", limit=5, cache=cache)
+            assert result["dense_included"] is False
+            assert result["dense_provider"] is None
+            assert all("esas_no" in r for r in result["results"])
+        finally:
+            cache.close()
+
+    def _fake_dense(self, monkeypatch, texts: list[str]) -> None:
+        import dayanak.semantic as sem
+
+        monkeypatch.setattr(sem, "_bulk_dense_provider", lambda cache: "sahte")
+
+        def fake(query, limit, provider, cache, filters):  # noqa: ANN001
+            texts.append(query)
+            return {"ok": True, "results": [
+                {"document_id": f"D{i}", "source": "bedesten", "title": "", "score": 0.9}
+                for i in range(3)
+            ]}
+
+        monkeypatch.setattr(sem, "embedding_search", fake)
+
+    def test_dense_fills_short_bm25_page(self, tmp_path: Path, monkeypatch) -> None:
+        """Cümle yokken dense RRF'ye girmez, yalnız kalan yerleri doldurur."""
+        cache = Cache(tmp_path / "rrf_fill.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        texts: list[str] = []
+        self._fake_dense(monkeypatch, texts)
+        try:
+            plain = hybrid_search_rrf("sözleşme", limit=50, cache=cache, include_dense=False)
+            result = hybrid_search_rrf("sözleşme", limit=50, cache=cache)
+            ids = [r["document_id"] for r in result["results"]]
+            n = len(plain["results"])
+            assert ids[:n] == [r["document_id"] for r in plain["results"]]
+            assert ids[n:] == ["D0", "D1", "D2"]
+            assert texts == ["sözleşme"]
+            assert result["dense_included"] is True
+        finally:
+            cache.close()
+
+    def test_full_bm25_page_skips_dense(self, tmp_path: Path, monkeypatch) -> None:
+        cache = Cache(tmp_path / "rrf_full.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        texts: list[str] = []
+        self._fake_dense(monkeypatch, texts)
+        try:
+            result = hybrid_search_rrf("sözleşme", limit=1, cache=cache)
+            assert texts == []
+            assert result["dense_included"] is False
+        finally:
+            cache.close()
+
+    def test_dense_query_is_fused(self, tmp_path: Path, monkeypatch) -> None:
+        """Cümle verilince dense o cümleyle arar ve sıraya RRF ile girer."""
+        cache = Cache(tmp_path / "rrf_cumle.sqlite3")
+        _populate_docs(cache)
+        build_semantic_index(cache=cache, force_rebuild=True)
+        texts: list[str] = []
+        self._fake_dense(monkeypatch, texts)
+        try:
+            result = hybrid_search_rrf(
+                "sözleşme", limit=2, cache=cache, dense_query="Sözleşme ihlali tazminat doğurur.",
+            )
+            assert texts == ["Sözleşme ihlali tazminat doğurur."]
+            assert "D0" in [r["document_id"] for r in result["results"]]
+        finally:
+            cache.close()

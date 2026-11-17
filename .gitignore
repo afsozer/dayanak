@@ -44,3 +44,7 @@ scripts/yerel-ayar.cmd
 # Ajan talimat dosyalari yerelde kalir
 AGENTS.md
 CLAUDE.md
+
+# Yerel kiyas seti, arama gecmisi ve olcum raporu (git disi)
+eval/yerel/
+docs/arama-kiyas-*.md

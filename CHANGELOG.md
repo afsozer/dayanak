@@ -7,6 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- `search_local_corpus(semantic_query=...)`: aranan hukuki önermenin tam
+  cümlesi. Verildiğinde anahtar kelimeler (`query`, BM25) ile cümle (dense
+  gömme) sıra bazında birleştirilir (RRF). 155 gerçek sorguluk kıyasta
+  nDCG@10 yalnız anahtar kelimeyle 0,62, cümleyle 0,71. Ölçüm betiği
+  `scripts/arama_kiyas.py`; kıyas seti repoda değildir.
+- `search_local_corpus` varsayılan modu `lexical` yerine `rrf`. Cümle
+  verilmezse sıralama BM25 sıralamasıdır; BM25 sayfayı dolduramazsa (ör.
+  kelimelerin hepsini içeren karar yoksa) kalan yerler dense sonuçlarla
+  tamamlanır. Daire, tarih, esas no gibi filtre varken dense devreye
+  girmez. Tarihe göre sıralama sözlüksel yolda kalır. `rrf` sonuçları artık
+  künye alanlarını (esas no, karar no, kaynak bağlantısı) taşır.
 - Çekirdek araç `mevzuat_degisiklik_haritasi(kanun_no)`: bir değişiklik
   kanununun hangi mevzuatın hangi maddelerini değiştirdiğini temel
   kanunlardaki değişiklik kayıtlarından (`degistiren_no`) çıkarır; her madde
