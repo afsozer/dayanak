@@ -134,7 +134,7 @@ async def run(nolar: list[str], liste: bool, limit: int | None, sleep: float) ->
     t0 = time.time()
     for i, k in enumerate(hedef, 1):
         try:
-            doc = await _with_backoff(lambda: client.get_document(k["item_id"]),
+            doc = await _with_backoff(lambda: client.get_document(k["item_id"], tarih=k["tarih"]),
                                       f"RG {k['item_id']}")
         except Exception as exc:  # ağ dışı hata: kaydet, sürdür
             hata += 1

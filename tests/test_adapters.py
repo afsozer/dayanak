@@ -1348,6 +1348,21 @@ class TestResmiGazeteSearch:
         assert sp.total == 0
         assert any("bulunamadı" in w for w in sp.warnings)
 
+    def test_issue_date_overrides_mismatched_item_id(self):
+        """Eski kalemlerde dosya adı yayım tarihi değil ('28052005-1' = 28.05.2005);
+        dizinin tarihi verilince klasör ondan kurulur (önceden /eskiler/2805/20/ -> 404)."""
+        from dayanak.sources.resmigazete import ResmiGazeteClient
+        mc = self._patched([_rg_resp("<html><body><p>Bankalar Kanununda Değişiklik "
+                                     "Yapılmasına Dair Kanun</p><p>MADDE 1</p></body></html>")])
+        try:
+            doc = asyncio.run(ResmiGazeteClient().get_document("28052005-1", tarih="2005-05-28"))
+            url = mc.target.client.return_value.__aenter__.return_value.get.call_args[0][0]
+        finally:
+            mc.stop()
+        assert url.endswith("/eskiler/2005/05/28052005-1.htm"), url
+        assert doc.content_status.value == "html_markdown"
+        assert doc.decision_date == "2005-05-28"
+
     def test_bad_document_id_explains_the_format(self):
         """A full URL was the first thing tried by hand; the error must say
         what the id should look like instead of a bare 'unavailable'."""

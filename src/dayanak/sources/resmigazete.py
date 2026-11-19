@@ -387,6 +387,13 @@ class ResmiGazeteClient(SourceClient):
                 "örn. '20260731-1'. Kimlikleri search() ile alın."
             ])
         day, item_id = parsed
+        # Sitedeki ~35 eski kalemin dosya adı yayım tarihiyle uyuşmuyor
+        # ('28052005-1' = GGAAYYYY, '20200622m1-1' = 2002 sayısı); klasör ve
+        # tarih o zaman kimlikten çıkmaz. Yayım tarihini bilen çağıran (RG başlık
+        # dizini) ``tarih='YYYY-MM-DD'`` verir.
+        tarih = str(kwargs.get("tarih") or "")
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", tarih):
+            day = tarih.replace("-", "")
 
         warnings: list[str] = []
         async with client() as c:
