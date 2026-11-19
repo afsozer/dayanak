@@ -1,10 +1,10 @@
 """Aylık birleştirme, 1. aşama (torch/CUDA venv'i: <bench-dizini>/venv).
 
 Günlük crawl'ın delta tablosunda (embedding_vectors, belge başına tek vektör)
-biriken kararları toplu indeksle aynı yöntemle — parçalı, multilingual-e5-small
+biriken kararları toplu indeksle aynı yöntemle — parçalı, sağlayıcının modeliyle
 fp16 — gömer ve toplu indekse eklenecek bir sidecar yazar:
 
-    <vec_dir>\delta-YYYYMMDD.vectors.npy    float16 (N, 384)
+    <vec_dir>\delta-YYYYMMDD.vectors.npy    float16 (N, boyut)
     <vec_dir>\delta-YYYYMMDD.keys.parquet   document_id, source, chunk_index, text_len
     <vec_dir>\delta-YYYYMMDD.manifest.json  gömülen (document_id, source) listesi
 
@@ -30,20 +30,27 @@ import _yollar  # noqa: E402
 sys.path.insert(0, str(_yollar.SRC))
 from dayanak.chunking import CHUNKING_VERSION, chunk_text  # noqa: E402  (bağımsız modül, torch venv'inde de çalışır)
 
-MODEL = "intfloat/multilingual-e5-small"
+# sağlayıcı -> (model, belge öneki, en çok token); toplu indeksin gömüldüğü ayarlar
+MODELLER = {
+    "fastembed-multilingual-e5": ("intfloat/multilingual-e5-small", "passage: ", 512),
+    "onnx-bge-m3": ("BAAI/bge-m3", "", 1024),
+}
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(_yollar.CACHE_PATH))
     ap.add_argument("--vec-dir", default=str(_yollar.VEC_DIR))
-    ap.add_argument("--provider", default="fastembed-multilingual-e5")
+    ap.add_argument("--provider", default=os.environ.get("DAYANAK_EMBEDDING_PROVIDER", "fastembed-multilingual-e5"))
     ap.add_argument("--name", default=time.strftime("delta-%Y%m%d"))
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--model-cache", default=str(_yollar.TORCH_MODEL_CACHE))
     ap.add_argument("--batch", type=int, default=128)
     ap.add_argument("--limit", type=int, default=0)
     args = ap.parse_args()
+    if args.provider not in MODELLER:
+        print(f"bilinmeyen sağlayıcı: {args.provider}"); sys.exit(2)
+    MODEL, ONEK, MAX_TOKEN = MODELLER[args.provider]
 
     vec_dir = Path(args.vec_dir)
     out_v = vec_dir / f"{args.name}.vectors.npy"
@@ -107,7 +114,7 @@ def main() -> None:
     from sentence_transformers import SentenceTransformer
     model = SentenceTransformer(MODEL, device=args.device, cache_folder=args.model_cache,
                                 model_kwargs={"torch_dtype": torch.float16})
-    model.max_seq_length = 512
+    model.max_seq_length = MAX_TOKEN
 
     # Akışlı: metinler tek tek okunur, parçalar 8k'lık bloklarla gömülür; tek
     # belge 2 MB'ı aşarsa atlanır (bozuk/çöp metin, MemoryError'a yol açıyordu).
@@ -134,7 +141,7 @@ def main() -> None:
             continue
         manifest.append([r["document_id"], r["source"]])
         for i, ch in enumerate(chunk_text(text, version=chunk_ver)):
-            pending.append("passage: " + ch)
+            pending.append(ONEK + ch)
             ids.append(r["document_id"]); srcs.append(r["source"]); cix.append(i); tlen.append(len(text))
         if len(pending) >= 8192:
             flush()

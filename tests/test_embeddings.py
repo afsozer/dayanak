@@ -321,13 +321,14 @@ class TestListEmbeddingProviders:
     """Tests for list_embedding_providers()."""
 
     def test_returns_all_providers(self) -> None:
-        """Returns metadata for all known providers (3: hash + 2 fastembed)."""
+        """Returns metadata for all known providers (4: hash + 2 fastembed + bge-m3 ONNX)."""
         providers = list_embedding_providers()
-        assert len(providers) == 3
+        assert len(providers) == 4
         ids = {p["id"] for p in providers}
         assert "local-hash-v1" in ids
         assert "fastembed-minilm-l6-v2" in ids
         assert "fastembed-multilingual-e5" in ids
+        assert "onnx-bge-m3" in ids
 
     def test_local_hash_available(self) -> None:
         """local-hash-v1 is always available."""
@@ -1310,3 +1311,61 @@ class TestHeuristicRerank:
         result = heuristic_rerank(candidates)
         for r in result["results"]:
             assert "heuristic_score" in r
+
+class TestOnnxBgeM3Provider:
+    """bge-m3 ONNX sağlayıcısı: kayıt, model dizini, CLS + normalize (model dosyası olmadan)."""
+
+    def test_factory_kaydi_ve_tembel_yukleme(self, monkeypatch, tmp_path) -> None:
+        from dayanak import embeddings as e
+
+        monkeypatch.setenv("DAYANAK_BGE_M3_DIR", str(tmp_path / "bge"))
+        monkeypatch.setattr(e, "_PROVIDER_CACHE", {})
+        p = e.get_embedding_provider("onnx-bge-m3")
+        assert isinstance(p, e.OnnxBgeM3Provider)
+        assert p.id == "onnx-bge-m3" and p.dimensions == 1024
+        assert p._session is None  # oluşturmak modeli yüklemez
+        assert p._dir == str(tmp_path / "bge")
+        assert isinstance(e.get_embedding_provider("bge-m3"), e.OnnxBgeM3Provider)
+
+    def test_model_dizini_onbellegin_yaninda(self, monkeypatch, tmp_path) -> None:
+        from dayanak.embeddings import OnnxBgeM3Provider
+
+        monkeypatch.delenv("DAYANAK_BGE_M3_DIR", raising=False)
+        p = OnnxBgeM3Provider(cache_dir=str(tmp_path / "models" / "fastembed"))
+        assert p._dir == str(tmp_path / "models" / "bge-m3-onnx")
+
+    def test_cls_ve_normalize(self) -> None:
+        np = pytest.importorskip("numpy")
+        from types import SimpleNamespace
+
+        from dayanak.embeddings import OnnxBgeM3Provider
+
+        class Tok:
+            def __init__(self) -> None:
+                self.maks = None
+
+            def enable_truncation(self, n: int) -> None:
+                self.maks = n
+
+            def enable_padding(self) -> None:
+                pass
+
+            def encode_batch(self, texts):  # noqa: ANN001
+                return [SimpleNamespace(ids=[0, 5, 6], attention_mask=[1, 1, 1]) for _ in texts]
+
+        class Oturum:
+            def run(self, _, feed):  # noqa: ANN001
+                n = feed["input_ids"].shape[0]
+                out = np.zeros((n, 3, 1024), dtype=np.float32)
+                out[:, 0, 0] = 3.0
+                out[:, 0, 1] = 4.0  # CLS = (3, 4, 0, ...) -> normalize (0,6, 0,8)
+                out[:, 1:, 2] = 100.0  # CLS dışı tokenler kullanılmamalı
+                return [out]
+
+        p = OnnxBgeM3Provider(cache_dir=None)
+        p._session, p._tok, p._names = Oturum(), Tok(), {"input_ids", "attention_mask"}
+        q = p.embed_query("kira")
+        assert len(q) == 1024 and abs(q[0] - 0.6) < 1e-6 and abs(q[1] - 0.8) < 1e-6 and q[2] == 0.0
+        assert p._tok.maks == 512
+        d = p.embed_documents_batch(["a", "b"])
+        assert len(d) == 2 and p._tok.maks == 1024

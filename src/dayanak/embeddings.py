@@ -260,6 +260,101 @@ class FastEmbedMultilingualProvider(FastEmbedProvider):
         return self.embed_batch(prefixed)
 
 
+# ── bge-m3 (ONNX, CPU): sorgu tarafı, torch'suz ──────────────────────────
+
+class OnnxBgeM3Provider(EmbeddingProvider):
+    """BAAI/bge-m3 dense, nicemlemesiz fp32 ONNX (Xenova dışa aktarımı), CLS havuzlama.
+
+    Toplu belge gömmesi GPU'da sentence-transformers ile yapılır (aynı model, aynı
+    ayar: önek yok, en çok 1.024 token, normalize); bu sağlayıcı canlı sunucuda
+    sorgu gömmek içindir (i7-12700H dizüstü CPU'da medyan 42 ms, 18 Kas 2026). Belge
+    gömmesi de yapabilir ama CPU'da yavaştır. int8 dışa aktarım kullanılmaz:
+    tam modelle kosinüs medyanı 0,990'da kalıyor.
+
+    Model dizini: ``DAYANAK_BGE_M3_DIR`` ya da embedding önbelleğinin yanındaki
+    ``bge-m3-onnx``; dosyalar yoksa ilk kullanımda Hugging Face'ten indirilir.
+    ID: onnx-bge-m3, Dims: 1024
+    """
+
+    id = "onnx-bge-m3"
+    dimensions = 1024
+    _REPO = "Xenova/bge-m3"
+    _QUERY_MAX_TOKENS = 512
+    _DOC_MAX_TOKENS = 1024
+
+    def __init__(self, cache_dir: str | None = None) -> None:
+        env = os.environ.get("DAYANAK_BGE_M3_DIR", "").strip()
+        if env:
+            self._dir = os.path.expanduser(env)
+        elif cache_dir:
+            self._dir = os.path.join(os.path.dirname(os.path.abspath(cache_dir)), "bge-m3-onnx")
+        else:
+            self._dir = os.path.join(os.path.expanduser("~"), ".dayanak", "models", "bge-m3-onnx")
+        self._session: Any = None
+        self._tok: Any = None
+        self._lock = threading.Lock()
+
+    def _load(self) -> None:
+        if self._session is not None:
+            return
+        try:
+            import onnxruntime as ort  # type: ignore[import-untyped]
+            from tokenizers import Tokenizer  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise RuntimeError("onnxruntime/tokenizers yok (pip install dayanak[embeddings])") from exc
+        model = os.path.join(self._dir, "onnx", "model.onnx")
+        tok = os.path.join(self._dir, "tokenizer.json")
+        if not (os.path.exists(model) and os.path.exists(model + "_data") and os.path.exists(tok)):
+            try:
+                from huggingface_hub import hf_hub_download  # type: ignore[import-untyped]
+            except ImportError as exc:
+                raise RuntimeError(f"bge-m3 modeli yok: {self._dir}") from exc
+            for f in ("onnx/model.onnx", "onnx/model.onnx_data", "tokenizer.json"):
+                hf_hub_download(self._REPO, f, local_dir=self._dir)
+        # İş parçacığı sayısı elle sınırlanmaz: i7-12700H'de 2-8 iş parçacığı 200-580 ms,
+        # varsayılan 42 ms (18 Kas 2026 ölçümü).
+        self._session = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
+        self._names = {i.name for i in self._session.get_inputs()}
+        self._tok = Tokenizer.from_file(tok)
+
+    def _embed(self, texts: list[str], max_tokens: int) -> list[list[float]]:
+        import numpy as np
+
+        self._load()
+        with self._lock:  # tokenizer ayarı paylaşılan durum
+            self._tok.enable_truncation(max_tokens)
+            self._tok.enable_padding()
+            enc = self._tok.encode_batch([" ".join(t.split()) or " " for t in texts])
+        ids = np.array([e.ids for e in enc], dtype=np.int64)
+        feed = {"input_ids": ids, "attention_mask": np.array([e.attention_mask for e in enc], dtype=np.int64)}
+        if "token_type_ids" in self._names:
+            feed["token_type_ids"] = np.zeros_like(ids)
+        cls = self._session.run(None, feed)[0][:, 0]
+        cls = cls / np.linalg.norm(cls, axis=1, keepdims=True)
+        return [v.astype(float).tolist() for v in cls]
+
+    def embed_text(self, text: str) -> list[float]:
+        return self._embed([text], self._DOC_MAX_TOKENS)[0]
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        out: list[list[float]] = []
+        for i in range(0, len(texts), 8):
+            out += self._embed(texts[i:i + 8], self._DOC_MAX_TOKENS)
+        return out
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed([text], self._QUERY_MAX_TOKENS)[0]
+
+    def embed_document(self, text: str) -> list[float]:
+        return self.embed_text(text)
+
+    def embed_documents_batch(self, texts: list[str]) -> list[list[float]]:
+        return self.embed_batch(texts)
+
+    def embed_queries_batch(self, texts: list[str]) -> list[list[float]]:
+        return self._embed(texts, self._QUERY_MAX_TOKENS)
+
+
 # ---------------------------------------------------------------------------
 # Provider Factory
 # ---------------------------------------------------------------------------
@@ -332,6 +427,17 @@ def get_embedding_provider(
                 return None
             return LocalHashProvider()
 
+    if resolved in ("onnx-bge-m3", "bge-m3"):
+        try:
+            from .config import config
+
+            cache_dir = str(config.embedding_cache_dir) if config.embedding_cache_dir else None
+            return _cached_provider(OnnxBgeM3Provider, cache_dir)
+        except RuntimeError:
+            if strict:
+                return None
+            return LocalHashProvider()
+
     # ── Unknown provider ────────────────────────────────────────
     if strict:
         return None
@@ -369,6 +475,17 @@ def list_embedding_providers() -> list[dict]:
             "needs_download": True,
             "model": "sentence-transformers/all-MiniLM-L6-v2",
             "languages": ["en"],
+        },
+        {
+            "id": "onnx-bge-m3",
+            "dimensions": 1024,
+            "label": "bge-m3 (ONNX fp32, CPU sorgu)",
+            "description": "BAAI/bge-m3 dense; toplu belge gömmesi GPU'da, sorgu canlıda CPU'da. Türkçe içtihatta e5-small'dan iyi (docs: aşama 1 kıyası).",
+            "status": "available" if fastembed_available else "unavailable",
+            "is_default": False,
+            "needs_download": True,
+            "model": "BAAI/bge-m3",
+            "languages": ["tr", "en", "+100 more"],
         },
         {
             "id": "fastembed-multilingual-e5",

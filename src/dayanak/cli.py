@@ -1176,7 +1176,8 @@ def semantic_embed_index(
 @semantic_app.command("build-matrix")
 def semantic_build_matrix(
     provider: str = typer.Option(
-        "fastembed-multilingual-e5", help="Vektörlerin provider_id değeri"
+        "fastembed-multilingual-e5", envvar="DAYANAK_EMBEDDING_PROVIDER",
+        help="Vektörlerin provider_id değeri"
     ),
     force: bool = typer.Option(False, "--force", help="Güncel olsa da yeniden kur"),
     json_out: bool = typer.Option(False, "--json"),
@@ -1205,7 +1206,8 @@ def semantic_bulk_build(
         ..., help="embed_parquet_worker.py çıktı dizini (*.vectors.npy + *.keys.parquet)"
     ),
     provider: str = typer.Option(
-        "fastembed-multilingual-e5", help="Sorgu tarafında kullanılacak provider_id"
+        "fastembed-multilingual-e5", envvar="DAYANAK_EMBEDDING_PROVIDER",
+        help="Sorgu tarafında kullanılacak provider_id"
     ),
     nlist: int = typer.Option(16384, help="IVF hücre sayısı"),
     pq_m: int = typer.Option(64, help="PQ alt-vektör sayısı (bayt/vektör)"),
@@ -1238,7 +1240,7 @@ def semantic_bulk_build(
 def semantic_bulk_append(
     vec_dir: Path = typer.Argument(..., help="sidecar dizini"),
     name: str = typer.Argument(..., help="<name>.vectors.npy + <name>.keys.parquet"),
-    provider: str = typer.Option("fastembed-multilingual-e5"),
+    provider: str = typer.Option("fastembed-multilingual-e5", envvar="DAYANAK_EMBEDDING_PROVIDER"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Mevcut toplu FAISS indeksine yeni bir sidecar ekle (aylık birleştirme)."""
@@ -1257,7 +1259,7 @@ def semantic_bulk_append(
 
 @semantic_app.command("bulk-status")
 def semantic_bulk_status(
-    provider: str = typer.Option("fastembed-multilingual-e5"),
+    provider: str = typer.Option("fastembed-multilingual-e5", envvar="DAYANAK_EMBEDDING_PROVIDER"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Toplu FAISS indeksi var mı, kaç vektör, refine için vektör dosyaları bulunuyor mu?"""
@@ -1283,7 +1285,7 @@ def semantic_bulk_status(
 
 @semantic_app.command("matrix-status")
 def semantic_matrix_status(
-    provider: str = typer.Option("fastembed-multilingual-e5"),
+    provider: str = typer.Option("fastembed-multilingual-e5", envvar="DAYANAK_EMBEDDING_PROVIDER"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """Hızlı arama matrisi var mı, veritabanıyla uyumlu mu?"""

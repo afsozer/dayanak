@@ -212,3 +212,21 @@ def test_smoke_test_offline():
     assert len(result["tests"]) > 0
     for test in result["tests"]:
         assert test["ok"] is True
+
+
+def test_cli_provider_defaults_follow_env(monkeypatch):
+    """Toplu indeks ve matris komutları sağlayıcıyı DAYANAK_EMBEDDING_PROVIDER'dan alır
+    (bge-m3'e geçişte aylık birleştirme e5 indeksine 1024 boyutlu vektör eklemesin)."""
+    from typer.testing import CliRunner
+
+    from dayanak import bulk_index
+    from dayanak.cli import app
+
+    seen = []
+    monkeypatch.setattr(bulk_index, "bulk_index_status",
+                        lambda db_path, provider_id: seen.append(provider_id) or {"exists": False})
+    monkeypatch.setenv("DAYANAK_EMBEDDING_PROVIDER", "onnx-bge-m3")
+    CliRunner().invoke(app, ["semantic", "bulk-status", "--json"])
+    monkeypatch.delenv("DAYANAK_EMBEDDING_PROVIDER")
+    CliRunner().invoke(app, ["semantic", "bulk-status", "--json"])
+    assert seen == ["onnx-bge-m3", "fastembed-multilingual-e5"]

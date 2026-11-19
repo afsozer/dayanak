@@ -225,7 +225,7 @@ def build_bulk_index(
         "files": [v.name for v, _ in files],
         "built_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "elapsed_s": round(time.time() - t0, 1),
-        "model": "intfloat/multilingual-e5-small", "chunk_size": 1600, "overlap": 200,
+        "model": _model_of(provider_id), "chunk_size": 1600, "overlap": 200,
         # chunk_index degerleri bu surumun parcalayicisina gore anlamli
         # (snippet icin bulk_search._best_chunk_text bunu okur).
         "chunking_version": chunking_version,
@@ -235,6 +235,12 @@ def build_bulk_index(
         f"{total:,} vektör, {time.time()-t0:.0f} s")
     return {"ok": True, **{k: v for k, v in meta.items() if k != "uuids"}}
 
+
+
+def _model_of(provider_id: str) -> str | None:
+    """meta.json için sağlayıcının model adı (bilinmeyen sağlayıcıda None)."""
+    from .embeddings import list_embedding_providers
+    return next((p["model"] for p in list_embedding_providers() if p["id"] == provider_id), None)
 
 
 def _encode_doc_ids(ids: list[str], uuids: list[str]) -> "np.ndarray":
